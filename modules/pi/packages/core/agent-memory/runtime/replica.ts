@@ -233,7 +233,10 @@ async function authorizeClosure(
   // The initial checkpoint request and empty replies carry no knowledge. Do not
   // make network liveness wait on cold physical confirmation of retained data.
   if (!batch.length) return { store, token: null, proofs: [] };
-  const token = await store.continuityToken();
+  const snapshot = await store.readSnapshot?.(batch);
+  const token = snapshot?.token ?? (await store.continuityToken());
+  const readChanges = (ids: readonly C.CommitId[]) =>
+    snapshot ? snapshot.readChanges(ids) : store.readChanges(ids);
   // v2 certified declared parents only; it cannot authorize evidence owners.
   const namespace = `replica-proof:v3:${sha256(canonicalJSON({ policy, token }))}`;
   const available = new Map<C.CommitId, C.ReplicaChange>();
@@ -273,7 +276,7 @@ async function authorizeClosure(
       }
       if (verified === null && ++uncached > limits.maxClosureChanges)
         throw new Error("replica closure limit");
-      const c = available.get(id) ?? (await store.readChanges([id]))[0];
+      const c = available.get(id) ?? (await readChanges([id]))[0];
       if (!c || c.commitId !== id)
         throw new Error("missing replica dependency");
       parseReplicaChange(c);
@@ -291,7 +294,7 @@ async function authorizeClosure(
       if (verified !== null && verified !== digest)
         throw new Error("replica proof payload mismatch");
       if (verified === digest || (retained && available.has(id))) {
-        const current = (await store.readChanges([id]))[0];
+        const current = (await readChanges([id]))[0];
         if (!current || sha256(canonicalJSON(current)) !== digest)
           throw new Error("replica retained payload mismatch");
       }
@@ -305,7 +308,9 @@ async function authorizeClosure(
       // retained history and this bounded batch resolve the owning commits.
       const dependencies = new Set([
         ...c.parents,
-        ...(await store.dependencyCommits(c, batch)),
+        ...(snapshot
+          ? snapshot.dependencyCommits(c)
+          : await store.dependencyCommits(c, batch)),
       ]);
       pending.push(...[...dependencies].map((parent) => ({ id: parent })));
     }
@@ -553,4 +558,142 @@ export async function synchronizeReplica(
     await store.acknowledge([], JSON.stringify(state));
     throw error;
   }
+}
+
+if (import.meta.vitest) {
+  const { it, expect } = import.meta.vitest;
+  const policy: ReplicaPolicy = {
+    ownerId: "owner",
+    peerOwnerId: "owner",
+    projects: "all-owned",
+    personal: true,
+  };
+  const signal = () => new AbortController().signal;
+  function fixture(size = 1024) {
+    const history: C.ReplicaChange[] = Array.from({ length: size }, (_, i) => ({
+      commitId: `c${i}` as C.CommitId,
+      replicaId: "fixture" as C.ReplicaId,
+      parents: i ? [`c${i - 1}` as C.CommitId] : [],
+      revisions: [],
+      windows: [],
+      suppressions: [],
+      outcomes: [],
+    }));
+    const data = new Map(history.map((c) => [c.commitId, c]));
+    const cursors = new Map<string, string>();
+    const counts = { snapshots: 0, reads: 0, dependencies: 0, fences: 0 };
+    let token = "epoch";
+    const repository: ReplicaRepository = {
+      forPeer: (peer) => ({
+        continuityToken: async () => {
+          counts.fences++;
+          return token;
+        },
+        readSnapshot: async () => {
+          counts.snapshots++;
+          return {
+            token,
+            readChanges: (ids) => {
+              counts.reads++;
+              return ids.map((id) => {
+                const c = data.get(id);
+                if (!c) throw new Error("missing replica dependency");
+                return structuredClone(c);
+              });
+            },
+            dependencyCommits: () => {
+              counts.dependencies++;
+              return [];
+            },
+          };
+        },
+        readChanges: async () => {
+          throw new Error("per-edge store read");
+        },
+        dependencyCommits: async () => {
+          throw new Error("per-edge store lookup");
+        },
+        scan: async () => [],
+        pending: async () => [],
+        integrate: async () => {},
+        readCursor: async () => cursors.get(peer) ?? null,
+        acknowledge: async (_, value) => {
+          cursors.set(peer, value);
+        },
+      }),
+    };
+    return {
+      history,
+      counts,
+      repository,
+      replace: () => {
+        token = "replacement";
+      },
+    };
+  }
+  it("authorizes a deep graph in one snapshot while keeping final epoch fences", async () => {
+    const f = fixture(),
+      store = f.repository.forPeer("peer");
+    const proof = await authorizeClosure(
+      [f.history.at(-1)!],
+      store,
+      f.repository,
+      policy,
+      REPLICA_LIMITS,
+      signal(),
+      true,
+    );
+    expect(proof.proofs).toHaveLength(1024);
+    expect(f.counts).toEqual({
+      snapshots: 1,
+      reads: 1024,
+      dependencies: 1024,
+      fences: 1,
+    });
+    await saveProofs(proof, signal());
+    expect(f.counts.fences).toBe(3);
+    // Sensitivity: a store exposing only the old per-edge path trips the boundary.
+    const legacy = { ...store, readSnapshot: undefined };
+    await expect(
+      authorizeClosure(
+        [f.history.at(-1)!],
+        legacy,
+        f.repository,
+        policy,
+        REPLICA_LIMITS,
+        signal(),
+        true,
+      ),
+    ).rejects.toThrow("per-edge store read");
+    f.replace();
+    await expect(continuityFence(proof, signal())).rejects.toThrow(
+      "continuity changed",
+    );
+  });
+  it("still refuses cycles, missing parents, and foreign grants through snapshot reads", async () => {
+    for (const mode of ["cycle", "missing", "grant"] as const) {
+      const f = fixture(2),
+        target = f.history.at(-1)!;
+      if (mode === "cycle")
+        Reflect.set(f.history[0]!, "parents", [target.commitId]);
+      if (mode === "missing") Reflect.set(target, "parents", ["absent"]);
+      await expect(
+        authorizeClosure(
+          [target],
+          f.repository.forPeer("peer"),
+          f.repository,
+          mode === "grant" ? { ...policy, peerOwnerId: "foreign" } : policy,
+          REPLICA_LIMITS,
+          signal(),
+          true,
+        ),
+      ).rejects.toThrow(
+        mode === "cycle"
+          ? "cyclic replica dependency"
+          : mode === "missing"
+            ? "missing replica dependency"
+            : "owner denied",
+      );
+    }
+  });
 }

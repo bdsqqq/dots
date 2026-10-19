@@ -53,6 +53,10 @@ export interface FileMemoryStoreConfig {
   readonly state: string;
   readonly replicaId: C.ReplicaId;
   readonly owner: string;
+  /** isolated-fixture operation counts; no payloads or paths are reported. */
+  readonly readBoundary?: (
+    boundary: "physical-scan" | "retained-clone" | "authority-index",
+  ) => void;
   /** fixture instrumentation at actual durable publication boundaries. */
   readonly publicationBoundary?: (
     boundary:
@@ -539,6 +543,7 @@ export class FileMemoryStore implements C.MemoryStore {
     objects: readonly PreparedObject[] = [],
     refresh = false,
     prepare?: (view: View) => (view: View) => T,
+    projected = false,
   ): T {
     if (this.closed) throw new Error("memory store is closed");
     const prepared = new Map<string, string>();
@@ -595,19 +600,19 @@ export class FileMemoryStore implements C.MemoryStore {
     let continuity: () => string | null = () => null;
     this.finalizations = finalizations;
     try {
-      return structuredClone(
-        this.coordinateSync(
-          () => {
-            if (write) continuity();
-            return run(view);
-          },
-          write,
-          () => {
-            this.validatePreparation(generation, files);
-            if (write) continuity = this.prepareContinuity(view);
-          },
-        ),
+      const result = this.coordinateSync(
+        () => {
+          if (write) continuity();
+          return run(view);
+        },
+        write,
+        () => {
+          this.validatePreparation(generation, files);
+          if (write) continuity = this.prepareContinuity(view);
+        },
       );
+      // Private capsules own detached projections; functions cannot be cloned.
+      return projected ? result : structuredClone(result);
     } finally {
       this.finalizations = null;
       for (const finish of finalizations) finish();
@@ -636,6 +641,7 @@ export class FileMemoryStore implements C.MemoryStore {
     this.config.publicationBoundary?.("fencing", String(generation));
     // These metadata comparisons fence replaced physical files and editable
     // inodes under a WAL reader, before acquiring the writer reservation.
+    this.config.readBoundary?.("physical-scan");
     for (const [path, identity] of files) {
       try {
         if (physicalIdentity(path) === identity) continue;
@@ -759,9 +765,10 @@ export class FileMemoryStore implements C.MemoryStore {
     options = this.options,
     objects: readonly PreparedObject[] = [],
     prepare?: (view: View) => (view: View) => T,
+    projected = false,
   ): Promise<T> {
     return contend(
-      () => this.refreshedSync(run, write, objects, prepare),
+      () => this.refreshedSync(run, write, objects, prepare, projected),
       options,
       5000,
     );
@@ -771,13 +778,21 @@ export class FileMemoryStore implements C.MemoryStore {
     write: boolean,
     objects: readonly PreparedObject[] = [],
     prepare?: (view: View) => (view: View) => T,
+    projected = false,
   ): T {
     // Editable traversal, revision derivation and placement preparation reserve
     // no writer. Every effect rechecks this exact snapshot before acceptance.
     const previousProblems = new Map(this.invalidEditable);
     for (;;) {
       try {
-        return this.transactionSync(run, write, objects, true, prepare);
+        return this.transactionSync(
+          run,
+          write,
+          objects,
+          true,
+          prepare,
+          projected,
+        );
       } catch (error) {
         if (error instanceof RefreshApplied) {
           write = true;
@@ -820,10 +835,11 @@ export class FileMemoryStore implements C.MemoryStore {
     // Inbox validation warms this private snapshot before foreground context needs it.
     // Every physical identity is still checked; this never certifies durability or
     // bypasses the later WAL fence / editable-file scan. Keep this view private:
-    // transactionSync clones only the result crossing the caller boundary. Cloning
-    // all retained history here can exhaust the session worker's bounded heap.
+    // transactionSync detaches public results; private capsules detach their own
+    // projections. Cloning all history can exhaust the bounded worker heap.
     if (this.preparingFiles && this.retainedView) {
       const cached = this.retainedView;
+      this.config.readBoundary?.("physical-scan");
       let unchanged = true;
       try {
         for (const [path, identity] of cached.files)
@@ -835,6 +851,7 @@ export class FileMemoryStore implements C.MemoryStore {
         unchanged = false;
       }
       if (unchanged) {
+        if (confirm) this.config.readBoundary?.("physical-scan");
         for (const [path, identity] of cached.files) {
           this.preparingFiles.set(path, identity);
           // Reusing validated bytes never substitutes for a physical ACK. Cold
@@ -883,11 +900,12 @@ export class FileMemoryStore implements C.MemoryStore {
       }
     }
     const derived = this.deriveView(view, confirm);
-    if (this.preparingFiles)
+    if (this.preparingFiles) {
       this.retainedView = {
         view: derived,
         files: new Map(this.preparingFiles),
       };
+    }
     return derived;
   }
   private readAccepted(): Accepted[] {
@@ -1492,7 +1510,22 @@ export class FileMemoryStore implements C.MemoryStore {
     id: C.CommitId,
     options: FileMemoryStoreOptions = this.options,
   ): Promise<boolean> {
-    return this.refreshed((view) => view.accepted.has(id), false, options);
+    return (await this.hasAcceptedCommits([id], options))[0]!;
+  }
+  async hasAcceptedCommits(
+    ids: readonly C.CommitId[],
+    options: FileMemoryStoreOptions = this.options,
+  ): Promise<readonly boolean[]> {
+    if (!ids.length) return [];
+    const requested = [...ids];
+    return this.refreshed(
+      (view) => requested.map((id) => view.accepted.has(id)),
+      false,
+      options,
+      [],
+      undefined,
+      true,
+    );
   }
   async pendingScopes(
     options: FileMemoryStoreOptions = this.options,
@@ -1986,6 +2019,125 @@ export class FileMemoryStore implements C.MemoryStore {
       "missing/cyclic published commit dependencies",
     );
   }
+  /** No retained objects leave this callback except through detached projections. */
+  private replicaAuthority<T>(
+    project: (view: View, token: string) => T,
+    options: FileMemoryStoreOptions,
+  ): Promise<T> {
+    return this.refreshed<T>(
+      () => {
+        throw new IntegrityError("missing prepared authority");
+      },
+      true,
+      options,
+      [],
+      (view) => {
+        const token = this.synchronizeContinuity(view, true);
+        if (!token) throw new IntegrityError("missing repository continuity");
+        const result = project(view, token);
+        return () => {
+          const row = this.db
+            .prepare("SELECT token FROM repository_epoch WHERE id=1")
+            .get();
+          if (!row || row.token !== token) throw new SnapshotChanged();
+          return result;
+        };
+      },
+      true,
+    );
+  }
+  private replicaSnapshot(
+    incoming: readonly C.ReplicaChange[],
+    options: FileMemoryStoreOptions,
+  ): Promise<C.ReplicaReadSnapshot> {
+    if (incoming.length > 4096)
+      throw new Error("replica dependency lookup exceeds 4096 commits");
+    // Caller-owned wire objects cannot change an authorization stage after await.
+    const batch = structuredClone(incoming).map(parseReplicaChange);
+    return this.replicaAuthority((view, token) => {
+      this.config.readBoundary?.("authority-index");
+      const candidates = new Map(
+        [...view.accepted].map(([id, accepted]) => [id, accepted.replica]),
+      );
+      for (const change of batch) {
+        const retained = candidates.get(change.commitId);
+        if (retained && !sameValue(retained, change))
+          throw new IntegrityError("replica identity collision");
+        candidates.set(change.commitId, change);
+      }
+      // The durable first-acceptance ordinal wins over later duplicate owners.
+      const ordinals = new Map(
+        this.db
+          .prepare("SELECT commit_id,rowid AS ordinal FROM repository_payload")
+          .all()
+          .map((row) => [string(row.commit_id), Number(row.ordinal)]),
+      );
+      const ordered = [...candidates.values()].sort(
+        (a, b) =>
+          (ordinals.get(a.commitId) ?? Number.MAX_SAFE_INTEGER) -
+            (ordinals.get(b.commitId) ?? Number.MAX_SAFE_INTEGER) ||
+          a.commitId.localeCompare(b.commitId),
+      );
+      const revisions = new Map<C.RevisionId, C.CommitId>();
+      const windows = new Map<C.WindowId, C.CommitId>();
+      for (const c of ordered) {
+        for (const r of c.revisions)
+          if (!revisions.has(r.revisionId))
+            revisions.set(r.revisionId, c.commitId);
+        for (const w of c.windows)
+          if (!windows.has(w.windowId)) windows.set(w.windowId, c.commitId);
+      }
+      return {
+        token,
+        readChanges: (ids) => {
+          if (ids.length > 4096)
+            throw new Error("replica lookup exceeds 4096 commits");
+          return structuredClone(
+            ids.map((id) => {
+              const c = view.accepted.get(id)?.replica;
+              if (!c) throw new IntegrityError("missing replica commit");
+              return c;
+            }),
+          );
+        },
+        dependencyCommits: (input) => {
+          const target = parseReplicaChange(input);
+          const retained = candidates.get(target.commitId);
+          if (retained && !sameValue(retained, target))
+            throw new IntegrityError("replica identity collision");
+          const rs = new Set<C.RevisionId>();
+          const ws = new Set<C.WindowId>();
+          for (const r of target.revisions) {
+            if (r.ancestry.kind === "known")
+              for (const id of r.ancestry.parents) rs.add(id);
+            for (const claim of r.claims) {
+              for (const ref of claim.derivedFrom) rs.add(ref.revisionId);
+              for (const ref of claim.evidence) ws.add(ref.windowId);
+            }
+          }
+          for (const o of target.outcomes) {
+            ws.add(o.windowId);
+            if (o.decision.kind === "changed")
+              for (const ref of o.decision.notes) rs.add(ref.revisionId);
+          }
+          for (const rule of target.suppressions)
+            if (rule.target.kind === "evidence")
+              ws.add(rule.target.evidence.windowId);
+          for (const r of target.revisions) rs.delete(r.revisionId);
+          for (const w of target.windows) ws.delete(w.windowId);
+          const owners = new Set<C.CommitId>();
+          const requireOwner = (id: C.CommitId | undefined) => {
+            if (!id)
+              throw new IntegrityError("missing replica evidence dependency");
+            owners.add(id);
+          };
+          for (const id of rs) requireOwner(revisions.get(id));
+          for (const id of ws) requireOwner(windows.get(id));
+          return [...owners].sort();
+        },
+      };
+    }, options);
+  }
   /** adapters close over one authenticated configured peer; acknowledgments never leak. */
   forPeer(
     peer: string,
@@ -1993,30 +2145,17 @@ export class FileMemoryStore implements C.MemoryStore {
   ): C.ReplicaStore {
     if (!peer) throw new Error("peer required");
     const read = <T>(run: (view: View) => T) =>
-      this.refreshed(run, false, options);
+      this.refreshed(
+        (view) => structuredClone(run(view)),
+        false,
+        options,
+        [],
+        undefined,
+        true,
+      );
     return {
       continuityToken: async () =>
-        this.refreshed(
-          () => {
-            throw new IntegrityError("missing prepared continuity");
-          },
-          true,
-          options,
-          [],
-          (view) => {
-            const token = this.synchronizeContinuity(view, true);
-            if (!token)
-              throw new IntegrityError("missing repository continuity");
-            return () => {
-              const row = this.db
-                .prepare("SELECT token FROM repository_epoch WHERE id=1")
-                .get();
-              if (!row)
-                throw new IntegrityError("missing repository continuity");
-              return string(row.token);
-            };
-          },
-        ),
+        this.replicaAuthority((_, token) => token, options),
       scan: async (after, limit) => {
         if (!Number.isSafeInteger(limit) || limit < 1 || limit > 4096)
           throw new Error("replica scan limit must be 1..4096");
@@ -2029,109 +2168,11 @@ export class FileMemoryStore implements C.MemoryStore {
           return changes.slice(start, start + limit);
         });
       },
+      readSnapshot: async (incoming = []) =>
+        this.replicaSnapshot(incoming, options),
       dependencyCommits: async (input, incoming = []) =>
-        this.refreshed<C.CommitId[]>(
-          () => {
-            throw new Error("missing prepared dependencies");
-          },
-          true,
-          options,
-          [],
-          (view) => {
-            if (incoming.length > 4096)
-              throw new Error("replica dependency lookup exceeds 4096 commits");
-            const target = parseReplicaChange(input);
-            const candidates = new Map(
-              [...view.accepted].map(([id, accepted]) => [
-                id,
-                accepted.replica,
-              ]),
-            );
-            for (const value of [...incoming, target]) {
-              const change = parseReplicaChange(value);
-              const retained = candidates.get(change.commitId);
-              if (retained && !sameValue(retained, change))
-                throw new IntegrityError("replica identity collision");
-              candidates.set(change.commitId, change);
-            }
-            const revisions = new Set<C.RevisionId>([
-              ...target.revisions.flatMap((revision) => [
-                ...(revision.ancestry.kind === "known"
-                  ? revision.ancestry.parents
-                  : []),
-                ...revision.claims.flatMap((claim) =>
-                  claim.derivedFrom.map((ref) => ref.revisionId),
-                ),
-              ]),
-              ...target.outcomes.flatMap((outcome) =>
-                outcome.decision.kind === "changed"
-                  ? outcome.decision.notes.map((ref) => ref.revisionId)
-                  : [],
-              ),
-            ]);
-            const windows = new Set<C.WindowId>([
-              ...target.revisions.flatMap((revision) =>
-                revision.claims.flatMap((claim) =>
-                  claim.evidence.map((ref) => ref.windowId),
-                ),
-              ),
-              ...target.suppressions.flatMap((rule) =>
-                rule.target.kind === "evidence"
-                  ? [rule.target.evidence.windowId]
-                  : [],
-              ),
-              ...target.outcomes.map((outcome) => outcome.windowId),
-            ]);
-            for (const revision of target.revisions)
-              revisions.delete(revision.revisionId);
-            for (const window of target.windows)
-              windows.delete(window.windowId);
-            // A later duplicate must not retroactively change a cached dependency.
-            // The epoch resets these ordinals whenever retained history changes.
-            this.synchronizeContinuity(view, true);
-            const ordinals = new Map(
-              this.db
-                .prepare(
-                  "SELECT commit_id,rowid AS ordinal FROM repository_payload",
-                )
-                .all()
-                .map((row) => [string(row.commit_id), Number(row.ordinal)]),
-            );
-            const ordered = [...candidates.values()].sort(
-              (a, b) =>
-                (ordinals.get(a.commitId) ?? Number.MAX_SAFE_INTEGER) -
-                  (ordinals.get(b.commitId) ?? Number.MAX_SAFE_INTEGER) ||
-                a.commitId.localeCompare(b.commitId),
-            );
-            const owners = new Set<C.CommitId>();
-            const foundRevisions = new Set<C.RevisionId>(),
-              foundWindows = new Set<C.WindowId>();
-            for (const candidate of ordered) {
-              for (const revision of candidate.revisions)
-                if (
-                  revisions.has(revision.revisionId) &&
-                  !foundRevisions.has(revision.revisionId)
-                ) {
-                  owners.add(candidate.commitId);
-                  foundRevisions.add(revision.revisionId);
-                }
-              for (const window of candidate.windows)
-                if (
-                  windows.has(window.windowId) &&
-                  !foundWindows.has(window.windowId)
-                ) {
-                  owners.add(candidate.commitId);
-                  foundWindows.add(window.windowId);
-                }
-            }
-            if (
-              foundRevisions.size !== revisions.size ||
-              foundWindows.size !== windows.size
-            )
-              throw new IntegrityError("missing replica evidence dependency");
-            const result = [...owners].sort();
-            return () => result;
-          },
+        (await this.replicaSnapshot(incoming, options)).dependencyCommits(
+          input,
         ),
       readChanges: async (ids) => {
         if (ids.length === 0) return [];
@@ -3193,6 +3234,191 @@ if (import.meta.vitest) {
       rmSync(f.dir, { recursive: true });
     }
   });
+  async function authoritySnapshotFixture(count: number): Promise<void> {
+    const f = fixture();
+    const counts = {
+      "physical-scan": 0,
+      "retained-clone": 0,
+      "authority-index": 0,
+    };
+    const history: C.ReplicaChange[] = [];
+    const reset = () => {
+      for (const key of Object.keys(counts) as (keyof typeof counts)[])
+        counts[key] = 0;
+    };
+    const config: FileMemoryStoreConfig = {
+      ...f.config,
+      readBoundary: (key) => {
+        counts[key]++;
+      },
+    };
+    try {
+      f.store.close();
+      for (let i = 0; i < count; i++) {
+        const c: C.ReplicaChange = {
+          commitId: `snapshot-${String(i).padStart(5, "0")}` as C.CommitId,
+          replicaId: f.config.replicaId,
+          parents: history.length ? [history.at(-1)!.commitId] : [],
+          revisions: [
+            note(
+              "snapshot-note",
+              `recorded producer experience ${i}`,
+              history.at(-1)?.revisions.map((r) => r.revisionId) ?? [],
+            ),
+          ],
+          windows: Array.from({ length: 5 }, (_, j) =>
+            window(`snapshot-${i}-${j}`),
+          ),
+          suppressions: [],
+          outcomes: history.length
+            ? [
+                {
+                  windowId: history.at(-1)!.windows[0]!.windowId,
+                  sourceHash: history.at(-1)!.windows[0]!.sourceHash,
+                  recordedAt: now,
+                  decision: { kind: "no-change", reason: "same" },
+                },
+              ]
+            : [],
+        };
+        history.push(c);
+        const put = (value: unknown) => {
+          const bytes = canonicalJSON(value),
+            hash = sha256(bytes);
+          writeFileSync(join(config.data, "objects", hash), bytes);
+          return hash;
+        };
+        const dependencies = [...c.windows, ...c.revisions].map(put),
+          replica = put(c);
+        dependencies.push(replica);
+        const local =
+          i < count / 2
+            ? put(change(c.commitId, c.revisions, c.windows))
+            : null;
+        if (local) dependencies.push(local);
+        const manifest = {
+          version: 1,
+          dependencies: dependencies.sort(),
+          replica,
+          local,
+        };
+        writeFileSync(
+          join(config.data, "commits", sha256(c.commitId)),
+          canonicalJSON({ ...manifest, hash: sha256(canonicalJSON(manifest)) }),
+        );
+      }
+      if (count === 2000)
+        expect(readdirSync(join(config.data, "objects"))).toHaveLength(15000);
+      f.store = await FileMemoryStore.open(config);
+      const peer = f.store.forPeer("snapshot-proof");
+      await peer.continuityToken();
+      reset();
+      const snapshot = await peer.readSnapshot!();
+      const atSnapshot = { ...counts };
+      for (const c of history) {
+        expect(snapshot.readChanges([c.commitId])).toEqual([c]);
+        expect(snapshot.dependencyCommits(c)).toEqual(c.parents);
+      }
+      expect(counts).toEqual(atSnapshot);
+      expect(counts).toEqual({
+        "physical-scan": 4,
+        "retained-clone": 0,
+        "authority-index": 1,
+      });
+      const projected = snapshot.readChanges([history[0]!.commitId]);
+      Reflect.set(projected[0]!.windows[0]!, "capturedAt", "forged");
+      Reflect.set(projected[0]!.revisions[0]!, "links", ["forged"]);
+      expect(
+        snapshot.readChanges([history[0]!.commitId])[0]!.revisions[0]!.links,
+      ).toEqual([]);
+      expect(
+        snapshot.readChanges([history[0]!.commitId])[0]!.windows[0]!.capturedAt,
+      ).toBe(now);
+      reset();
+      expect(
+        await f.store.hasAcceptedCommits(history.map((c) => c.commitId)),
+      ).toEqual(history.map(() => true));
+      expect(counts).toEqual({
+        "physical-scan": 2,
+        "retained-clone": 0,
+        "authority-index": 0,
+      });
+      // Sensitivity: separate legacy-shaped stages cost a scan/index each.
+      reset();
+      for (const c of history.slice(0, 2)) await peer.dependencyCommits(c);
+      expect(counts["physical-scan"]).toBe(8);
+      expect(counts["authority-index"]).toBe(2);
+      reset();
+      await f.store.listNotes(scope);
+      expect(counts["retained-clone"]).toBe(0);
+      reset();
+      const { exchangeReplica } = await import("./replica.js");
+      const response = await exchangeReplica(
+        {
+          outgoing: [],
+          cursor: JSON.stringify({
+            version: 1,
+            after: history.at(-2)!.commitId,
+            received: null,
+            attempts: 0,
+            retryAt: 0,
+          }),
+        },
+        {
+          store: f.store,
+          peerId: "snapshot-exchange",
+          signal: new AbortController().signal,
+          policy: {
+            ownerId: config.owner,
+            peerOwnerId: config.owner,
+            projects: "all-owned",
+            personal: true,
+          },
+        },
+      );
+      expect(response.incoming).toEqual([history.at(-1)!]);
+      expect(counts["authority-index"]).toBe(1);
+      expect(counts["retained-clone"]).toBe(0);
+      // Page, one authority stage, and final physical fences: independent of edges.
+      expect(counts["physical-scan"]).toBe(22);
+      // Same bytes on a replacement inode still cross a new physical barrier.
+      const payloadPath = join(
+        config.data,
+        "objects",
+        sha256(canonicalJSON(history[0])),
+      );
+      const replacement = `${payloadPath}.replacement`;
+      writeFileSync(replacement, readFileSync(payloadPath));
+      renameSync(replacement, payloadPath);
+      reset();
+      expect(await peer.continuityToken()).toBe(snapshot.token);
+      expect(counts["retained-clone"]).toBe(0);
+      const missing = {
+        ...history.at(-1)!,
+        commitId: "missing-ref" as C.CommitId,
+        outcomes: [
+          { ...history.at(-1)!.outcomes[0]!, windowId: "absent" as C.WindowId },
+        ],
+      };
+      expect(() => snapshot.dependencyCommits(missing)).toThrow(
+        "missing replica evidence dependency",
+      );
+    } finally {
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  }
+  it("batches authority scans and receipt reads while keeping private projections", async () => {
+    await authoritySnapshotFixture(4);
+  });
+  // Deliberately Linux-only: never put a new heavy fixture on the overloaded Mac.
+  (process.platform === "linux" ? it : it.skip)(
+    "batches a 2000-commit 15000-object real closure with constant physical scan counts",
+    async () => {
+      await authoritySnapshotFixture(2000);
+    },
+    600000,
+  );
   it("replays and replicates 1024 retained commits with 600 local manifests and private warm snapshots", async () => {
     const f = fixture(),
       receiver = fixture("ordering-receiver");
