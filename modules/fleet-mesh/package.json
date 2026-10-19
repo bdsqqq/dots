@@ -1,5 +1,6 @@
 {
   "name": "fleet-mesh",
+  "packageManager": "pnpm@11.9.0",
   "version": "0.1.0",
   "type": "module",
   "bin": {
