@@ -1,5 +1,8 @@
 {
   "defaultProvider": "openai-codex",
+  "extensions": [
+    "!**/agent-memory/**"
+  ],
   "defaultTools": [
     "+codemode"
   ],
