@@ -42,13 +42,15 @@ in
   home-manager.users.bdsqqq = { config, ... }: {
     home.packages = [ agentMemory ];
 
-    # native supervisors prevent overlap within a job, without coupling their lifetimes.
+    # Each resident job watches durable inputs and backs off when idle/failing.
+    # Supervisors restart crashed watchers; they do not poll the full store.
     launchd.agents = lib.mkIf isDarwin (lib.mapAttrs (name: command: {
       enable = true;
       config = {
-        ProgramArguments = [ "${agentMemory}/bin/pi-memory" command ];
+        ProgramArguments = [ "${agentMemory}/bin/pi-memory" "watch" command ];
         RunAtLoad = true;
-        StartInterval = 60;
+        KeepAlive = true;
+        ExitTimeOut = 0;
         ProcessType = "Background";
         ThrottleInterval = 60;
         StandardOutPath = "${config.home.homeDirectory}/Library/Logs/${name}.log";
@@ -59,20 +61,14 @@ in
     systemd.user.services = lib.mkIf isLinux (lib.mapAttrs (_: command: {
       Unit.Description = "Pi memory ${command}";
       Service = {
-        Type = "oneshot";
-        TimeoutStartSec = "infinity";
-        ExecStart = "${agentMemory}/bin/pi-memory ${command}";
+        Type = "simple";
+        ExecStart = "${agentMemory}/bin/pi-memory watch ${command}";
+        Restart = "always";
+        RestartSec = "1m";
+        TimeoutStopSec = "infinity";
+        SendSIGKILL = false;
       };
-    }) jobs);
-
-    systemd.user.timers = lib.mkIf isLinux (lib.mapAttrs (_: command: {
-      Unit.Description = "Periodic pi memory ${command}";
-      Timer = {
-        OnBootSec = "1m";
-        OnUnitActiveSec = "1m";
-        Persistent = true;
-      };
-      Install.WantedBy = [ "timers.target" ];
+      Install.WantedBy = [ "default.target" ];
     }) jobs);
   };
 }
