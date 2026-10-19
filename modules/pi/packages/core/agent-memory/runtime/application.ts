@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { statSync } from "node:fs";
 import { resolveGlobalSettingsPath } from "@bds_pi/config";
 import {
@@ -182,27 +182,20 @@ export class MemoryApplication {
     signal: AbortSignal,
   ): Promise<MaintenanceResult["replication"]> {
     if (!this.configuration.enabled) return [];
-    return Promise.all(
-      this.configuration.peers.map(async (peer) => {
-        try {
-          signal.throwIfAborted();
-          return {
-            peer,
-            result: await synchronizeReplica({
-              store: this.store,
-              peerId: peer,
-              policy: this.policy(),
-              signal,
-              transport:
-                this.options.transport?.(peer) ??
-                sshReplicaTransport(peer, this.configuration.peers),
-            }),
-          };
-        } catch (error) {
-          return { peer, error: String(error) };
-        }
-      }),
-    );
+    return Promise.all(this.configuration.peers.map((peer) => this.replicatePeer(peer, signal)));
+  }
+  async replicatePeer(peer: string, signal: AbortSignal): Promise<MaintenanceResult["replication"][number]> {
+    if (!this.configuration.peers.includes(peer)) throw new Error("replica peer denied");
+    try {
+      signal.throwIfAborted();
+      if (!this.configuration.enabled) return { peer, result: { kind: "complete", sent: 0, received: 0 } };
+      return { peer, result: await synchronizeReplica({
+        store: this.store, peerId: peer, policy: this.policy(), signal,
+        transport: this.options.transport?.(peer) ?? sshReplicaTransport(peer, this.configuration.peers),
+      }) };
+    } catch (error) {
+      return { peer, error: String(error) };
+    }
   }
   async reconcile(signal: AbortSignal): Promise<ReconciliationRunResult> {
     if (!this.configuration.enabled) return { results: [], idle: null };
@@ -304,6 +297,7 @@ export async function openMemoryApplication(
 }
 
 export type MemoryWatchEvent = MemoryWakeEvent & {
+  readonly peer?: string;
   readonly failure?: ReconciliationFailure;
 };
 export interface MemoryWatchInput {
@@ -337,6 +331,7 @@ export async function watchMemoryApplication(
       throw error;
     }
   };
+  let nudge = false;
   do {
     input.signal.throwIfAborted();
     const identity = settingsIdentity();
@@ -350,9 +345,15 @@ export async function watchMemoryApplication(
     const signal = AbortSignal.any([input.signal, own.signal]);
     const paths = runtimeStoreConfiguration(app.configuration);
     let reload = false;
-    let failure: ReconciliationFailure | undefined;
+    const peers: readonly (string | undefined)[] = input.job === "replicate" && app.configuration.peers.length
+      ? app.configuration.peers : [undefined];
     try {
+      // Each peer owns its wake loop. An unfinished exchange cannot hold the
+      // next healthy-peer sweep behind an aggregate Promise.all barrier.
+      const settled = await Promise.allSettled(peers.map(async (peer) => {
+      let failure: ReconciliationFailure | undefined;
       await watchMemoryWork({
+        nudge,
         roots: () => [
           ...(settings ? [settings] : []),
           ...(input.job === "catch-up"
@@ -360,11 +361,11 @@ export async function watchMemoryApplication(
             : [paths.root, join(paths.data, "commits")]),
         ],
         ignore: () => [paths.state, join(paths.data, "objects")],
-        checkpoint: join(paths.state, `wakeup-${input.job}.json`),
+        checkpoint: join(paths.state, `wakeup-${input.job}${peer ? `-${createHash("sha256").update(peer).digest("hex")}` : ""}.json`),
         signal,
         policy: input.policy,
         report: (event) => {
-          const detail = { ...event, ...(failure ? { failure } : {}) };
+          const detail = { ...event, ...(failure ? { failure } : {}), ...(peer ? { peer } : {}) };
           if (input.report) input.report(detail);
           else
             console.error(
@@ -398,15 +399,12 @@ export async function watchMemoryApplication(
             };
           }
           if (input.job === "replicate") {
-            const result = await app.replicate(signal);
+            if (!peer) return { progress: false };
+            const result = await app.replicatePeer(peer, signal);
             return {
-              progress: result.some(
-                (r) => (r.result?.sent ?? 0) + (r.result?.received ?? 0) > 0,
-              ),
-              // One unavailable peer must not impose its cooldown on healthy ones.
-              failed:
-                result.length > 0 &&
-                result.every((r) => r.error || r.result?.kind === "backoff"),
+              progress: (result.result?.sent ?? 0) + (result.result?.received ?? 0) > 0,
+              failed: !!result.error,
+              retryAt: result.result?.kind === "backoff" ? result.result.retryAt : undefined,
             };
           }
           const result = await app.reconcile(signal);
@@ -416,13 +414,17 @@ export async function watchMemoryApplication(
             failed: !!failure,
           };
         },
-      });
+      }).catch((error) => { own.abort(error); throw error; });
+      }));
+      const failed = settled.find((result) => result.status === "rejected");
+      if (failed?.status === "rejected") throw failed.reason;
     } catch (error) {
       if (!reload || input.signal.aborted) throw error;
     } finally {
       if (!input.application) app.close();
     }
     if (!reload) return;
+    nudge = true;
   } while (!input.signal.aborted);
 }
 
@@ -491,7 +493,7 @@ if (import.meta.vitest) {
           ownerId: "fixture",
           root: join(f.dir, namespace, "notes"),
           data: join(f.dir, namespace, "data"),
-          state: join(f.dir, namespace, "state"),
+          state: join(f.dir, "shared-state"),
           peers: [],
         },
       });
@@ -514,12 +516,7 @@ if (import.meta.vitest) {
       report: (event) => {
         if (event.kind === "run") {
           first();
-          if (
-            existsSync(
-              join(f.dir, "two", "state", "runtime", "coordination.sqlite"),
-            )
-          )
-            controller.abort();
+          if (existsSync(join(f.dir, "two", "data", "runtime", "commits"))) controller.abort();
         }
       },
     });
@@ -537,11 +534,7 @@ if (import.meta.vitest) {
           ).unref(),
         ),
       ]);
-      expect(
-        existsSync(
-          join(f.dir, "two", "state", "runtime", "coordination.sqlite"),
-        ),
-      ).toBe(true);
+      expect(existsSync(join(f.dir, "two", "data", "runtime", "commits"))).toBe(true);
     } finally {
       controller.abort();
       await task;
@@ -1221,6 +1214,30 @@ if (import.meta.vitest) {
       rmSync(f.dir, { recursive: true, force: true });
     }
   });
+  it("a stalled peer cannot block subsequent healthy-peer wakeups", async () => {
+    const f = fixture(), remote = fixture();
+    const target = await openMemoryApplication({ configuration: remote.configuration, model: remote.model });
+    const { exchangeReplica } = await import("./replica.js");
+    const controller = new AbortController();
+    const app = await openMemoryApplication({ configuration: { ...f.configuration, peers: ["stalled", "healthy"] }, model: f.model,
+      transport: (peer) => ({ exchange: (request, signal) => peer === "healthy"
+        ? exchangeReplica(request, { store: target.store, peerId: "source", policy: target.policy(), signal })
+        : new Promise((_resolve,reject) => { signal.addEventListener("abort", () => reject(new Error("fixture stopped")), {once:true}); if(signal.aborted) reject(new Error("fixture stopped")); }) }),
+    });
+    await captureWatchFixture(app, f.dir, "first independently captured source");
+    let deliveries = 0;
+    const task = watchMemoryApplication({ job: "replicate", application: app, signal: controller.signal,
+      policy: { debounceMs: 5, idleInitialMs: 60_000, idleMaxMs: 60_000, jitterRatio: 0 },
+      report: (event) => { if(event.peer === "healthy" && event.kind === "run" && event.progress) deliveries++; },
+    });
+    try {
+      await expect.poll(() => deliveries, { timeout: 5000 }).toBe(1);
+      await captureWatchFixture(app, f.dir, "second source captured after the first peer completed");
+      await expect.poll(() => deliveries, { timeout: 5000 }).toBe(2);
+      expect((await target.store.readCapturedWindows(target.scope)).length).toBe(2);
+    } finally { controller.abort(); await task; app.close(); target.close(); rmSync(f.dir,{recursive:true,force:true}); rmSync(remote.dir,{recursive:true,force:true}); }
+  });
+
   it("a healthy peer durably receives knowledge while another transport remains stalled", async () => {
     const f = fixture(),
       remote = fixture();
