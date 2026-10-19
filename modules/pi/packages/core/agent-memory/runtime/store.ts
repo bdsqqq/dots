@@ -27,6 +27,7 @@ import {
 import {
   durableCreate,
   confirmDurability,
+  confirmDurabilities,
   cleanupDurableStages,
   prepareDurableCreate,
   physicalIdentity,
@@ -671,6 +672,22 @@ export class FileMemoryStore implements C.MemoryStore {
     if (this.observe(path) !== identity) throw new SnapshotChanged();
     this.confirmed.set(path, identity);
   }
+  private confirmPhysicalMany(paths: readonly string[]): void {
+    const pending = new Map<string, string>();
+    for (const path of new Set(paths)) {
+      const identity = this.observe(path);
+      if (this.confirmed.get(path) !== identity) {
+        this.config.publicationBoundary?.("confirming", path);
+        pending.set(path, identity);
+      }
+    }
+    const confirmed = confirmDurabilities([...pending.keys()]);
+    for (const [path, identity] of pending) {
+      if (confirmed.get(path) !== identity || this.observe(path) !== identity)
+        throw new SnapshotChanged();
+      this.confirmed.set(path, identity);
+    }
+  }
   private coordinateSync<T>(
     run: () => T,
     write = true,
@@ -998,11 +1015,14 @@ export class FileMemoryStore implements C.MemoryStore {
         }
     }
     if (confirm)
-      for (const a of causal) {
-        for (const dependency of a.manifest.dependencies)
-          this.confirmPhysical(join(this.objects, dependency));
-        this.confirmPhysical(join(this.commits, sha256(a.replica.commitId)));
-      }
+      this.confirmPhysicalMany(
+        causal.flatMap((a) => [
+          ...a.manifest.dependencies.map((dependency) =>
+            join(this.objects, dependency),
+          ),
+          join(this.commits, sha256(a.replica.commitId)),
+        ]),
+      );
     const retired = new Set<C.RevisionId>();
     for (const r of view.revisions.values())
       if (r.ancestry.kind === "known")

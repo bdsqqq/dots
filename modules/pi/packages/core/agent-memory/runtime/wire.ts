@@ -1,5 +1,5 @@
 import { Type, type Static, type TSchema } from "typebox";
-import { Check } from "typebox/value";
+import { Compile } from "typebox/compile";
 import type * as C from "./contracts.js";
 import { hashSourceWindow, revisionId, windowId } from "./identity.js";
 
@@ -187,8 +187,16 @@ const delivery = obj({
   }),
   context: obj({ text, notes: nonempty(ref), evidence: Type.Array(evidence) }),
 });
+// Schemas are private constants. Compile each once instead of interpreting and
+// rechecking the schema graph for every retained object on every cold open.
+const validators = new WeakMap<TSchema, ReturnType<typeof Compile>>();
 function decode<S extends TSchema>(schema: S, value: unknown): Static<S> {
-  if (!Check(schema, value)) throw new Error("invalid memory wire value");
+  let validator = validators.get(schema);
+  if (!validator) {
+    validator = Compile(schema);
+    validators.set(schema, validator);
+  }
+  if (!validator.Check(value)) throw new Error("invalid memory wire value");
   const visit = (node: unknown): void => {
     if (Array.isArray(node)) {
       node.forEach(visit);
@@ -219,7 +227,7 @@ function decode<S extends TSchema>(schema: S, value: unknown): Static<S> {
     }
   };
   visit(value);
-  return value;
+  return value as Static<S>;
 }
 export function parseNoteMetadata(
   value: unknown,
