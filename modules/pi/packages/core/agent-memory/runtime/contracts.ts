@@ -440,6 +440,10 @@ export interface MemoryStore {
   ): Promise<CommitResult>;
   /** operational checkpoints cannot establish acceptance after a data restore. */
   hasAcceptedCommit(commitId: CommitId): Promise<boolean>;
+  /** one physically validated receipt view for a source-discovery pass. */
+  hasAcceptedCommits?(
+    commitIds: readonly CommitId[],
+  ): Promise<readonly boolean[]>;
   /** owner-authorized pending scopes, oldest first; no model or lease acquisition. */
   pendingScopes(): Promise<readonly MemoryScope[]>;
   /** cheap atomic selection/lease; idle plans must not call a model. */
@@ -499,7 +503,20 @@ export interface ReplicaTransport {
   }>;
 }
 
+/** A detached projection of one validated authority stage, not an enduring receipt.
+ * The caller must recheck continuityToken before disclosure or acknowledgment.
+ */
+export interface ReplicaReadSnapshot {
+  readonly token: string;
+  readChanges(ids: readonly CommitId[]): readonly ReplicaChange[];
+  dependencyCommits(change: ReplicaChange): readonly CommitId[];
+}
+
 export interface ReplicaStore {
+  /** resolves all closure edges against one retained view and one incoming batch. */
+  readSnapshot?(
+    incoming?: readonly ReplicaChange[],
+  ): Promise<ReplicaReadSnapshot>;
   /** trusted local epoch: stable across append/restart, changes after retained payload removal/replacement. */
   continuityToken(): Promise<string>;
   /** owners of external revision/window references; retained choices stay stable within an epoch, regardless of later duplicates. */
