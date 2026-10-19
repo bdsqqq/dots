@@ -595,16 +595,18 @@ export class FileMemoryStore implements C.MemoryStore {
     let continuity: () => string | null = () => null;
     this.finalizations = finalizations;
     try {
-      return this.coordinateSync(
-        () => {
-          if (write) continuity();
-          return run(view);
-        },
-        write,
-        () => {
-          this.validatePreparation(generation, files);
-          if (write) continuity = this.prepareContinuity(view);
-        },
+      return structuredClone(
+        this.coordinateSync(
+          () => {
+            if (write) continuity();
+            return run(view);
+          },
+          write,
+          () => {
+            this.validatePreparation(generation, files);
+            if (write) continuity = this.prepareContinuity(view);
+          },
+        ),
       );
     } finally {
       this.finalizations = null;
@@ -817,8 +819,9 @@ export class FileMemoryStore implements C.MemoryStore {
   private recover(confirm = true): View {
     // Inbox validation warms this private snapshot before foreground context needs it.
     // Every physical identity is still checked; this never certifies durability or
-    // bypasses the later WAL fence / editable-file scan. Clone both ways so SDK
-    // consumers cannot mutate cached authority through returned revision objects.
+    // bypasses the later WAL fence / editable-file scan. Keep this view private:
+    // transactionSync clones only the result crossing the caller boundary. Cloning
+    // all retained history here can exhaust the session worker's bounded heap.
     if (this.preparingFiles && this.retainedView) {
       const cached = this.retainedView;
       let unchanged = true;
@@ -838,7 +841,7 @@ export class FileMemoryStore implements C.MemoryStore {
           // write callers still establish every file barrier before admission.
           if (confirm && path !== this.commits) this.confirmPhysical(path);
         }
-        return structuredClone(cached.view);
+        return cached.view;
       }
       this.retainedView = null;
     }
@@ -882,7 +885,7 @@ export class FileMemoryStore implements C.MemoryStore {
     const derived = this.deriveView(view, confirm);
     if (this.preparingFiles)
       this.retainedView = {
-        view: structuredClone(derived),
+        view: derived,
         files: new Map(this.preparingFiles),
       };
     return derived;
@@ -5894,6 +5897,43 @@ fcntl.fcntl(3,51)
       f.store.close();
     }
   });
+  it("opens and reads retained payloads within the session worker heap limit", async () => {
+    const f = fixture();
+    try {
+      await f.store.commit(change("seed"));
+      retainedPayloads(f, 512);
+      f.store.close();
+      // Run in a child: a worker OOM can abort its entire host process. Retain
+      // real UTF-8 payloads rather than making empty manifests fit the limit.
+      const result = spawnSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          `import {Worker} from 'node:worker_threads';
+          const worker=new Worker(${JSON.stringify(`${childPrelude}
+            const store=await FileMemoryStore.open(${JSON.stringify(f.config)});
+            try {
+              for(let i=0;i<3;i++) {
+                const scopes=await store.pendingScopes();
+                if(scopes.length!==1) throw new Error('missing retained scope');
+                const changes=await store.forPeer('reader').readChanges(['retained-0']);
+                if(!changes[0].windows[0].excerpts[0].text.includes('meaningful detail')) throw new Error('lost payload');
+                changes[0].windows[0].excerpts[0].text='caller forgery';
+              }
+            } finally {store.close();}
+          `)}, {eval:true,resourceLimits:{maxOldGenerationSizeMb:128}});
+          worker.on('error',error=>{console.error(error);process.exitCode=1});
+          worker.on('exit',code=>{if(code) process.exitCode=code});`,
+        ],
+        { cwd: process.cwd(), encoding: "utf8", timeout: 30000 },
+      );
+      expect(result.status, result.stderr).toBe(0);
+    } finally {
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  }, 40_000);
   it("accepts the supplied snapshot even if its caller mutates the request during coordination contention", async () => {
     const f = fixture();
     let held: Awaited<ReturnType<typeof holdWriter>> | undefined;
