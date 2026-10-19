@@ -36,8 +36,6 @@ for (const [key, value] of Object.entries({
 
 export default defineConfig({
   entry: {
-    "core/agent-memory-session-worker":
-      "packages/core/agent-memory/runtime/session-worker.ts",
     // barrel
     extensions: "src/extensions.ts",
     // individual extensions + core

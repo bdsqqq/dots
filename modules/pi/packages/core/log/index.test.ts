@@ -43,9 +43,9 @@ describe("shared pi logging", () => {
     circular.self = circular;
 
     const first = createWideEvent({
-      service: "pi-memory",
-      operation: "memory.test",
-      operationId: "memory-operation",
+      service: "pi-test",
+      operation: "test.redaction",
+      operationId: "redaction-operation",
       correlation: {
         runId: "run-123",
         token: "sk_test_12345678901234567890",
@@ -67,7 +67,7 @@ describe("shared pi logging", () => {
     });
     const markerRaw = readdirSync(pending)
       .map((name) => readFileSync(join(pending, name), "utf8"))
-      .find((raw) => raw.includes("memory-operation"));
+      .find((raw) => raw.includes("redaction-operation"));
     expect(markerRaw).not.toContain("password@example.com");
     expect(markerRaw).not.toContain("PRIVATE KEY");
     expect(markerRaw).not.toContain("sk_test");
@@ -128,9 +128,9 @@ describe("shared pi logging", () => {
     expect(events).toHaveLength(6);
     expect(events).toContainEqual(
       expect.objectContaining({
-        service: "pi-memory",
-        operation: "memory.test",
-        operationId: "memory-operation",
+        service: "pi-test",
+        operation: "test.redaction",
+        operationId: "redaction-operation",
         correlation: expect.objectContaining({ runId: "run-123" }),
         outcome: { status: "success" },
       }),

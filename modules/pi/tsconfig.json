@@ -17,22 +17,6 @@
     "noEmit": true,
     "types": ["node", "vitest/importMeta"],
     "paths": {
-      "@bds_pi/pi-memory": ["./packages/core/agent-memory/index.ts"],
-      "@bds_pi/pi-memory/projection": [
-        "./packages/core/agent-memory/maintainer/projection.ts"
-      ],
-      "@bds_pi/pi-memory/catalog": ["./packages/core/agent-memory/catalog.ts"],
-      "@bds_pi/pi-memory/demand": [
-        "./packages/core/agent-memory/maintainer/demand.ts"
-      ],
-      "@bds_pi/pi-memory/evidence": [
-        "./packages/core/agent-memory/evidence.ts"
-      ],
-      "@bds_pi/pi-memory/receipt": ["./packages/core/agent-memory/receipt.ts"],
-      "@bds_pi/pi-memory/tiering": ["./packages/core/agent-memory/tiering.ts"],
-      "@bds_pi/pi-memory/observability": [
-        "./packages/core/agent-memory/observability.ts"
-      ],
       "@bds_pi/*": [
         "./packages/core/*/index.ts",
         "./packages/extensions/*/index.ts"

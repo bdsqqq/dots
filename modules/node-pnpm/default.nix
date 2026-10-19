@@ -3,7 +3,6 @@ let
   commonplace = config.my.paths.commonplace;
   toolsDir = "${commonplace}/01_files/nix/modules/node-pnpm";
   toolsBin = "${toolsDir}/node_modules/.bin";
-  homeDir = builtins.dirOf config.my.paths.commonplace;
   vpVersion = "0.2.2";
 in
 {
@@ -55,20 +54,6 @@ in
       xdg.configFile."pnpm/config.yaml" = {
         force = true;
         source = ./config.yaml;
-      };
-
-      xdg.configFile."qmd/index.yml" = {
-        force = true;
-        text = ''
-          collections:
-            agent-memories:
-              path: ${homeDir}/.local/share/pi-memory/v3/projections/qmd-source
-              pattern: "**/*.md"
-          models:
-            embed: hf:ggml-org/embeddinggemma-300M-GGUF/embeddinggemma-300M-Q8_0.gguf
-            generate: hf:tobil/qmd-query-expansion-1.7B-gguf/qmd-query-expansion-1.7B-q4_k_m.gguf
-            rerank: hf:ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF/qwen3-reranker-0.6b-q8_0.gguf
-        '';
       };
 
       home.activation.installPnpmTools = lib.hm.dag.entryAfter [ "linkGeneration" ] ''

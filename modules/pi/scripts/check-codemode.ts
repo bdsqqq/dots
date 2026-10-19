@@ -15,17 +15,12 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createJiti } from "jiti";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 
 assert.equal(
-  process.argv
-    .slice(2)
-    .every((arg) =>
-      ["--negative", "--negative-recall", "--built"].includes(arg),
-    ),
+  process.argv.slice(2).every((arg) => ["--negative", "--built"].includes(arg)),
   true,
-  "offline only; flags: --built, --negative (clobber text), --negative-recall (disable automatic recall)",
+  "offline only; flags: --built, --negative (clobber text)",
 );
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const built = process.argv.includes("--built");
@@ -62,8 +57,6 @@ const retired = [
   "ls",
   "read_session",
   "search_sessions",
-  "memory_open",
-  "memory_search",
 ];
 const temporary = mkdtempSync(join(realpathSync(tmpdir()), "pi-codemode-cli-"));
 const put = (path: string, value: string | Buffer) => {
@@ -161,56 +154,6 @@ try {
     } else { emit({type:'message_end',message}); emit({type:'agent_end',messages:[message]}); }
   `,
   );
-  const memoryRoot = join(temporary, "memory");
-  const memoryData = join(temporary, "memory-data");
-  mkdirSync(memoryRoot);
-  // Real editable Markdown and durable acceptance, not a fake search reply.
-  const jiti = createJiti(import.meta.url);
-  const { FileMemoryStore } = await jiti.import<
-    typeof import("../packages/core/agent-memory/runtime/store.ts")
-  >(join(root, "packages/core/agent-memory/runtime/store.ts"));
-  const { createNoteRevision } = await jiti.import<
-    typeof import("../packages/core/agent-memory/runtime/markdown.ts")
-  >(join(root, "packages/core/agent-memory/runtime/markdown.ts"));
-  const note = createNoteRevision({
-    noteId:
-      "mem_fixture" as import("../packages/core/agent-memory/runtime/contracts.ts").NoteId,
-    scope: { kind: "personal", ownerId: "fixture" },
-    ancestry: { kind: "known", parents: [] },
-    path: "offline-verification--mem_fixture.md",
-    body: "# offline verification\n\nMEMORY_FIXTURE\n",
-    claims: [],
-    links: [],
-    exposure: { kind: "active" },
-    authoredAt: new Date().toISOString(),
-  });
-  const memoryStore = new FileMemoryStore({
-    root: join(memoryRoot, "runtime"),
-    data: join(memoryData, "runtime"),
-    state: join(temporary, "memory-state/runtime"),
-    owner: "fixture",
-    replicaId:
-      "fixture" as import("../packages/core/agent-memory/runtime/contracts.ts").ReplicaId,
-  });
-  try {
-    assert.equal(
-      (
-        await memoryStore.commit({
-          commitId:
-            "fixture-memory" as import("../packages/core/agent-memory/runtime/contracts.ts").CommitId,
-          now: note.authoredAt,
-          windows: [],
-          edits: [{ revision: note, expectedHeads: [] }],
-          suppressions: [],
-          outcomes: [],
-          lease: null,
-        })
-      ).kind,
-      "locally-committed",
-    );
-  } finally {
-    memoryStore.close();
-  }
   const settings: Record<string, unknown> = {};
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const extensionPaths = manifest.pi.extensions.map((p: string) =>
@@ -227,9 +170,6 @@ try {
     settings[`@bds_pi/${path.split("/").at(-1).replace(/\.js$/, "")}`] = {
       enabled: true,
     };
-  settings["@bds_pi/agent-memory"] = {
-    enabled: !process.argv.includes("--negative-recall"),
-  };
   settings["@bds_pi/agent-message"] = {
     enabled: true,
     queueDir: join(temporary, "mailbox"),
@@ -392,7 +332,6 @@ try {
     inventory: join(temporary, "inventory.json"),
     result: join(temporary, "result.json"),
     failure: join(temporary, "failure.txt"),
-    memoryObserved: join(temporary, "memory-observed"),
     code,
   };
   json(join(temporary, "plan.json"), plan);
@@ -402,10 +341,6 @@ try {
     TMPDIR: temporary,
     PI_CODING_AGENT_DIR: agentDir,
     PI_BIN: child,
-    PI_MEMORY_ROOT: memoryRoot,
-    PI_MEMORY_DATA_DIR: memoryData,
-    PI_MEMORY_STATE_DIR: join(temporary, "memory-state"),
-    PI_MEMORY_OWNER: "fixture",
     BDS_PI_LOG_DIR: join(temporary, "logs"),
     PARALLEL_API_KEY: "fixture",
     PI_CODEMODE_PLAN: join(temporary, "plan.json"),
@@ -458,10 +393,6 @@ try {
   assert.ok(
     existsSync(plan.result),
     `codemode did not complete\n${run.stderr}\n${run.stdout}`,
-  );
-  assert.ok(
-    existsSync(plan.memoryObserved),
-    "automatic memory body never reached the actual provider context",
   );
   const result = JSON.parse(readFileSync(plan.result, "utf8"));
   assert.ok(
@@ -539,7 +470,6 @@ try {
           "project formatting script through bash; shell rg and listing",
           "image forwarded into provider context",
           "isolated mailbox enqueue",
-          "automatic editable-memory recall in provider context, without specialized memory tools",
           "native SDK history metadata and explicit branches through codemode, without model extraction",
           "cursor continuation in fresh CLI process with no originating transcript or fetch",
         ],
