@@ -351,6 +351,20 @@ if (import.meta.vitest) {
       clock = saved.retryAt + 1;
     }
   });
+  test("an explicit exchange deadline persists peer failure backoff", async () => {
+    const a = store("explicit-timeout-backoff");
+    await expect(synchronizeReplica({
+      store: a, peerId: "slow", policy, signal: signal(), limits: { ...REPLICA_LIMITS, timeoutMs: 10 },
+      transport: { exchange: async (_request, signal) => new Promise((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(new Error("fixture exchange deadline")), { once: true });
+        if (signal.aborted) reject(new Error("fixture exchange deadline"));
+      }) },
+    })).rejects.toThrow("fixture exchange deadline");
+    const saved = JSON.parse((await a.forPeer("replica-client:slow").readCursor())!);
+    expect(saved.attempts).toBe(1);
+    expect(saved.retryAt).toBeGreaterThan(Date.now());
+  });
+
   test("caller cancellation does not mark a healthy peer as failed", async () => {
     const a = store("cancelled-peer");
     const controller = new AbortController();

@@ -41,6 +41,8 @@ export interface WatchMemoryWorkOptions {
   readonly ignore?: () => readonly string[];
   /** replaceable, job-local operational state; never knowledge or a receipt. */
   readonly checkpoint: string;
+  /** carry an observed activity hint across reconfiguration, never a failure gate. */
+  readonly nudge?: boolean;
   readonly signal: AbortSignal;
   /** owns cooperative cancellation through the supplied signal; no lifetime limit is imposed. */
   readonly run: () => Promise<MemoryWorkResult>;
@@ -260,6 +262,7 @@ export async function watchMemoryWork(
       if ((error as NodeJS.ErrnoException).code !== "ENOENT")
         report({ kind: "checkpoint-error" });
     }
+    if (options.nudge) pendingAt = now() + policy.debounceMs;
     // create bookkeeping directories before attaching any watches.
     await mkdir(dirname(checkpoint), { recursive: true });
     await refresh();

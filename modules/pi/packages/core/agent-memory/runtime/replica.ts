@@ -536,7 +536,7 @@ export async function synchronizeReplica(
     return { kind: "bounded", sent, received };
   } catch (error) {
     // Shutdown/caller cancellation is not evidence that this peer is unhealthy.
-    if (signal.aborted) throw error;
+    if (deps.signal.aborted) throw error;
     state = {
       ...state,
       attempts: Math.min(state.attempts + 1, 30),
