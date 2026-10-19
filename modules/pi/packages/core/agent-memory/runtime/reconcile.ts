@@ -581,28 +581,35 @@ function boundedCorpus(
   const groups = new Map<C.NoteId, C.NoteRevision[]>();
   for (const note of notes)
     groups.set(note.noteId, [...(groups.get(note.noteId) ?? []), note]);
-  const score = (group: C.NoteRevision[]) =>
-    group.reduce(
-      (n, r) =>
-        n +
-        [...words].filter((w) => r.markdown.toLowerCase().includes(w)).length,
-      0,
+  const ordered = [...groups.values()]
+    .map((group) => {
+      let score = 0;
+      for (const note of group) {
+        const text = note.markdown.toLowerCase();
+        for (const word of words) if (text.includes(word)) score++;
+      }
+      return { group, score, size: Buffer.byteLength(canonicalJSON(group)) };
+    })
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        a.group[0]!.noteId.localeCompare(b.group[0]!.noteId),
     );
-  const ordered = [...groups.values()].sort(
-    (a, b) => score(b) - score(a) || a[0]!.noteId.localeCompare(b[0]!.noteId),
-  );
   const selected: C.NoteRevision[] = [];
   let bytes = 0;
-  for (const group of ordered) {
-    const size = Buffer.byteLength(canonicalJSON(group));
-    if (bytes + size <= budget) {
-      selected.push(...group);
-      bytes += size;
-    } else if (score(group) > 0)
+  for (const { group, score, size } of ordered) {
+    if (size > budget && score > 0)
       throw new ReconciliationFailureError({
         phase: "corpus",
         category: "budget",
       });
+    // Context selection omits whole lower-ranked groups, not a competing head.
+    // An individually oversized related group still needs an explicit decision;
+    // a full context is not itself a failure of an otherwise valid batch.
+    if (bytes + size <= budget) {
+      selected.push(...group);
+      bytes += size;
+    }
   }
   return selected;
 }
@@ -1114,6 +1121,44 @@ if (import.meta.vitest) {
       expect(note.claims[0]!.derivedFrom).toEqual([
         { noteId: old.noteId, revisionId: old.revisionId },
       ]);
+    } finally {
+      f.store.close();
+    }
+  });
+  it("a full ranked context omits whole lower-ranked groups without failing the batch", async () => {
+    const f = fixture();
+    const { createNoteRevision } = await import("./markdown.js");
+    const revision = (id: string, suffix: string) =>
+      createNoteRevision({
+        noteId: id as C.NoteId,
+        scope,
+        ancestry: { kind: "known", parents: [] },
+        path: `${id}.md`,
+        body: `# quiet room\n\n${suffix}`,
+        claims: [],
+        links: [],
+        exposure: { kind: "active" },
+        authoredAt: now,
+      });
+    const a = [revision("a", "first view"), revision("a", "other view")];
+    const b = [revision("b", "first view"), revision("b", "other view")];
+    try {
+      await seed(f.store, [window("a"), window("b"), window("c"), window("d")]);
+      const input = await leased(f.store);
+      const budget = Buffer.byteLength(canonicalJSON(a)) + 16;
+      expect(
+        boundedCorpus([...a, ...b], input.batch, budget).map(
+          (n) => n.revisionId,
+        ),
+      ).toEqual(a.map((n) => n.revisionId));
+      expect(() => boundedCorpus(a, input.batch, budget / 2)).toThrow(
+        "corpus: budget",
+      );
+      expect(
+        Buffer.byteLength(
+          canonicalJSON(boundedCorpus([...a, ...b], input.batch, budget)),
+        ),
+      ).toBeLessThanOrEqual(budget);
     } finally {
       f.store.close();
     }

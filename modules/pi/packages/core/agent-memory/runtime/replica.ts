@@ -454,6 +454,7 @@ export interface SynchronizeResult {
   readonly kind: "complete" | "bounded" | "backoff";
   readonly sent: number;
   readonly received: number;
+  readonly retryAt?: number;
 }
 /** receiver checkpoints, not historical ACKs, drive replay after a restored snapshot. */
 export async function synchronizeReplica(
@@ -470,7 +471,8 @@ export async function synchronizeReplica(
       : AbortSignal.any([deps.signal, AbortSignal.timeout(limits.timeoutMs)]);
   const store = deps.store.forPeer(`replica-client:${deps.peerId}`);
   let state = cursor(await store.readCursor());
-  if (state.retryAt > now()) return { kind: "backoff", sent: 0, received: 0 };
+  if (state.retryAt > now())
+    return { kind: "backoff", sent: 0, received: 0, retryAt: state.retryAt };
   let sent = 0,
     received = 0;
   try {
@@ -533,11 +535,20 @@ export async function synchronizeReplica(
     }
     return { kind: "bounded", sent, received };
   } catch (error) {
+    // Shutdown/caller cancellation is not evidence that this peer is unhealthy.
+    if (signal.aborted) throw error;
     state = {
       ...state,
       attempts: Math.min(state.attempts + 1, 30),
       retryAt:
-        now() + Math.min(60_000, 1000 * 2 ** Math.min(state.attempts, 6)),
+        now() +
+        Math.round(
+          Math.min(
+            6 * 60 * 60_000,
+            30_000 * 2 ** Math.min(state.attempts, 10),
+          ) *
+            (0.8 + Math.random() * 0.2),
+        ),
     };
     await store.acknowledge([], JSON.stringify(state));
     throw error;

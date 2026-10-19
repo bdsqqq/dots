@@ -308,6 +308,69 @@ if (import.meta.vitest) {
       }),
     ).rejects.toThrow("replica owner denied");
   });
+  test("offline peer cooldown grows beyond a minute and survives reopening", async () => {
+    const a = store("offline-cooldown");
+    let clock = Date.parse(now);
+    const transport = {
+      exchange: async () => {
+        throw new Error("fixture offline");
+      },
+    };
+    for (let attempt = 0; attempt < 8; attempt++) {
+      await expect(
+        synchronizeReplica({
+          store: a,
+          peerId: "offline",
+          policy,
+          signal: signal(),
+          now: () => clock,
+          transport,
+        }),
+      ).rejects.toThrow("fixture offline");
+      const reopened = store("offline-cooldown");
+      const saved = JSON.parse(
+        (await reopened.forPeer("replica-client:offline").readCursor())!,
+      );
+      expect(saved.attempts).toBe(attempt + 1);
+      if (attempt >= 2) expect(saved.retryAt - clock).toBeGreaterThan(60_000);
+      expect(
+        await synchronizeReplica({
+          store: reopened,
+          peerId: "offline",
+          policy,
+          signal: signal(),
+          now: () => clock,
+          transport,
+        }),
+      ).toEqual({
+        kind: "backoff",
+        sent: 0,
+        received: 0,
+        retryAt: saved.retryAt,
+      });
+      clock = saved.retryAt + 1;
+    }
+  });
+  test("caller cancellation does not mark a healthy peer as failed", async () => {
+    const a = store("cancelled-peer");
+    const controller = new AbortController();
+    await expect(
+      synchronizeReplica({
+        store: a,
+        peerId: "healthy",
+        policy,
+        signal: controller.signal,
+        transport: {
+          exchange: async () => {
+            controller.abort();
+            controller.signal.throwIfAborted();
+            throw new Error("unreachable");
+          },
+        },
+      }),
+    ).rejects.toThrow();
+    expect(await a.forPeer("replica-client:healthy").readCursor()).toBeNull();
+  });
   function note(
     id: string,
     body = `# ${id}\n\nfixture`,
