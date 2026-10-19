@@ -7,7 +7,12 @@ import {
 } from "./identity.js";
 import { parseChange, parseLease, parseWindow } from "./wire.js";
 import { readMarkdownRevision } from "./markdown.js";
-import { permitsSourceScope, retryAt } from "./model.js";
+import {
+  permitsSourceScope,
+  retryAt,
+  ReconciliationFailureError,
+  type ReconciliationFailure,
+} from "./model.js";
 
 function validateResult(
   result: C.ConsolidationResult,
@@ -363,6 +368,7 @@ async function reconcileWithBudget(
   deps: Parameters<C.ReconcileHandler>[1],
   maxCorpusBytes: number,
   owner: ReconciliationLease,
+  onFailure: (failure: ReconciliationFailure) => void = () => {},
 ): Promise<C.CommitResult> {
   parseLease(input.batch.lease);
   if (
@@ -404,6 +410,10 @@ async function reconcileWithBudget(
     });
   };
   let change: C.LocalChangeSet;
+  let failure: ReconciliationFailure = {
+    phase: "suppression",
+    category: "unavailable",
+  };
   try {
     const scopes = new Map<string, C.MemoryScope>();
     for (const scope of [
@@ -443,6 +453,7 @@ async function reconcileWithBudget(
         lease: input.batch.lease,
         windows: [first, ...filtered.eligible.slice(1)],
       };
+      failure = { phase: "corpus", category: "unavailable" };
       const snapshot: C.ConsolidationInput = {
         batch,
         notes: boundedCorpus(filtered.notes, batch, maxCorpusBytes),
@@ -450,7 +461,9 @@ async function reconcileWithBudget(
         // the store's original suppression rules at the atomic acceptance boundary.
         suppressions: [],
       };
+      failure = { phase: "provider", category: "failed" };
       const result = await cancellableModel(snapshot, deps.model, owner.signal);
+      failure = { phase: "validation", category: "invalid-result" };
       change = validateResult(result, snapshot, clock(), input.commitId);
     } else {
       change = {
@@ -478,10 +491,14 @@ async function reconcileWithBudget(
       ],
     });
   } catch (error) {
+    const diagnostic: ReconciliationFailure = deps.signal.aborted
+      ? { phase: "provider", category: "aborted" }
+      : error instanceof ReconciliationFailureError
+        ? error.failure
+        : failure;
+    onFailure(diagnostic);
     return persistRetry(
-      deps.signal.aborted
-        ? "model aborted"
-        : "model failed, timed out or returned invalid output",
+      `reconciliation ${diagnostic.phase}: ${diagnostic.category}`,
     );
   }
   const lease = await owner.finish();
@@ -496,6 +513,7 @@ async function reconcileWithBudget(
     try {
       result = await deps.store.commit(change, { signal: owner.signal });
     } catch {
+      onFailure({ phase: "acceptance", category: "unavailable" });
       const retry = await persistRetry(
         "acceptance failed; retry with fresh lease and corpus",
       );
@@ -543,6 +561,8 @@ export interface ReconciliationRunInput extends C.PlanInput {
 export interface ReconciliationRunResult {
   readonly results: readonly C.CommitResult[];
   readonly idle: Extract<C.BacklogPlan, { kind: "idle" }> | null;
+  /** retry coverage is durable; the caller backs off the operation across fresh batches/scopes. */
+  readonly failure?: ReconciliationFailure;
 }
 
 /** keep head groups intact: a context budget must never choose a conflict winner. */
@@ -579,7 +599,10 @@ function boundedCorpus(
       selected.push(...group);
       bytes += size;
     } else if (score(group) > 0)
-      throw new Error("related note heads exceed corpus budget");
+      throw new ReconciliationFailureError({
+        phase: "corpus",
+        category: "budget",
+      });
   }
   return selected;
 }
@@ -652,7 +675,9 @@ export async function runReconciliation(
           };
           scopes.set(canonicalJSON(project), project);
         }
+      let loading = true;
       try {
+        let failure: ReconciliationFailure | undefined;
         const allNotes = (
           await Promise.all(
             [...scopes.values()].map((s) => deps.store.listNotes(s)),
@@ -663,6 +688,7 @@ export async function runReconciliation(
             [...scopes.values()].map((s) => deps.store.readSuppressions(s)),
           )
         ).flat();
+        loading = false;
         results.push(
           await reconcileWithBudget(
             {
@@ -675,9 +701,15 @@ export async function runReconciliation(
             { ...deps, signal },
             maxCorpusBytes,
             owner,
+            (diagnostic) => {
+              failure = diagnostic;
+            },
           ),
         );
+        // per-window backoff cannot gate fresh windows sharing a broken provider/configuration.
+        if (failure) return { results, idle: null, failure };
       } catch (error) {
+        if (!loading) throw error;
         // a failed store read has no safe snapshot. release via retry; do not strand a lease.
         const lease = await owner.finish();
         if (!lease) {
@@ -699,13 +731,18 @@ export async function runReconciliation(
             recordedAt: failedAt,
             decision: {
               kind: "retry",
-              reason: "corpus or acceptance unavailable",
+              reason: "reconciliation corpus: unavailable",
               retryAt: retryAt(failedAt, p.attempts),
             },
           })),
         });
         results.push(retry);
         if (retry.kind !== "locally-committed") throw error;
+        return {
+          results,
+          idle: null,
+          failure: { phase: "corpus", category: "unavailable" },
+        };
       } finally {
         await owner.finish();
       }
@@ -1168,6 +1205,104 @@ if (import.meta.vitest) {
       } finally {
         f.store.close();
       }
+    }
+  });
+  it("operation failure stops fresh batches while durable retries retain attempts across restart", async () => {
+    const f = fixture();
+    let calls = 0;
+    try {
+      await seed(
+        f.store,
+        Array.from({ length: 3 }, (_, i) => window(`batch-${i}`)),
+      );
+      const input = {
+        ...planInput(later),
+        policy: { ...policy, maxBatchWindows: 1 },
+      };
+      const failed = await runReconciliation(input, {
+        store: f.store,
+        signal: signal(),
+        model: {
+          reconcile: async () => {
+            calls++;
+            throw new Error("PRIVATE_PROVIDER_BODY");
+          },
+        },
+      });
+      expect(calls).toBe(1);
+      expect(failed.results).toHaveLength(1);
+      expect(failed.failure).toEqual({ phase: "provider", category: "failed" });
+      expect(JSON.stringify(failed)).not.toContain("PRIVATE_PROVIDER_BODY");
+      f.store.close();
+      f.store = new FileMemoryStore(f.config);
+      const recovered = await runReconciliation(input, {
+        store: f.store,
+        signal: signal(),
+        model: {
+          reconcile: async (i) => {
+            const outcomes = i.batch.windows.map((p) => ({
+              windowId: p.window.windowId,
+              decision: { kind: "no-change" as const, reason: "fixture" },
+            }));
+            return {
+              edits: [],
+              outcomes: [outcomes[0]!, ...outcomes.slice(1)],
+            };
+          },
+        },
+      });
+      expect(recovered.failure).toBeUndefined();
+      expect(recovered.results).toHaveLength(2);
+      expect(recovered.idle).toMatchObject({ kind: "idle", reason: "backoff" });
+      const retry = await f.store.plan({
+        ...input,
+        now: "2026-01-01T00:03:00.000Z",
+      });
+      if (retry.kind !== "eligible")
+        throw new Error("failed window lost across restart");
+      expect(retry.batch.windows).toHaveLength(1);
+      expect(retry.batch.windows[0]!.attempts).toBe(1);
+    } finally {
+      f.store.close();
+    }
+  });
+  it("related corpus overflow is diagnosed before inference without dropping note heads", async () => {
+    const f = fixture();
+    try {
+      await seed(f.store, [window("old", "quiet room", "correction")]);
+      await reconcile(await leased(f.store, now), {
+        store: f.store,
+        signal: signal(),
+        model: {
+          reconcile: async (i) => adaptConsolidationProposal(proposal(i), i),
+        },
+      });
+      await seed(
+        f.store,
+        [window("new", "quiet room matters", "correction")],
+        "new-capture",
+      );
+      const result = await runReconciliation(
+        { ...planInput(later), maxCorpusBytes: 1 },
+        {
+          store: f.store,
+          signal: signal(),
+          model: {
+            reconcile: async () => {
+              throw new Error("model must not replace missing corpus");
+            },
+          },
+        },
+      );
+      expect(result.failure).toEqual({ phase: "corpus", category: "budget" });
+      expect(result.results[0]?.kind).toBe("locally-committed");
+      expect(await f.store.listNotes(scope)).toHaveLength(1);
+      expect(await f.store.plan(planInput(later))).toMatchObject({
+        kind: "idle",
+        reason: "backoff",
+      });
+    } finally {
+      f.store.close();
     }
   });
   it("renewable ownership outlives former minute and 150-second boundaries without blocking capture", async () => {
