@@ -1866,61 +1866,122 @@ export class FileMemoryStore implements C.MemoryStore {
       5000,
     );
   }
-  private dependenciesReady(
-    c: C.ReplicaChange,
+  /**
+   * wake each dependency once; rescanning candidates copied the accumulated
+   * history for every failed probe. ranks preserve the exact first-ready order
+   * (including inbound input order), rather than FIFO wakeup order.
+   */
+  private causalOrder(
+    changes: readonly C.ReplicaChange[],
     commits: ReadonlySet<C.CommitId>,
     revisions: ReadonlySet<C.RevisionId>,
     windows: ReadonlySet<C.WindowId>,
-  ): boolean {
-    const rs = new Set([...revisions, ...c.revisions.map((r) => r.revisionId)]),
-      ws = new Set([...windows, ...c.windows.map((w) => w.windowId)]);
-    return (
-      c.parents.every((p) => commits.has(p)) &&
-      c.revisions.every(
-        (r) =>
-          (r.ancestry.kind !== "known" ||
-            r.ancestry.parents.every((p) => rs.has(p))) &&
-          r.claims.every(
-            (claim) =>
-              claim.evidence.every((e) => ws.has(e.windowId)) &&
-              claim.derivedFrom.every((ref) => rs.has(ref.revisionId)),
-          ),
-      ) &&
-      c.suppressions.every(
-        (s) =>
-          s.target.kind !== "evidence" || ws.has(s.target.evidence.windowId),
-      ) &&
-      c.outcomes.every(
-        (o) =>
-          ws.has(o.windowId) &&
-          (o.decision.kind !== "changed" ||
-            o.decision.notes.every((ref) => rs.has(ref.revisionId))),
-      )
-    );
+    failure: string,
+  ): C.ReplicaChange[] {
+    const commitWaiters = new Map<string, number[]>(),
+      revisionWaiters = new Map<string, number[]>(),
+      windowWaiters = new Map<string, number[]>();
+    const missing = new Uint32Array(changes.length);
+    const ready: number[] = [];
+    const push = (rank: number) => {
+      let at = ready.length;
+      ready.push(rank);
+      while (at > 0) {
+        const parent = (at - 1) >>> 1;
+        if (ready[parent]! <= rank) break;
+        ready[at] = ready[parent]!;
+        at = parent;
+      }
+      ready[at] = rank;
+    };
+    const pop = (): number => {
+      const rank = ready[0]!,
+        last = ready.pop()!;
+      if (ready.length) {
+        let at = 0;
+        while (at * 2 + 1 < ready.length) {
+          let child = at * 2 + 1;
+          if (child + 1 < ready.length && ready[child + 1]! < ready[child]!)
+            child++;
+          if (last <= ready[child]!) break;
+          ready[at] = ready[child]!;
+          at = child;
+        }
+        ready[at] = last;
+      }
+      return rank;
+    };
+    const wait = (
+      rank: number,
+      required: Set<string>,
+      available: ReadonlySet<string>,
+      waiters: Map<string, number[]>,
+    ) => {
+      for (const id of required) {
+        if (available.has(id)) continue;
+        const ranks = waiters.get(id);
+        if (ranks) ranks.push(rank);
+        else waiters.set(id, [rank]);
+        missing[rank] = missing[rank]! + 1;
+      }
+    };
+    changes.forEach((c, rank) => {
+      const rs = new Set<string>(),
+        ws = new Set<string>();
+      for (const r of c.revisions) {
+        if (r.ancestry.kind === "known")
+          for (const id of r.ancestry.parents) rs.add(id);
+        for (const claim of r.claims) {
+          for (const ref of claim.derivedFrom) rs.add(ref.revisionId);
+          for (const ref of claim.evidence) ws.add(ref.windowId);
+        }
+      }
+      for (const s of c.suppressions)
+        if (s.target.kind === "evidence") ws.add(s.target.evidence.windowId);
+      for (const o of c.outcomes) {
+        ws.add(o.windowId);
+        if (o.decision.kind === "changed")
+          for (const ref of o.decision.notes) rs.add(ref.revisionId);
+      }
+      // Objects in the same atomic change satisfy their own references;
+      // commit parents deliberately do not have this exemption.
+      for (const r of c.revisions) rs.delete(r.revisionId);
+      for (const w of c.windows) ws.delete(w.windowId);
+      wait(rank, new Set(c.parents), commits, commitWaiters);
+      wait(rank, rs, revisions, revisionWaiters);
+      wait(rank, ws, windows, windowWaiters);
+      if (missing[rank] === 0) push(rank);
+    });
+    const release = (id: string, waiters: Map<string, number[]>) => {
+      const ranks = waiters.get(id);
+      if (!ranks) return;
+      waiters.delete(id);
+      for (const rank of ranks) {
+        missing[rank] = missing[rank]! - 1;
+        if (missing[rank] === 0) push(rank);
+      }
+    };
+    const ordered: C.ReplicaChange[] = [];
+    while (ready.length) {
+      const c = changes[pop()]!;
+      ordered.push(c);
+      release(c.commitId, commitWaiters);
+      for (const r of c.revisions) release(r.revisionId, revisionWaiters);
+      for (const w of c.windows) release(w.windowId, windowWaiters);
+    }
+    if (ordered.length !== changes.length) throw new IntegrityError(failure);
+    return ordered;
   }
   private orderedChanges(view: View): C.ReplicaChange[] {
-    const waiting = [...view.accepted.values()]
-      .map((a) => a.replica)
-      .sort((a, b) => a.commitId.localeCompare(b.commitId));
-    const ordered: C.ReplicaChange[] = [];
-    const done = new Set<C.CommitId>(),
-      revisions = new Set<C.RevisionId>(),
-      windows = new Set<C.WindowId>();
-    while (waiting.length) {
-      const index = waiting.findIndex((c) =>
-        this.dependenciesReady(c, done, revisions, windows),
-      );
-      if (index < 0)
-        throw new IntegrityError(
-          "missing/cyclic published commit dependencies",
-        );
-      const c = waiting.splice(index, 1)[0]!;
-      ordered.push(c);
-      done.add(c.commitId);
-      c.revisions.forEach((r) => revisions.add(r.revisionId));
-      c.windows.forEach((w) => windows.add(w.windowId));
-    }
-    return ordered;
+    return this.causalOrder(
+      [...view.accepted.values()]
+        .map((a) => a.replica)
+        .sort((a, b) => a.commitId.localeCompare(b.commitId)),
+      new Set(),
+      new Set(),
+      new Set(),
+      "missing/cyclic published commit dependencies",
+    );
   }
   /** adapters close over one authenticated configured peer; acknowledgments never leak. */
   forPeer(
@@ -2174,21 +2235,14 @@ export class FileMemoryStore implements C.MemoryStore {
             const pending = [...identities.values()].filter(
               (c) => !view.accepted.has(c.commitId),
             );
-            const done = new Set(view.accepted.keys());
-            const revisions = new Set(view.revisions.keys()),
-              windows = new Set(view.windows.keys());
-            while (pending.length) {
-              const index = pending.findIndex((c) =>
-                this.dependenciesReady(c, done, revisions, windows),
-              );
-              if (index < 0)
-                throw new IntegrityError("cyclic incoming ancestry");
-              const c = pending.splice(index, 1)[0]!;
+            for (const c of this.causalOrder(
+              pending,
+              new Set(view.accepted.keys()),
+              new Set(view.revisions.keys()),
+              new Set(view.windows.keys()),
+              "cyclic incoming ancestry",
+            ))
               publications.push(this.preparePublication(c, null));
-              done.add(c.commitId);
-              c.revisions.forEach((r) => revisions.add(r.revisionId));
-              c.windows.forEach((w) => windows.add(w.windowId));
-            }
             return () => {
               for (const publication of publications)
                 this.acceptPublication(publication);
@@ -2694,6 +2748,565 @@ if (import.meta.vitest) {
       importance: "ordinary",
     };
   }
+  function orderingView(changes: readonly C.ReplicaChange[]): View {
+    return {
+      accepted: new Map(
+        changes.map((replica) => [
+          replica.commitId,
+          {
+            replica,
+            local: null,
+            manifest: {
+              version: 1,
+              hash: "",
+              dependencies: [],
+              replica: "",
+              local: null,
+            },
+          },
+        ]),
+      ),
+      revisions: new Map(),
+      heads: new Map(),
+      windows: new Map(),
+      terminal: new Set(),
+      retry: new Map(),
+      suppressions: [],
+    };
+  }
+  function orderingHistory(count: number): C.ReplicaChange[] {
+    const changes: C.ReplicaChange[] = [];
+    for (let i = 0; i < count; i++) {
+      const recent = changes.slice(Math.max(0, i - 8));
+      const own = window(`ordering-${i}`);
+      const ref = (w: C.SourceWindow): C.EvidenceRef => ({
+        windowId: w.windowId,
+        source: w.source,
+        sourceHash: w.sourceHash,
+        spans: [w.excerpts[0]!.span],
+      });
+      const revision = createNoteRevision({
+        noteId: "ordering-note" as C.NoteId,
+        ancestry: {
+          kind: "known",
+          parents: recent.flatMap((c) => c.revisions.map((r) => r.revisionId)),
+        },
+        scope,
+        path: "ordering.md",
+        body: `revision ${i}`,
+        links: [],
+        claims: [
+          {
+            kind: "observation",
+            markdownSpan: { start: 0, end: 1 },
+            evidence: [ref(own), ...recent.flatMap((c) => c.windows).map(ref)],
+            derivedFrom: recent.flatMap((c) =>
+              c.revisions.map((r) => ({
+                noteId: r.noteId,
+                revisionId: r.revisionId,
+              })),
+            ),
+          },
+        ],
+        exposure: { kind: "active" },
+        authoredAt: now,
+      });
+      changes.push({
+        // Reverse lexical order forces the old search to probe every blocked
+        // candidate before reaching the next causal commit.
+        commitId:
+          `ordering-${String(count - i).padStart(5, "0")}` as C.CommitId,
+        replicaId: "ordering" as C.ReplicaId,
+        parents: recent.map((c) => c.commitId),
+        revisions: [revision],
+        windows: [own],
+        suppressions: [],
+        outcomes: [],
+      });
+    }
+    return changes;
+  }
+  it("bounds dependency probes on a reverse-ranked overlapping 1024-commit DAG", () => {
+    const f = fixture();
+    try {
+      const history = orderingHistory(1024);
+      let probes = 0;
+      for (const c of history) {
+        const parents = c.parents;
+        Object.defineProperty(c, "parents", {
+          get() {
+            probes++;
+            return parents;
+          },
+        });
+      }
+      expect(
+        f.store["orderedChanges"](orderingView([...history].reverse())),
+      ).toEqual(history);
+      expect(probes).toBeLessThanOrEqual(history.length * 2);
+    } finally {
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  });
+  it("preserves first-ready priority, alternative object owners and each dependency rejection", () => {
+    const f = fixture();
+    try {
+      const history = orderingHistory(8);
+      const empty = (id: string): C.ReplicaChange => ({
+        commitId: id as C.CommitId,
+        replicaId: "fixture" as C.ReplicaId,
+        parents: [],
+        revisions: [],
+        windows: [],
+        outcomes: [],
+        suppressions: [],
+      });
+      const owner = history[0]!;
+      const duplicate = {
+        ...owner,
+        commitId: "duplicate" as C.CommitId,
+        parents: ["last" as C.CommitId],
+      };
+      const consumer = { ...history[1]!, parents: [] };
+      const last = empty("last");
+      const input = [consumer, duplicate, owner, last];
+      // consumer wakes ahead of last; a blocked duplicate is not a required owner.
+      expect(
+        f.store["causalOrder"](
+          input,
+          new Set(),
+          new Set(),
+          new Set(),
+          "blocked",
+        ),
+      ).toEqual([owner, consumer, last, duplicate]);
+      expect(
+        f.store["causalOrder"](
+          [consumer],
+          new Set(),
+          new Set(owner.revisions.map((r) => r.revisionId)),
+          new Set(owner.windows.map((w) => w.windowId)),
+          "blocked",
+        ),
+      ).toEqual([consumer]);
+      const order = (cs: readonly C.ReplicaChange[]) =>
+        f.store["causalOrder"](cs, new Set(), new Set(), new Set(), "blocked");
+      expect(() => order([{ ...last, parents: [last.commitId] }])).toThrow(
+        "blocked",
+      );
+      expect(() =>
+        order([{ ...last, parents: ["absent" as C.CommitId] }]),
+      ).toThrow("blocked");
+      expect(() => order([consumer])).toThrow("blocked");
+      expect(() =>
+        order([
+          owner,
+          { ...last, parents: [consumer.commitId] },
+          { ...consumer, parents: [last.commitId] },
+        ]),
+      ).toThrow("blocked");
+      const evidence = consumer.revisions[0]!.claims[0]!.evidence[1]!;
+      const suppressed = {
+        ...last,
+        suppressions: [
+          {
+            suppressionId: "missing" as C.SuppressionId,
+            scope,
+            target: { kind: "evidence" as const, evidence },
+            reason: "fixture",
+            createdAt: now,
+          },
+        ],
+      };
+      expect(() => order([suppressed])).toThrow("blocked");
+      const outcome = {
+        ...last,
+        outcomes: [
+          {
+            windowId: owner.windows[0]!.windowId,
+            decision: { kind: "no-change" as const, reason: "fixture" },
+            sourceHash: owner.windows[0]!.sourceHash,
+            recordedAt: now,
+          },
+        ],
+      };
+      expect(() => order([outcome])).toThrow("blocked");
+      expect(order([outcome, owner])).toEqual([owner, outcome]);
+      const ownRevision = consumer.revisions[0]!;
+      expect(() =>
+        order([
+          {
+            ...consumer,
+            windows: [],
+            revisions: [
+              {
+                ...ownRevision,
+                ancestry: { kind: "known", parents: [] },
+                claims: [
+                  {
+                    ...ownRevision.claims[0]!,
+                    evidence: [evidence],
+                    derivedFrom: [],
+                  },
+                ],
+              },
+            ],
+          },
+        ]),
+      ).toThrow("blocked");
+      expect(() =>
+        order([{ ...consumer, revisions: [{ ...ownRevision, claims: [] }] }]),
+      ).toThrow("blocked");
+      expect(() =>
+        order([
+          {
+            ...consumer,
+            revisions: [
+              {
+                ...ownRevision,
+                ancestry: { kind: "known", parents: [] },
+                claims: [
+                  {
+                    ...ownRevision.claims[0]!,
+                    evidence: [ownRevision.claims[0]!.evidence[0]!],
+                  },
+                ],
+              },
+            ],
+          },
+        ]),
+      ).toThrow("blocked");
+      expect(() =>
+        order([
+          {
+            ...last,
+            windows: owner.windows,
+            outcomes: [
+              {
+                ...outcome.outcomes[0]!,
+                decision: { kind: "changed", notes: [owner.revisions[0]!] },
+              },
+            ],
+          },
+        ]),
+      ).toThrow("blocked");
+    } finally {
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  });
+  it("rejects missing and cyclic inbound commit dependencies without publishing a prefix", async () => {
+    const f = fixture();
+    try {
+      const a: C.ReplicaChange = {
+        commitId: "cycle-a" as C.CommitId,
+        replicaId: "fixture" as C.ReplicaId,
+        parents: ["cycle-b" as C.CommitId],
+        revisions: [],
+        windows: [],
+        outcomes: [],
+        suppressions: [],
+      };
+      const b = {
+        ...a,
+        commitId: "cycle-b" as C.CommitId,
+        parents: [a.commitId],
+      };
+      const prefix = {
+        ...a,
+        commitId: "ready-prefix" as C.CommitId,
+        parents: [],
+      };
+      const peer = f.store.forPeer("invalid-peer");
+      await expect(peer.integrate([a])).rejects.toThrow(
+        "missing incoming parent",
+      );
+      await expect(peer.integrate([prefix, a, b])).rejects.toThrow(
+        "cyclic incoming ancestry",
+      );
+      await expect(
+        peer.integrate([{ ...a, parents: [a.commitId] }]),
+      ).rejects.toThrow("cyclic incoming ancestry");
+      expect(await peer.scan(null, 32)).toEqual([]);
+      expect(
+        readdirSync(join(f.config.data, "commits")).filter(
+          (name) => !name.startsWith("."),
+        ),
+      ).toEqual([]);
+    } finally {
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  });
+  it("matches the legacy first-ready oracle across shuffled branching dependency graphs", () => {
+    const f = fixture();
+    try {
+      // Freeze the previous readiness predicate as a behavioral oracle. Unlike
+      // wall time, this also detects a different valid but incompatible order.
+      const legacy = (input: readonly C.ReplicaChange[]) => {
+        const waiting = [...input],
+          result: C.ReplicaChange[] = [];
+        const commits = new Set<C.CommitId>(),
+          revisions = new Set<C.RevisionId>(),
+          windows = new Set<C.WindowId>();
+        while (waiting.length) {
+          const at = waiting.findIndex((c) => {
+            const rs = new Set([
+              ...revisions,
+              ...c.revisions.map((r) => r.revisionId),
+            ]);
+            const ws = new Set([
+              ...windows,
+              ...c.windows.map((w) => w.windowId),
+            ]);
+            return (
+              c.parents.every((id) => commits.has(id)) &&
+              c.revisions.every(
+                (r) =>
+                  (r.ancestry.kind !== "known" ||
+                    r.ancestry.parents.every((id) => rs.has(id))) &&
+                  r.claims.every(
+                    (claim) =>
+                      claim.evidence.every((e) => ws.has(e.windowId)) &&
+                      claim.derivedFrom.every((ref) => rs.has(ref.revisionId)),
+                  ),
+              ) &&
+              c.suppressions.every(
+                (s) =>
+                  s.target.kind !== "evidence" ||
+                  ws.has(s.target.evidence.windowId),
+              ) &&
+              c.outcomes.every(
+                (o) =>
+                  ws.has(o.windowId) &&
+                  (o.decision.kind !== "changed" ||
+                    o.decision.notes.every((r) => rs.has(r.revisionId))),
+              )
+            );
+          });
+          if (at < 0) throw new IntegrityError("blocked");
+          const c = waiting.splice(at, 1)[0]!;
+          result.push(c);
+          commits.add(c.commitId);
+          c.revisions.forEach((r) => revisions.add(r.revisionId));
+          c.windows.forEach((w) => windows.add(w.windowId));
+        }
+        return result;
+      };
+      const templates = orderingHistory(64);
+      for (let seed = 1; seed <= 32; seed++) {
+        let state = seed;
+        const next = (n: number) => {
+          state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+          return state % n;
+        };
+        const graph = templates.map((c, i): C.ReplicaChange => {
+          const source = templates[next(i + 1)]!;
+          return {
+            ...c,
+            parents: i && next(2) ? [templates[next(i)]!.commitId] : [],
+            revisions: c.revisions.map((r) => ({
+              ...r,
+              ancestry: {
+                kind: "known",
+                parents:
+                  i && next(2)
+                    ? [templates[next(i)]!.revisions[0]!.revisionId]
+                    : [],
+              },
+              claims: [
+                {
+                  ...r.claims[0]!,
+                  evidence: [source.revisions[0]!.claims[0]!.evidence[0]!],
+                  derivedFrom:
+                    i && next(2) ? [templates[next(i)]!.revisions[0]!] : [],
+                },
+              ],
+            })),
+          };
+        });
+        for (let i = graph.length - 1; i > 0; i--) {
+          const j = next(i + 1);
+          [graph[i], graph[j]] = [graph[j]!, graph[i]!];
+        }
+        expect(
+          f.store["causalOrder"](
+            graph,
+            new Set(),
+            new Set(),
+            new Set(),
+            "blocked",
+          ),
+        ).toEqual(legacy(graph));
+      }
+    } finally {
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  });
+  it("keeps the oldest authoritative evidence owner across later duplicate publication and restart", async () => {
+    const f = fixture();
+    try {
+      const w = window("ordinal-owner");
+      await f.store.commit(change("z-first-owner", [], [w]));
+      const peer = f.store.forPeer("ordinal-peer");
+      const token = await peer.continuityToken();
+      const original = (
+        await peer.readChanges(["z-first-owner" as C.CommitId])
+      )[0]!;
+      const duplicate = {
+        ...original,
+        commitId: "a-later-duplicate" as C.CommitId,
+        parents: [],
+      };
+      const target: C.ReplicaChange = {
+        ...original,
+        commitId: "target" as C.CommitId,
+        parents: [],
+        windows: [],
+        outcomes: [
+          {
+            windowId: w.windowId,
+            sourceHash: w.sourceHash,
+            recordedAt: now,
+            decision: { kind: "no-change", reason: "fixture" },
+          },
+        ],
+      };
+      expect(await peer.dependencyCommits(target, [duplicate])).toEqual([
+        original.commitId,
+      ]);
+      await peer.integrate([duplicate]);
+      expect(await peer.continuityToken()).toBe(token);
+      expect(await peer.dependencyCommits(target)).toEqual([original.commitId]);
+      f.store.close();
+      f.store = await FileMemoryStore.open(f.config);
+      expect(
+        await f.store.forPeer("ordinal-peer").dependencyCommits(target),
+      ).toEqual([original.commitId]);
+    } finally {
+      f.store.close();
+      rmSync(f.dir, { recursive: true });
+    }
+  });
+  it("replays and replicates 1024 retained commits with 600 local manifests and private warm snapshots", async () => {
+    const f = fixture(),
+      receiver = fixture("ordering-receiver");
+    const metrics: Record<string, number> = {};
+    const measure = async <T>(
+      name: string,
+      run: () => T | Promise<T>,
+    ): Promise<T> => {
+      const start = performance.now();
+      const value = await run();
+      metrics[name] = performance.now() - start;
+      return value;
+    };
+    try {
+      const history = orderingHistory(1024);
+      // Same evidence identity, different capture metadata: causal first owner
+      // wins over an earlier timestamp or a later, lexically smaller duplicate.
+      const first = history[0]!,
+        last = history.at(-1)!;
+      Reflect.set(last, "windows", [
+        ...last.windows,
+        { ...first.windows[0]!, capturedAt: "2025-01-01T00:00:00.000Z" },
+      ]);
+      f.store.close();
+      for (const [i, c] of history.entries()) {
+        const put = (value: unknown) => {
+          const bytes = canonicalJSON(value),
+            hash = sha256(bytes);
+          writeFileSync(join(f.config.data, "objects", hash), bytes);
+          return hash;
+        };
+        const dependencies = [...c.revisions, ...c.windows].map(put);
+        const replica = put(c);
+        dependencies.push(replica);
+        const local =
+          i < 600 ? put(change(c.commitId, c.revisions, c.windows)) : null;
+        if (local) dependencies.push(local);
+        const manifest = {
+          version: 1,
+          dependencies: dependencies.sort(),
+          replica,
+          local,
+        };
+        writeFileSync(
+          join(f.config.data, "commits", sha256(c.commitId)),
+          canonicalJSON({ ...manifest, hash: sha256(canonicalJSON(manifest)) }),
+        );
+      }
+      f.store = await measure("open", () => FileMemoryStore.open(f.config));
+      const peer = f.store.forPeer("ordering-receiver");
+      expect(await measure("scan", () => peer.scan(null, 4096))).toEqual(
+        history,
+      );
+      const token = await measure("continuity", () => peer.continuityToken());
+      expect(
+        await measure("closure", () => peer.dependencyCommits(last)),
+      ).toEqual(
+        history
+          .slice(-9, -1)
+          .map((c) => c.commitId)
+          .sort(),
+      );
+      expect((await f.store.listNotes(scope)).map((r) => r.revisionId)).toEqual(
+        last.revisions.map((r) => r.revisionId),
+      );
+      const retained = await f.store["refreshed"](
+        (v) => v.windows.get(first.windows[0]!.windowId),
+        false,
+      );
+      expect(retained!.capturedAt).toBe(now);
+      for (let i = 0; i < 3; i++) {
+        const scanned = await measure(`warm-scan-${i}`, () =>
+          peer.scan(last.commitId, 32),
+        );
+        expect(scanned).toEqual([]);
+        const read = await measure(`warm-read-${i}`, () =>
+          peer.readChanges([first.commitId, last.commitId]),
+        );
+        Reflect.set(read[0]!.windows[0]!, "capturedAt", "caller-forgery");
+        Reflect.set(read[1]!.revisions[0]!, "links", ["forged-link"]);
+      }
+      const clean = await peer.readChanges([first.commitId, last.commitId]);
+      expect(clean[0]!.windows[0]!.capturedAt).toBe(now);
+      expect(clean[1]!.revisions[0]!.links).toEqual([]);
+      expect(await peer.continuityToken()).toBe(token);
+      const inbound = receiver.store.forPeer("ordering");
+      await measure("inbound-reversed", () =>
+        inbound.integrate([...history].reverse()),
+      );
+      expect(await inbound.scan(null, 4096)).toEqual(history);
+      expect(await inbound.dependencyCommits(last)).toEqual(
+        await peer.dependencyCommits(last),
+      );
+      await measure("inbound-replay", () =>
+        inbound.integrate([...history].reverse()),
+      );
+      await peer.acknowledge(
+        history.map((c) => c.commitId),
+        last.commitId,
+      );
+      expect(
+        await measure("warm-idle-pending", () => peer.pending(32)),
+      ).toEqual([]);
+      f.store.close();
+      f.store = await FileMemoryStore.open(f.config);
+      expect(
+        await f.store.forPeer("ordering-receiver").scan(null, 4096),
+      ).toEqual(history);
+      if (process.env.PI_MEMORY_STORE_BENCH)
+        console.log("store-ordering-benchmark", JSON.stringify(metrics));
+    } finally {
+      f.store.close();
+      receiver.store.close();
+      rmSync(f.dir, { recursive: true });
+      rmSync(receiver.dir, { recursive: true });
+    }
+  }, 600000);
   function delivery(n: C.NoteRevision): C.RecallDelivery {
     return {
       deliveryId: "delivery-a" as C.DeliveryId,
