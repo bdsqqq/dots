@@ -15,6 +15,9 @@ let
   } // lib.optionalAttrs (localHost != "htz-xfs-lab") {
     pi-memory-replicate = "replicate";
   };
+  # Bandwidth, not a work deadline: backlog may drain slowly without heating
+  # the laptop. Manual one-shot commands remain uncapped.
+  backgroundCpuPercent = 5;
   toolsBin = "${repoRoot}/modules/node-pnpm/node_modules/.bin";
   agentMemory = pkgs.writeShellApplication {
     name = "pi-memory";
@@ -37,6 +40,13 @@ let
       exec node --import "$jiti_register" "$source" "$@"
     '';
   };
+  backgroundMemory = pkgs.writeShellApplication {
+    name = "pi-memory-background";
+    runtimeInputs = [ pkgs.python3 ];
+    text = ''
+      exec python3 ${./cpu-budget.py} --percent ${toString backgroundCpuPercent} -- ${agentMemory}/bin/pi-memory watch "$@"
+    '';
+  };
 in
 {
   home-manager.users.bdsqqq = { config, ... }: {
@@ -47,7 +57,7 @@ in
     launchd.agents = lib.mkIf isDarwin (lib.mapAttrs (name: command: {
       enable = true;
       config = {
-        ProgramArguments = [ "${agentMemory}/bin/pi-memory" "watch" command ];
+        ProgramArguments = [ "${backgroundMemory}/bin/pi-memory-background" command ];
         RunAtLoad = true;
         KeepAlive = true;
         ExitTimeOut = 0;
@@ -65,6 +75,9 @@ in
         ExecStart = "${agentMemory}/bin/pi-memory watch ${command}";
         Restart = "always";
         RestartSec = "1m";
+        CPUAccounting = true;
+        CPUQuota = "${toString backgroundCpuPercent}%";
+        Nice = 19;
         TimeoutStopSec = "infinity";
         SendSIGKILL = false;
       };
