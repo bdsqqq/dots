@@ -776,6 +776,7 @@ diff --git a/dist/modes/interactive/components/tool-execution.d.ts b/dist/modes/
  //# sourceMappingURL=tool-execution.d.ts.map
 \ No newline at end of file
 diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/interactive/components/tool-execution.js
+index d447db5ade5e37d6bc91cb91006ea0c711821b29..1ffed6fbe7de39608fb4e45c8f0d7bb0c261a201 100644
 --- a/dist/modes/interactive/components/tool-execution.js
 +++ b/dist/modes/interactive/components/tool-execution.js
 @@ -1,4 +1,4 @@
@@ -784,7 +785,7 @@ diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/in
  import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.js";
  import { ensurePngTranscoder } from "../../../utils/image-convert.js";
  import { theme } from "../theme/theme.js";
-@@ -6,8 +6,11 @@
+@@ -6,8 +6,11 @@ import { keyHint } from "./keybinding-hints.js";
  const FALLBACK_PREVIEW_LINES = 10;
  export class ToolExecutionComponent extends Container {
      contentBox;
@@ -798,7 +799,7 @@ diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/in
      selfRenderContainer;
      selfRenderHeight = 0;
      callRendererComponent;
-@@ -34,6 +37,7 @@
+@@ -34,6 +37,7 @@ export class ToolExecutionComponent extends Container {
      hideComponent = false;
      constructor(toolName, toolCallId, args, options = {}, toolDefinition, ui, cwd) {
          super();
@@ -806,7 +807,7 @@ diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/in
          this.toolName = toolName;
          this.toolCallId = toolCallId;
          this.args = args;
-@@ -44,19 +48,17 @@
+@@ -44,19 +48,17 @@ export class ToolExecutionComponent extends Container {
          this.ui = ui;
          this.cwd = cwd;
          this.addChild(new Spacer(1));
@@ -836,7 +837,7 @@ diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/in
          this.updateDisplay();
      }
      getCallRenderer() {
-@@ -93,19 +95,19 @@
+@@ -93,19 +95,19 @@ export class ToolExecutionComponent extends Container {
          };
      }
      createCallFallback() {
@@ -860,7 +861,7 @@ diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/in
          }
          return new Text(text, 0, 0);
      }
-@@ -156,8 +158,8 @@
+@@ -156,8 +158,8 @@ export class ToolExecutionComponent extends Container {
          super.invalidate();
          this.updateDisplay();
      }
@@ -871,7 +872,7 @@ diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/in
              return [];
          }
          if (this.hasRendererDefinition() && this.getRenderShell() === "self") {
-@@ -183,7 +185,18 @@
+@@ -183,7 +185,18 @@ export class ToolExecutionComponent extends Container {
              }
              return lines;
          }
@@ -891,7 +892,7 @@ diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/in
      }
      handleMouse(event) {
          if (!this.hasRendererDefinition() || this.getRenderShell() !== "self")
-@@ -197,19 +210,24 @@
+@@ -197,19 +210,24 @@ export class ToolExecutionComponent extends Container {
          });
      }
      updateDisplay() {
@@ -927,7 +928,7 @@ diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/in
              renderContainer.clear();
              const callRenderer = this.getCallRenderer();
              if (!callRenderer) {
-@@ -218,7 +236,7 @@
+@@ -218,7 +236,7 @@ export class ToolExecutionComponent extends Container {
              }
              else {
                  try {
@@ -936,7 +937,7 @@ diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/in
                      this.callRendererComponent = component;
                      renderContainer.addChild(this.createResultRegion(component));
                      hasContent = true;
-@@ -240,7 +258,7 @@
+@@ -240,7 +258,7 @@ export class ToolExecutionComponent extends Container {
                  }
                  else {
                      try {
@@ -945,20 +946,29 @@ diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/in
                          this.resultRendererComponent = component;
                          renderContainer.addChild(this.createResultRegion(component));
                          hasContent = true;
-@@ -255,12 +273,6 @@
-                     }
+@@ -256,12 +274,6 @@ export class ToolExecutionComponent extends Container {
                  }
              }
--        }
+         }
 -        else {
 -            this.contentText.setCustomBgFn(bgFn);
 -            this.contentText.setPaddingX(this.outputPad);
 -            this.contentText.setText(this.formatToolExecution());
 -            hasContent = true;
-         }
+-        }
          const previousImages = this.imageComponents;
          const previousSources = this.imageSources;
-@@ -288,7 +300,7 @@
+         for (const img of this.imageComponents) {
+@@ -279,7 +291,7 @@ export class ToolExecutionComponent extends Container {
+             for (const img of imageBlocks) {
+                 if (caps.images && this.showImages && img.data && img.mimeType) {
+                     const spacer = new Spacer(1);
+-                    this.addChild(spacer);
++                    (self ? this : this.sharedContent).addChild(spacer);
+                     this.imageSpacers.push(spacer);
+                     const source = { data: img.data, mimeType: img.mimeType, widthCells: this.imageWidthCells };
+                     const index = this.imageComponents.length;
+@@ -288,7 +300,7 @@ export class ToolExecutionComponent extends Container {
                          previous.mimeType === source.mimeType &&
                          previous.widthCells === source.widthCells
                          ? previousImages[index]
@@ -967,7 +977,17 @@ diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/in
                      if (source.mimeType !== "image/png") {
                          ensurePngTranscoder(() => {
                              this.invalidate();
-@@ -308,17 +320,5 @@
+@@ -297,7 +309,8 @@ export class ToolExecutionComponent extends Container {
+                     }
+                     this.imageComponents.push(imageComponent);
+                     this.imageSources.push(source);
+-                    this.addChild(imageComponent);
++                    // Include native image reservations in the shared gutter and footer.
++                    (self ? this : this.sharedContent).addChild(imageComponent);
+                 }
+             }
+         }
+@@ -308,17 +321,5 @@ export class ToolExecutionComponent extends Container {
      getTextOutput() {
          return getRenderedTextOutput(this.result, this.showImages);
      }

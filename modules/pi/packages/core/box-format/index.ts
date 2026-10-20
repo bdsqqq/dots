@@ -666,6 +666,315 @@ if (import.meta.vitest) {
       }
     });
 
+    it("frames native protocol images within the body width and below the same footer", async () => {
+      const { load, make, result, visibleWidth } = await sdk();
+      const {
+        getCapabilities,
+        setCapabilities,
+        setCellDimensions,
+        getCellDimensions,
+        stripTerminalSequences,
+      } = await import("@earendil-works/pi-tui");
+      const { createReadToolDefinition } = await load("core/tools/read.js");
+      const previous = getCapabilities();
+      const previousCells = getCellDimensions();
+      // A PNG header with known 80x80 geometry; no decoder or external terminal needed.
+      const png = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jq6kAAAAASUVORK5CYII=",
+        "base64",
+      );
+      png.writeUInt32BE(80, 16);
+      png.writeUInt32BE(80, 20);
+      const image = {
+        type: "image",
+        mimeType: "image/png",
+        data: png.toString("base64"),
+      };
+      try {
+        setCellDimensions({ widthPx: 8, heightPx: 16 });
+        for (const protocol of ["kitty", "iterm2"] as const) {
+          setCapabilities({ ...previous, images: protocol });
+          for (const mixed of [false, true]) {
+            const component = make(
+              createReadToolDefinition(process.cwd()),
+              "read",
+              { path: "fixture.png" },
+            );
+            expect(component.render(40, false).join("\n")).not.toContain(
+              "╰────",
+            );
+            const content = mixed
+              ? [{ type: "text", text: "image caption" }, image, image]
+              : [image];
+            component.updateResult({ ...result(""), content }, true);
+            const pending = component
+              .render(40, false)
+              .map(stripTerminalSequences);
+            expect(pending.join("\n")).toContain("● read");
+            expect(pending.at(-1)?.trim()).toBe("╰────");
+            component.updateResult({ ...result(""), content });
+            for (const expanded of [false, true]) {
+              component.setExpanded(expanded);
+              for (const pad of [0, 1, 3]) {
+                component.setOutputPad(pad);
+                component.setImageWidthCells(12);
+                for (const width of [20, 40, 12, 40]) {
+                  const lines: string[] = component.render(width, false);
+                  const plain = lines.map(stripTerminalSequences);
+                  const footer = plain.findIndex((line) =>
+                    line.includes("╰────"),
+                  );
+                  expect(footer).toBe(lines.length - 1);
+                  const prefix = " ".repeat(pad) + "│ ";
+                  const images = lines.flatMap((line, index) =>
+                    line.includes(
+                      protocol === "kitty" ? "\x1b_G" : "\x1b]1337;File=",
+                    )
+                      ? [index]
+                      : [],
+                  );
+                  expect(images).toHaveLength(mixed ? 2 : 1);
+                  for (const index of images) {
+                    expect(plain[index]).toBe(prefix);
+                    expect(index).toBeLessThan(footer);
+                    const bodyWidth = width - pad * 2 - 2;
+                    const nativeLines: string[] =
+                      component.imageComponents[images.indexOf(index)].render(
+                        bodyWidth,
+                      );
+                    // Preserve the complete protocol header, payload and native cursor-up sequence.
+                    expect(lines[index]!.replace(/\x1b\[[0-9;]*m/g, "")).toBe(
+                      prefix +
+                        nativeLines[
+                          protocol === "kitty" ? 0 : nativeLines.length - 1
+                        ],
+                    );
+                    const start =
+                      protocol === "kitty"
+                        ? index
+                        : index - nativeLines.length + 1;
+                    for (
+                      let row = start;
+                      row < start + nativeLines.length;
+                      row++
+                    ) {
+                      expect(plain[row]!.trimEnd()).toBe(prefix.trimEnd());
+                      expect(row).toBeLessThan(footer);
+                    }
+                    const columns = Number(
+                      lines[index]!.match(
+                        protocol === "kitty" ? /,c=(\d+)/ : /;width=(\d+)/,
+                      )?.[1],
+                    );
+                    expect(columns).toBeLessThanOrEqual(
+                      Math.min(12, Math.max(1, bodyWidth - 2)),
+                    );
+                    if (protocol === "kitty")
+                      expect(lines[index]).toContain("C=1");
+                  }
+                  expect(
+                    lines.every((line) => visibleWidth(line) <= width),
+                  ).toBe(true);
+                }
+              }
+            }
+            component.updateResult({ ...result("", true), content });
+            expect(
+              component
+                .render(40, false)
+                .map(stripTerminalSequences)
+                .join("\n"),
+            ).toContain("✕ read");
+            for (const width of [0, 1, 2, 3, 4, 8]) {
+              expect(
+                component
+                  .render(width, false)
+                  .every((line: string) => visibleWidth(line) <= width),
+              ).toBe(true);
+            }
+            component.setShowImages(false);
+            expect(
+              component
+                .render(40, false)
+                .some(
+                  (line: string) =>
+                    line.includes("\x1b_G") || line.includes("\x1b]1337;File="),
+                ),
+            ).toBe(false);
+            for (const width of [0, 1, 2, 3, 4]) {
+              expect(
+                component
+                  .render(width, false)
+                  .every((line: string) => visibleWidth(line) <= width),
+              ).toBe(true);
+            }
+          }
+        }
+      } finally {
+        setCapabilities(previous);
+        setCellDimensions(previousCells);
+      }
+    });
+
+    it("keeps cropped native images and their gutter in the actual fullscreen scroller", async () => {
+      const { make, result } = await sdk();
+      const {
+        getCapabilities,
+        setCapabilities,
+        getCellDimensions,
+        setCellDimensions,
+        ScrollView,
+        Container,
+        Text,
+        stripTerminalSequences,
+      } = await import("@earendil-works/pi-tui");
+      const { TuiAltScreen } = await import(
+        new URL(
+          "./tui-alt-screen.js",
+          import.meta.resolve("@earendil-works/pi-tui"),
+        ).href
+      );
+      const { renderLayoutFrame } = await import(
+        new URL("./layout.js", import.meta.resolve("@earendil-works/pi-tui"))
+          .href
+      );
+      const previous = getCapabilities();
+      const cells = getCellDimensions();
+      const png = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jq6kAAAAASUVORK5CYII=",
+        "base64",
+      );
+      png.writeUInt32BE(80, 16);
+      png.writeUInt32BE(80, 20);
+      try {
+        setCapabilities({ ...previous, images: "kitty" });
+        setCellDimensions({ widthPx: 8, heightPx: 16 });
+        for (const width of [40, 20, 40])
+          for (const pad of [1, 3]) {
+            const row = make({
+              renderResult: () => ({ render: () => [], invalidate() {} }),
+            });
+            row.setOutputPad(pad);
+            row.setImageWidthCells(12);
+            row.updateResult({
+              ...result(""),
+              content: [
+                {
+                  type: "image",
+                  mimeType: "image/png",
+                  data: png.toString("base64"),
+                },
+              ],
+            });
+            const lines: string[] = row.render(width, false);
+            const anchor = lines.findIndex((line) => line.includes("\x1b_G"));
+            const imageRows = Number(lines[anchor]!.match(/,r=(\d+)/)?.[1]);
+            expect(imageRows).toBeGreaterThan(3);
+            const transcript = new Container();
+            transcript.addChild(row);
+            transcript.addChild(new Text("tail\ntail\ntail\ntail", 0, 0));
+            const scroll = new ScrollView(transcript, {
+              follow: "none",
+              scrollbar: "hidden",
+              primary: true,
+            });
+            let raw = "";
+            const terminal = {
+              columns: width,
+              rows: 4,
+              write(data: string) {
+                raw += data;
+              },
+              hideCursor() {},
+              showCursor() {},
+            };
+            const tui = new TuiAltScreen(terminal, false);
+            tui.stopped = false;
+            tui.altScreenActive = true;
+            tui.imageProtocol = "kitty";
+            tui.layoutRoot = scroll;
+            tui.doRender();
+            for (const hidden of [0, 1, 2, 3]) {
+              scroll.scrollTo(anchor + hidden);
+              tui.doRender();
+              const screen: string[] = tui.currentLayout.lines;
+              const command = screen.find((line) => line.includes("\x1b_G"));
+              expect(command, `anchor hidden by ${hidden} rows`).toBeDefined();
+              const visible = Math.min(4, imageRows - hidden);
+              expect(command).toContain(`r=${visible}`);
+              if (hidden > 0)
+                expect(command).toContain(
+                  `y=${Math.floor((80 * hidden) / imageRows)}`,
+                );
+              expect(stripTerminalSequences(screen[0]!).trim()).toBe("│");
+              expect(
+                screen
+                  .slice(0, visible)
+                  .every((line) => stripTerminalSequences(line).trim() === "│"),
+              ).toBe(true);
+              if (visible < 4)
+                expect(stripTerminalSequences(screen[visible]!).trim()).toBe(
+                  "╰────",
+                );
+              expect(raw).toContain("\x1b_G");
+            }
+            // A gutter-looking text row outside the protocol-declared span is not an image reservation.
+            const gutter = " ".repeat(pad) + "│ ";
+            const textLines = [
+              ...lines.slice(0, -1),
+              gutter,
+              gutter,
+              gutter,
+              "end",
+              "tail",
+            ];
+            const unrelated = new ScrollView(
+              { render: () => textLines, invalidate() {} },
+              { follow: "none", scrollbar: "hidden" },
+            );
+            renderLayoutFrame(unrelated, width, 3, () => {});
+            unrelated.scrollTo(lines.length + 1);
+            expect(
+              renderLayoutFrame(unrelated, width, 3, () => {}).lines.some(
+                (line: string) => line.includes("\x1b_G"),
+              ),
+            ).toBe(false);
+            const unframedLines = [
+              ...row.imageComponents[0].render(width),
+              "tail",
+              "tail",
+              "tail",
+            ];
+            const unframed = new ScrollView(
+              { render: () => unframedLines, invalidate() {} },
+              { follow: "none", scrollbar: "hidden" },
+            );
+            renderLayoutFrame(unframed, width, 3, () => {});
+            unframed.scrollTo(2);
+            expect(
+              renderLayoutFrame(unframed, width, 3, () => {}).lines[0],
+            ).toContain("\x1b_G");
+            // Real text inside a malformed reservation must remain a discovery boundary.
+            const interrupted = [...lines];
+            interrupted[anchor + 1] = "not image content";
+            const broken = new ScrollView(
+              { render: () => interrupted, invalidate() {} },
+              { follow: "none", scrollbar: "hidden" },
+            );
+            renderLayoutFrame(broken, width, 3, () => {});
+            broken.scrollTo(anchor + 2);
+            expect(
+              renderLayoutFrame(broken, width, 3, () => {}).lines.some(
+                (line: string) => line.includes("\x1b_G"),
+              ),
+            ).toBe(false);
+          }
+      } finally {
+        setCapabilities(previous);
+        setCellDimensions(cells);
+      }
+    });
+
     it("reuses native image components and honors showImages", async () => {
       const { make, rows, result } = await sdk();
       const { getCapabilities, setCapabilities } =
