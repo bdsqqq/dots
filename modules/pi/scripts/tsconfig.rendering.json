@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "allowJs": true,
+    "lib": ["es2023"]
+  },
+  "include": [
+    "check-rendering.ts",
+    "rendering-assertions.ts",
+    "rendering-fixture.ts",
+    "rendering-child-fixture.ts",
+    "rendering-vitest.config.ts"
+  ]
+}

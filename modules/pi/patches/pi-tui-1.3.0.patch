@@ -167,3 +167,136 @@ index 0a16994d..1e8c09ee 100644
  export { Markdown } from "./components/markdown.js";
  export { MouseRegion } from "./components/mouse-region.js";
  export { ScrollView, } from "./components/scroll-view.js";
+diff --git a/dist/components/box.js b/dist/components/box.js
+index 1146b95e5c5b2a2d4ff21153364bbf4d3ba8cc71..dd4f255eb43c40bb1d96066443b0996c34914470 100644
+--- a/dist/components/box.js
++++ b/dist/components/box.js
+@@ -1,4 +1,5 @@
+ import { dispatchMouseEvent } from "../tui.js";
++import { isImageLine } from "../terminal-image.js";
+ import { flattenLines, visibleWidth } from "../utils.js";
+ /**
+  * Box component - a container that applies padding and background to all children
+@@ -116,7 +117,9 @@ export class Box {
+         }
+         // Content
+         for (const line of childLines) {
+-            result.push(this.applyBg(leftPad + line, width));
++            // Native images own cursor advancement. Right padding after the protocol
++            // can wrap iTerm's cursor or erase Kitty placements on some terminals.
++            result.push(isImageLine(line) ? leftPad + line : this.applyBg(leftPad + line, width));
+         }
+         // Bottom padding
+         for (let i = 0; i < this.paddingY; i++) {
+diff --git a/dist/tui-main-screen.js b/dist/tui-main-screen.js
+index 88eca823778ee1d70143bd94588437021f856333..e5b0de8787812af3ffbe31c0aa19f1a448643891 100644
+--- a/dist/tui-main-screen.js
++++ b/dist/tui-main-screen.js
+@@ -3,7 +3,7 @@ import * as os from "node:os";
+ import * as path from "node:path";
+ import { deleteKittyImage, isImageLine } from "./terminal-image.js";
+ import { TuiBase } from "./tui.js";
+-import { visibleWidth } from "./utils.js";
++import { stripTerminalSequences, visibleWidth } from "./utils.js";
+ const KITTY_SEQUENCE_PREFIX = "\x1b_G";
+ const MAX_RENDER_WRITE_CHARS = 1024 * 1024;
+ /**
+@@ -170,10 +170,13 @@ export class TuiMainScreen extends TuiBase {
+         if (rows <= 1)
+             return 1;
+         const maxRows = Math.min(rows, maxIndex - index + 1, lines.length - index);
++        // Framed images reserve rows containing only their gutter, not just blanks.
++        const anchor = lines[index] ?? "";
++        const gutter = stripTerminalSequences(anchor.slice(0, anchor.indexOf(KITTY_SEQUENCE_PREFIX))).trimEnd();
+         let reservedRows = 1;
+         while (reservedRows < maxRows) {
+             const line = lines[index + reservedRows] ?? "";
+-            if (isImageLine(line) || visibleWidth(line) > 0)
++            if (isImageLine(line) || stripTerminalSequences(line).trimEnd() !== gutter)
+                 break;
+             reservedRows++;
+         }
+@@ -252,9 +255,9 @@ export class TuiMainScreen extends TuiBase {
+                 const imageReservedRows = isImage ? this.getKittyImageReservedRows(newLines, i) : 1;
+                 if (imageReservedRows > 1 && imageReservedRows <= height) {
+                     for (let row = 1; row < imageReservedRows; row++) {
+-                        output.append("\r\n");
++                        output.append("\r\n" + newLines[i + row]);
+                     }
+-                    output.append(`\x1b[${imageReservedRows - 1}A`);
++                    output.append(`\r\x1b[${imageReservedRows - 1}A`);
+                     output.append(line);
+                     output.append(`\x1b[${imageReservedRows - 1}B`);
+                     i += imageReservedRows - 1;
+@@ -457,9 +460,9 @@ export class TuiMainScreen extends TuiBase {
+                 }
+                 output.append("\x1b[2K");
+                 for (let row = 1; row < imageReservedRows; row++) {
+-                    output.append("\r\n\x1b[2K");
++                    output.append("\r\n\x1b[2K" + newLines[i + row]);
+                 }
+-                output.append(`\x1b[${imageReservedRows - 1}A`);
++                output.append(`\r\x1b[${imageReservedRows - 1}A`);
+                 output.append(line);
+                 output.append(`\x1b[${imageReservedRows - 1}B`);
+                 i += imageReservedRows - 1;
+diff --git a/dist/utils.js b/dist/utils.js
+index 946da9df9f098c55272410a78e31363623fdc219..fe91d45ee4320f086721472dbeaad094d0067c88 100644
+--- a/dist/utils.js
++++ b/dist/utils.js
+@@ -405,12 +405,11 @@ function ansiCodeLength(str, pos) {
+     if (pos >= str.length || str.charCodeAt(pos) !== 0x1b)
+         return 0;
+     const next = str[pos + 1];
+-    // CSI sequence: ESC [ ... m/G/K/H/J
++    // CSI ends at any final byte (ECMA-48), including image cursor-up/down.
+     if (next === "[") {
+         for (let j = pos + 2; j < str.length; j++) {
+             const c = str.charCodeAt(j);
+-            // m, G, K, H, J
+-            if (c === 0x6d || c === 0x47 || c === 0x4b || c === 0x48 || c === 0x4a)
++            if (c >= 0x40 && c <= 0x7e)
+                 return j + 1 - pos;
+         }
+         return 0;
+diff --git a/dist/layout.js b/dist/layout.js
+index 99485d8881b299a8a2e5dff990515ae132836daf..a8dd41c03036a9e3e7ffd329f014bb0bc3ea6e23 100644
+--- a/dist/layout.js
++++ b/dist/layout.js
+@@ -2,7 +2,7 @@ import { allocateStackSizes, visibleStackEntries } from "./components/stack.js";
+ import { getLayoutNode } from "./layout-node.js";
+ import { cropKittyImageLine, getKittyImageMetadata, isImageLine } from "./terminal-image.js";
+ import { CURSOR_MARKER, compositeTuiLine } from "./tui.js";
+-import { extractAnsiCode, getActiveBackgroundAnsi, getGraphemeCellRange, sliceByColumn, visibleWidth, } from "./utils.js";
++import { extractAnsiCode, getActiveBackgroundAnsi, getGraphemeCellRange, sliceByColumn, stripTerminalSequences, visibleWidth, } from "./utils.js";
+ const OSC133_ZONE_PREFIX = /^(?:\x1b\]133;[ABC](?:\x07|\x1b\\))+/;
+ function intersect(a, b) {
+     const x = Math.max(a.x, b.x);
+@@ -253,12 +253,17 @@ function paintBox(box, screen, totalWidth) {
+     for (const child of box.children)
+         paintBox(child, screen, totalWidth);
+     if (box.scrollView && box.scrollContentLines && box.scrollView.scrollTop > 0 && box.rect.height > 0) {
++        // Native Image reserves its registered row span with blank lines. A shell
++        // may decorate those rows, so match its exact prefix before the protocol,
++        // not a particular border glyph. The registered span still bounds discovery.
++        const reservation = stripTerminalSequences(box.scrollContentLines[box.scrollView.scrollTop - 1] ?? "").trimEnd();
+         for (let imageRow = box.scrollView.scrollTop - 1; imageRow >= 0; imageRow--) {
+             const imageLine = box.scrollContentLines[imageRow] ?? "";
+             const metadata = getKittyImageMetadata(imageLine);
+             if (metadata) {
+                 const hiddenRows = box.scrollView.scrollTop - imageRow;
+-                if (hiddenRows < metadata.rows) {
++                const gutter = stripTerminalSequences(imageLine.slice(0, imageLine.indexOf("\x1b_G"))).trimEnd();
++                if (hiddenRows < metadata.rows && gutter === reservation) {
+                     const visibleRows = Math.min(box.rect.height, metadata.rows - hiddenRows);
+                     const cropped = cropKittyImageLine(imageLine, hiddenRows, visibleRows);
+                     if (box.rect.x === 0 && box.rect.width >= totalWidth)
+@@ -266,7 +271,7 @@ function paintBox(box, screen, totalWidth) {
+                 }
+                 break;
+             }
+-            if (imageLine !== "")
++            if (stripTerminalSequences(imageLine).trimEnd() !== reservation)
+                 break;
+         }
+     }

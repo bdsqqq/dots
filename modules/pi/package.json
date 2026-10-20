@@ -39,6 +39,7 @@
     "format": "oxfmt --write",
     "format:check": "oxfmt --check",
     "test": "vitest run",
+    "test:rendering": "vitest run --config scripts/rendering-vitest.config.ts && node --experimental-strip-types scripts/check-rendering.ts",
     "check": "pnpm run format:check && pnpm run lint && pnpm run test"
   },
   "dependencies": {
