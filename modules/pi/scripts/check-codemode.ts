@@ -15,6 +15,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { crc32, deflateSync } from "node:zlib";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 
 assert.equal(
@@ -48,6 +49,14 @@ const expected = [
   "web_search",
 ].sort();
 const native = ["edit", "write"];
+const agentTools = [
+  "oracle",
+  "finder",
+  "delegate",
+  "librarian",
+  "look_at",
+  "code_review",
+];
 const retired = [
   "apply_patch",
   "format_file",
@@ -105,13 +114,28 @@ try {
     join(agentDir, "skills", "fixture", "SKILL.md"),
     "---\nname: fixture\ndescription: offline integration fixture\n---\nSKILL_FIXTURE\n",
   );
-  // Tiny valid PNG: exercise real read's image result and codemode's image forwarding.
+  // generate valid checksums: native image processing decodes even tiny inputs.
+  const pngChunk = (type: string, data: Buffer) => {
+    const payload = Buffer.concat([Buffer.from(type), data]);
+    const size = Buffer.alloc(4);
+    size.writeUInt32BE(data.length);
+    const checksum = Buffer.alloc(4);
+    checksum.writeUInt32BE(crc32(payload));
+    return Buffer.concat([size, payload, checksum]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(1, 0);
+  header.writeUInt32BE(1, 4);
+  header[8] = 8;
+  header[9] = 6;
   put(
     join(temporary, "image.png"),
-    Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
-      "base64",
-    ),
+    Buffer.concat([
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+      pngChunk("IHDR", header),
+      pngChunk("IDAT", deflateSync(Buffer.from([0, 255, 0, 0, 255]))),
+      pngChunk("IEND", Buffer.alloc(0)),
+    ]),
   );
   // The project owns the formatter command, not a generic tool or fake formatter.
   json(join(temporary, "package.json"), {
@@ -144,7 +168,7 @@ try {
     "pi-fixture",
     `
     import readline from 'node:readline';
-    const message={role:'assistant',api:'openai-completions',provider:'fixture',model:'fixture',content:[{type:'text',text:'SUBAGENT_FIXTURE'}],stopReason:'stop',timestamp:0,usage:{input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}};
+    const message={role:'assistant',api:'openai-completions',provider:'fixture',model:'fixture',content:[{type:'text',text:'SUBAGENT_FIXTURE'}],stopReason:'stop',timestamp:0,usage:{input:4,output:2,cacheRead:0,cacheWrite:0,totalTokens:6,cost:{input:0.004,output:0.002,cacheRead:0,cacheWrite:0,total:0.006}}};
     const emit=x=>console.log(JSON.stringify(x));
     if(process.argv.includes('rpc')) {
       readline.createInterface({input:process.stdin}).on('line',line=>{
@@ -265,8 +289,26 @@ try {
     function check(value,message) { if(!value) throw new Error(message); }
     async function call(name,args,needle) {
       const r=await tools[name](args);
-      check(r && Array.isArray(r.content) && 'details' in r, name+' lost structured result');
-      check(r.content.some(p=>p.type==='text' && p.text.includes(needle)), name+' missing expected output '+JSON.stringify(r));
+      if(name==='read') {
+        check(typeof r==='string' && r.includes(needle),'read lost native text output '+JSON.stringify(r));
+      } else {
+        check(r && Array.isArray(r.content) && 'details' in r, name+' lost structured result');
+        check(r.content.some(p=>p.type==='text' && p.text.includes(needle)), name+' missing expected output '+JSON.stringify(r));
+      }
+      if(${JSON.stringify(agentTools)}.includes(name)) {
+        const d=r.details;
+        check(d?.kind==='pi.subagent',name+' missing pi.subagent marker');
+        check(Array.isArray(d.results) && d.results.length===1,name+' missing single wire record');
+        const record=d.results[0];
+        const task=args.task ?? args.query ?? args.description ?? args.objective ?? args.diff_description;
+        check(record.agent===name && record.task===task,name+' lost agent/task identity');
+        check(typeof record.model==='string' && record.model.length>0,name+' lost scalar model');
+        check(record.finished===true && record.exitCode===0,name+' lost successful completion');
+        check(record.messages?.length===1 && record.messages[0].role==='assistant' && record.messages[0].content?.length===1 && record.messages[0].content[0].type==='text' && record.messages[0].content[0].text.includes(needle),name+' missing visible wire assistant output');
+        check(d.pi?.usage.cost>0 && d.cost===d.pi.usage.cost,name+' lost child cost');
+        check(['agent','task','model','usage','messages','output','toolCalls','lifecycle','continueId'].every(key=>!(key in d)),name+' duplicated flat metadata');
+        check(Object.keys(record).every(key=>['agent','task','model','exitCode','finished','stopReason','errorMessage','messages'].includes(key)),name+' leaked child transcript metadata');
+      }
       text({name,status:'verified'}); return r;
     }
     const failures=[];
@@ -296,7 +338,15 @@ try {
     const edited=await tools.edit({path,edits:[{oldText:'LOCAL_FIXTURE',newText:'EDIT_FIXTURE'}]});
     check(typeof edited==='string','native edit lost text result');
     const after=await call('read',{path},'UNRELATED_USER_TEXT\\n');
-    check(after.content.some(p=>p.type==='text' && p.text.includes('EDIT_FIXTURE')),'edit did not reach file');
+    check(after.includes('EDIT_FIXTURE'),'edit did not reach file');
+    const ranged=await tools.read({path,read_range:[2,2]});
+    check(typeof ranged==='string' && ranged.startsWith('EDIT_FIXTURE\\n\\n[') && !ranged.includes('KEEP_TRAILING_TEXT'),'read lost inclusive range');
+    const directory=await tools.read({path:${JSON.stringify(temporary)}});
+    check(typeof directory==='string' && directory.includes('fixture.txt') && directory.includes('image.png'),'read lost directory structured output');
+    const reversed=await tools.read({path,read_range:[3,2]});
+    check(typeof reversed==='string' && reversed.includes('end must be greater'),'read lost range error output');
+    const refused=await tools.read({path:${JSON.stringify(join(temporary, ".env"))}});
+    check(typeof refused==='string' && refused.includes('may contain secrets'),'read lost refusal structured output');
     let editError;
     try { await tools.edit({path,edits:[{oldText:'DOES_NOT_EXIST',newText:'CORRUPTED'}]}); } catch(error) {editError=String(error);}
     check(editError && /not find|not found|match/i.test(editError),'nonmatching edit did not preserve error');
@@ -317,11 +367,12 @@ try {
     check(page.details.webPage.nextCursor,'missing web cursor');
     text({cursor:page.details.webPage.nextCursor});
     const picture=await tools.read({path:${JSON.stringify(join(temporary, "image.png"))}});
-    check(picture.content.some(p=>p.type==='image' && p.mimeType==='image/png' && p.data===${JSON.stringify(readFileSync(join(temporary, "image.png")).toString("base64"))}),'read dropped or corrupted image bytes');
-    for(const part of picture.content) if(part.type==='image') image(part);
+    check(picture.type==='image' && picture.mimeType==='image/png' && picture.data===${JSON.stringify(readFileSync(join(temporary, "image.png")).toString("base64"))},'read dropped or corrupted native image output');
+    image(picture);
     text('CODEMODE_VERIFIED');
   `;
   const plan = {
+    agentTools,
     expected,
     native,
     retired,
@@ -429,6 +480,7 @@ try {
   assert.ok(networkBefore.includes("https://codemode.example/fixture"));
   const continuation = {
     ...plan,
+    agentTools: [],
     result: join(temporary, "continuation.json"),
     code: `
     const r=await tools.read_web_page({cursor:${JSON.stringify(cursor)},max_length:512});
@@ -465,7 +517,8 @@ try {
         tools: expected,
         evidence: [
           `real CLI + built-in codemode + ${built ? "built" : "source"} extension registrations`,
-          "structured content/details",
+          "native read text/image, directories, inclusive ranges and refusals through codemode",
+          "six named agents: compact pi.subagent output, progress without exit sentinel, identity, scalar model and costs",
           "native edit/write preserve unrelated text and reject nonmatching edits",
           "project formatting script through bash; shell rg and listing",
           "image forwarded into provider context",

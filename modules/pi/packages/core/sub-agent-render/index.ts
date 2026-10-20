@@ -28,6 +28,7 @@ import {
 import { boxBottom } from "@bds_pi/box-chrome";
 import {
   modelCliString,
+  isPiSpawnModelValue,
   toToolUsage,
   type PiSpawnModel,
   type PiSpawnLifecycle,
@@ -75,6 +76,37 @@ export interface SingleResult {
   lifecycle?: PiSpawnLifecycle;
 }
 
+type CompactAgentMessage = {
+  role: "assistant";
+  content: [{ type: "text"; text: string }];
+};
+
+export interface SharedAgentResultRecord {
+  agent: string;
+  task: string;
+  model: string;
+  exitCode?: number;
+  finished: boolean;
+  stopReason?: string;
+  errorMessage?: string;
+  messages: CompactAgentMessage[];
+}
+
+/** presentation opt-in only; piSpawn still owns execution and continuation. */
+export interface SharedAgentResultDetails extends ToolCostDetails {
+  kind: "pi.subagent";
+  results: SharedAgentResultRecord[];
+  pi: {
+    toolCalls: ToolDisplayItem[];
+    usage: UsageStats;
+    lifecycle?: PiSpawnLifecycle;
+    continueId?: string;
+    sessionId?: string;
+    sessionFile?: string;
+    leafId?: string;
+  };
+}
+
 // --- message parsing ---
 
 export function applySessionMeta(
@@ -87,39 +119,58 @@ export function applySessionMeta(
   target.leafId = session?.leafId;
 }
 
-export function getFinalOutput(messages: Message[]): string {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    if (msg && msg.role === "assistant") {
-      for (const part of msg.content) {
-        if (
-          typeof part === "object" &&
-          part !== null &&
-          "type" in part &&
-          part.type === "text"
-        ) {
-          return (part as { type: "text"; text: string }).text;
-        }
+export function getFinalOutput(messages: unknown[]): string {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (
+      !isRecord(message) ||
+      message.role !== "assistant" ||
+      !Array.isArray(message.content)
+    )
+      continue;
+    for (const part of message.content) {
+      if (
+        isRecord(part) &&
+        part.type === "text" &&
+        typeof part.text === "string"
+      ) {
+        return part.text;
       }
     }
   }
   return "";
 }
 
-export function getDisplayItems(messages: Message[]): DisplayItem[] {
+export function getDisplayItems(messages: unknown[]): DisplayItem[] {
   const errorMap = new Map<string, boolean>();
   for (const msg of messages) {
-    if (msg.role === "toolResult") {
+    if (
+      isRecord(msg) &&
+      msg.role === "toolResult" &&
+      typeof msg.toolCallId === "string" &&
+      typeof msg.isError === "boolean"
+    ) {
       errorMap.set(msg.toolCallId, msg.isError);
     }
   }
 
   const items: DisplayItem[] = [];
   for (const msg of messages) {
-    if (msg.role === "assistant") {
+    if (
+      isRecord(msg) &&
+      msg.role === "assistant" &&
+      Array.isArray(msg.content)
+    ) {
       for (const part of msg.content) {
-        if (part.type === "text") items.push({ type: "text", text: part.text });
-        else if (part.type === "toolCall") {
+        if (!isRecord(part)) continue;
+        if (part.type === "text" && typeof part.text === "string")
+          items.push({ type: "text", text: part.text });
+        else if (
+          part.type === "toolCall" &&
+          typeof part.id === "string" &&
+          typeof part.name === "string" &&
+          isRecord(part.arguments)
+        ) {
           items.push({
             type: "toolCall",
             id: part.id,
@@ -147,23 +198,301 @@ export function subAgentResult(
   isError = false,
 ): {
   content: { type: "text"; text: string }[];
-  details: SingleResult & ToolCostDetails;
+  details: SharedAgentResultDetails;
   usage: Usage;
   isError?: boolean;
 } {
-  const { messages, ...metadata } = details;
-  const transcript = messages ?? [];
   return {
     content: [{ type: "text" as const, text }],
-    details: {
-      ...metadata,
-      output: details.output ?? getFinalOutput(transcript),
-      toolCalls: details.toolCalls ?? getToolDisplayItems(transcript),
-      cost: details.usage.cost,
-    },
+    details: createSharedAgentResultDetails(
+      text,
+      details,
+      "completed",
+      isError,
+    ),
     usage: toToolUsage(details.usage),
     ...(isError && { isError: true }),
   };
+}
+
+/**
+ * snapshots the display state before the live child transcript is released.
+ * upstream's reader only inspects assistant text on success and errorMessage
+ * on failure, so persisting the raw transcript is unnecessary and leaks tools.
+ */
+export function createSharedAgentResultDetails(
+  text: string,
+  source: SingleResult,
+  phase: "progress" | "completed",
+  isError = false,
+): SharedAgentResultDetails {
+  const transcript = source.messages ?? [];
+  // keep routing trailers in model-facing content, not in the child's display text.
+  const output = source.output ?? (getFinalOutput(transcript) || text);
+  const errorMessage = source.errorMessage ?? (isError ? text : undefined);
+  const record: SharedAgentResultRecord = {
+    agent: source.agent,
+    task: source.task,
+    model: source.model ? modelCliString(source.model) : "",
+    // the live -1 sentinel is not an exit: receivers treat nonzero as failure.
+    ...(phase === "completed" && { exitCode: source.exitCode }),
+    finished: phase === "completed",
+    ...(source.lifecycle?.status === "cancelled"
+      ? { stopReason: "aborted" }
+      : source.stopReason !== undefined && { stopReason: source.stopReason }),
+    ...(errorMessage !== undefined && { errorMessage }),
+    messages: [
+      { role: "assistant", content: [{ type: "text", text: output }] },
+    ],
+  };
+  const pi: SharedAgentResultDetails["pi"] = {
+    toolCalls: cloneToolCalls(
+      source.toolCalls ?? getToolDisplayItems(transcript),
+    ),
+    usage: {
+      ...source.usage,
+      ...(source.usage.costBreakdown && {
+        costBreakdown: { ...source.usage.costBreakdown },
+      }),
+    },
+    ...(source.lifecycle && {
+      lifecycle: {
+        ...source.lifecycle,
+        ...(source.lifecycle.owner && { owner: { ...source.lifecycle.owner } }),
+      },
+    }),
+    ...(source.continueId !== undefined && { continueId: source.continueId }),
+    ...(source.sessionId !== undefined && { sessionId: source.sessionId }),
+    ...(source.sessionFile !== undefined && {
+      sessionFile: source.sessionFile,
+    }),
+    ...(source.leafId !== undefined && { leafId: source.leafId }),
+  };
+  return {
+    kind: "pi.subagent",
+    results: [record],
+    pi,
+    cost: source.usage.cost,
+  };
+}
+
+function cloneToolCalls(items: ToolDisplayItem[]): ToolDisplayItem[] {
+  return items.map((item) => ({ ...item }));
+}
+
+/** builds a detached progress snapshot using the same persisted contract. */
+export function subAgentProgress(
+  text: string,
+  details: SingleResult,
+): {
+  content: { type: "text"; text: string }[];
+  details: SharedAgentResultDetails;
+} {
+  return {
+    content: [{ type: "text", text }],
+    details: createSharedAgentResultDetails(text, details, "progress"),
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function compactOutput(record: SharedAgentResultRecord): string {
+  return record.messages.at(-1)?.content[0]?.text ?? "";
+}
+
+function isSharedAgentResultRecord(
+  value: unknown,
+): value is SharedAgentResultRecord {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.agent === "string" &&
+    typeof value.task === "string" &&
+    typeof value.model === "string" &&
+    (value.exitCode === undefined || typeof value.exitCode === "number") &&
+    typeof value.finished === "boolean" &&
+    (!value.finished || typeof value.exitCode === "number") &&
+    Array.isArray(value.messages) &&
+    value.messages.length > 0 &&
+    value.messages.every(
+      (message) =>
+        isRecord(message) &&
+        message.role === "assistant" &&
+        Array.isArray(message.content) &&
+        message.content.length === 1 &&
+        message.content.every(
+          (part) =>
+            isRecord(part) &&
+            part.type === "text" &&
+            typeof part.text === "string",
+        ),
+    ) &&
+    (value.stopReason === undefined || typeof value.stopReason === "string") &&
+    (value.errorMessage === undefined || typeof value.errorMessage === "string")
+  );
+}
+
+function isUsageStats(value: unknown): value is UsageStats {
+  if (!isRecord(value)) return false;
+  const costBreakdown = value.costBreakdown;
+  return (
+    [
+      "input",
+      "output",
+      "cacheRead",
+      "cacheWrite",
+      "cost",
+      "contextTokens",
+      "turns",
+    ].every((key) => typeof value[key] === "number") &&
+    (costBreakdown === undefined ||
+      (isRecord(costBreakdown) &&
+        ["input", "output", "cacheRead", "cacheWrite", "total"].every(
+          (key) => typeof costBreakdown[key] === "number",
+        ))) &&
+    ["cacheWrite1h", "reasoning"].every(
+      (key) => value[key] === undefined || typeof value[key] === "number",
+    )
+  );
+}
+
+function isToolDisplayItem(value: unknown): value is ToolDisplayItem {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.summary === "string" &&
+    (value.isError === undefined || typeof value.isError === "boolean")
+  );
+}
+
+function isLifecycle(value: unknown): value is PiSpawnLifecycle {
+  if (!isRecord(value)) return false;
+  const owner = value.owner;
+  const errorKinds = [
+    "unsupported",
+    "setup",
+    "spawn",
+    "agent",
+    "exit",
+    "signal",
+    "transport",
+    "cancelled",
+    "timeout",
+  ];
+  return (
+    typeof value.startedAt === "string" &&
+    ["pid", "processGroupId", "exitCode", "timeoutMs"].every(
+      (key) => value[key] === null || typeof value[key] === "number",
+    ) &&
+    ["endedAt", "signal", "cancellationRequestedAt", "timedOutAt"].every(
+      (key) => value[key] === null || typeof value[key] === "string",
+    ) &&
+    (owner === null ||
+      (isRecord(owner) &&
+        ["sessionId", "sessionFile", "toolCallId", "toolName"].every(
+          (key) => owner[key] === undefined || typeof owner[key] === "string",
+        ))) &&
+    (value.errorKind === null ||
+      errorKinds.includes(String(value.errorKind))) &&
+    [
+      "starting",
+      "running",
+      "succeeded",
+      "failed",
+      "cancelled",
+      "timed_out",
+    ].includes(String(value.status))
+  );
+}
+
+function isSharedAgentResultDetails(
+  value: unknown,
+): value is SharedAgentResultDetails {
+  if (!isRecord(value) || value.kind !== "pi.subagent") return false;
+  if (!Array.isArray(value.results) || value.results.length !== 1) return false;
+  if (!isSharedAgentResultRecord(value.results[0]) || !isRecord(value.pi))
+    return false;
+  const pi = value.pi;
+  return (
+    Array.isArray(pi.toolCalls) &&
+    pi.toolCalls.every(isToolDisplayItem) &&
+    isUsageStats(pi.usage) &&
+    typeof value.cost === "number" &&
+    (pi.lifecycle === undefined || isLifecycle(pi.lifecycle)) &&
+    ["continueId", "sessionId", "sessionFile", "leafId"].every(
+      (key) => pi[key] === undefined || typeof pi[key] === "string",
+    )
+  );
+}
+
+/** reads the shared envelope or an older persisted flat Pi result safely. */
+export function readSubAgentResult(value: unknown): SingleResult | undefined {
+  if (!isRecord(value)) return undefined;
+  if ("kind" in value) {
+    if (value.kind !== "pi.subagent") return undefined;
+    if (!isSharedAgentResultDetails(value)) return undefined;
+    const record = value.results[0]!;
+    const pi = value.pi;
+    return {
+      agent: record.agent,
+      task: record.task,
+      model: record.model,
+      exitCode: record.exitCode ?? -1,
+      stopReason: record.stopReason,
+      errorMessage: record.errorMessage,
+      output: compactOutput(record),
+      toolCalls: cloneToolCalls(pi.toolCalls),
+      usage: { ...pi.usage },
+      lifecycle: pi.lifecycle && { ...pi.lifecycle },
+      continueId: pi.continueId,
+      sessionId: pi.sessionId,
+      sessionFile: pi.sessionFile,
+      leafId: pi.leafId,
+    };
+  }
+  const legacyUsage = value.usage;
+  if (
+    typeof value.agent === "string" &&
+    typeof value.task === "string" &&
+    typeof value.exitCode === "number" &&
+    isUsageStats(legacyUsage)
+  ) {
+    const output =
+      typeof value.output === "string"
+        ? value.output
+        : getFinalOutput(Array.isArray(value.messages) ? value.messages : []);
+    const lifecycle = isLifecycle(value.lifecycle)
+      ? value.lifecycle
+      : undefined;
+    return {
+      agent: value.agent,
+      task: value.task,
+      exitCode: value.exitCode,
+      output,
+      toolCalls: Array.isArray(value.toolCalls)
+        ? value.toolCalls.filter(isToolDisplayItem).map((item) => ({ ...item }))
+        : getToolDisplayItems(
+            Array.isArray(value.messages) ? value.messages : [],
+          ),
+      usage: { ...legacyUsage },
+      model: isPiSpawnModelValue(value.model) ? value.model : undefined,
+      stopReason:
+        typeof value.stopReason === "string" ? value.stopReason : undefined,
+      errorMessage:
+        typeof value.errorMessage === "string" ? value.errorMessage : undefined,
+      continueId:
+        typeof value.continueId === "string" ? value.continueId : undefined,
+      sessionId:
+        typeof value.sessionId === "string" ? value.sessionId : undefined,
+      sessionFile:
+        typeof value.sessionFile === "string" ? value.sessionFile : undefined,
+      leafId: typeof value.leafId === "string" ? value.leafId : undefined,
+      lifecycle,
+    };
+  }
+  return undefined;
 }
 
 export function registerSubAgentErrorNormalization(
@@ -172,15 +501,29 @@ export function registerSubAgentErrorNormalization(
 ): void {
   pi.on("tool_result", async (event) => {
     if (event.toolName !== toolName) return;
-    const details = event.details as Partial<SingleResult> | undefined;
-    const status = details?.lifecycle?.status;
+    const details = readSubAgentResult(event.details);
+    const raw =
+      isRecord(event.details) && !("kind" in event.details)
+        ? event.details
+        : undefined;
+    const lifecycle =
+      details?.lifecycle ??
+      (raw &&
+      isRecord(raw.lifecycle) &&
+      ["failed", "cancelled", "timed_out"].includes(
+        String(raw.lifecycle.status),
+      )
+        ? { status: raw.lifecycle.status }
+        : undefined);
+    const status = lifecycle?.status;
     if (
       status === "failed" ||
       status === "cancelled" ||
       status === "timed_out" ||
-      (typeof details?.exitCode === "number" && details.exitCode !== 0) ||
-      details?.stopReason === "error" ||
-      details?.stopReason === "aborted"
+      (typeof (details?.exitCode ?? raw?.exitCode) === "number" &&
+        (details?.exitCode ?? raw?.exitCode) !== 0) ||
+      (details?.stopReason ?? raw?.stopReason) === "error" ||
+      (details?.stopReason ?? raw?.stopReason) === "aborted"
     ) {
       return { isError: true };
     }
@@ -293,7 +636,7 @@ function toolArgSummary(
 
 const TOOL_SUMMARY_MAX_CHARS = 500;
 
-export function getToolDisplayItems(messages: Message[]): ToolDisplayItem[] {
+export function getToolDisplayItems(messages: unknown[]): ToolDisplayItem[] {
   return getDisplayItems(messages).flatMap((item) => {
     if (item.type !== "toolCall") return [];
     const rawSummary = toolArgSummary(item.name, item.args);
@@ -879,6 +1222,16 @@ if (import.meta.vitest) {
           details: { lifecycle: { status: "failed" } },
         }),
       ).resolves.toBeUndefined();
+      await expect(
+        handler?.({
+          toolName: "finder",
+          details: {
+            kind: "pi.subagent",
+            exitCode: 1,
+            lifecycle: { status: "failed" },
+          },
+        }),
+      ).resolves.toBeUndefined();
     });
   });
 
@@ -1261,10 +1614,20 @@ if (import.meta.vitest) {
 
       expect(result.content).toEqual([{ type: "text", text: "found it" }]);
       expect(result.details).not.toHaveProperty("messages");
-      expect(result.details.output).toBe("");
-      expect(result.details.toolCalls).toEqual([]);
+      expect(result.details.kind).toBe("pi.subagent");
+      expect(result.details.results[0]).toEqual({
+        agent: "finder",
+        task: "search for x",
+        model: "gemini-flash",
+        exitCode: 0,
+        finished: true,
+        messages: [
+          { role: "assistant", content: [{ type: "text", text: "found it" }] },
+        ],
+      });
+      expect(result.details.pi.toolCalls).toEqual([]);
       expect(result.details.cost).toBe(0.002);
-      expect(result.details.model).toBe("gemini-flash");
+      expect(result.details.pi.usage.cost).toBe(0.002);
       expect(result.usage).toEqual({
         input: 100,
         output: 50,
@@ -1312,8 +1675,10 @@ if (import.meta.vitest) {
       const result = subAgentResult("final answer", details);
 
       expect(result.details).not.toHaveProperty("messages");
-      expect(result.details.output).toBe("final answer");
-      expect(result.details.toolCalls).toEqual([
+      expect(result.details.results[0]?.messages[0]?.content[0]?.text).toBe(
+        "final answer",
+      );
+      expect(result.details.pi.toolCalls).toEqual([
         {
           id: "tc1",
           name: "read",
@@ -1343,6 +1708,236 @@ if (import.meta.vitest) {
       const result = subAgentResult("failed", details, true);
 
       expect(result.isError).toBe(true);
+    });
+
+    it("copies compact text and render state so later progress cannot rewrite a snapshot", () => {
+      const liveMessages: Message[] = [
+        assistantMessage([{ type: "text", text: "first" }]),
+      ];
+      const live: SingleResult = {
+        agent: "delegate",
+        task: "inspect safely",
+        exitCode: -1,
+        messages: liveMessages,
+        usage: {
+          input: 1,
+          output: 2,
+          cacheRead: 0,
+          cacheWrite: 0,
+          cost: 0.01,
+          contextTokens: 1,
+          turns: 1,
+        },
+        model: "openai-codex/gpt-6.1-sol",
+      };
+      const snapshot = subAgentProgress("first", live);
+      liveMessages[0] = assistantMessage([{ type: "text", text: "later" }]);
+      live.usage.cost = 2;
+
+      expect(snapshot.details.results[0]?.messages[0]?.content[0]?.text).toBe(
+        "first",
+      );
+      expect(snapshot.details.results[0]?.finished).toBe(false);
+      expect(snapshot.details.results[0]).not.toHaveProperty("exitCode");
+      expect(readSubAgentResult(snapshot.details)?.exitCode).toBe(-1);
+      expect(snapshot.details.pi.usage.cost).toBe(0.01);
+      expect(snapshot.details.results[0]?.model).toBe(
+        "openai-codex/gpt-6.1-sol",
+      );
+    });
+  });
+
+  describe("readSubAgentResult", () => {
+    it("reads old persisted flat details and rejects malformed marker data", () => {
+      const legacy = {
+        agent: "finder",
+        task: "search",
+        exitCode: 0,
+        output: "old answer",
+        toolCalls: [],
+        usage: {
+          input: 1,
+          output: 2,
+          cacheRead: 0,
+          cacheWrite: 0,
+          cost: 0.03,
+          contextTokens: 2,
+          turns: 1,
+        },
+      };
+      expect(readSubAgentResult(legacy)?.output).toBe("old answer");
+      expect(
+        readSubAgentResult({
+          ...legacy,
+          output: undefined,
+          messages: [
+            assistantMessage([{ type: "text", text: "first thought" }]),
+            assistantMessage([{ type: "text", text: "last answer" }]),
+          ],
+        })?.output,
+      ).toBe("last answer");
+      expect(
+        readSubAgentResult({
+          kind: "pi.subagent",
+          results: [{ agent: "spoof" }],
+        }),
+      ).toBeUndefined();
+      expect(
+        readSubAgentResult({
+          kind: "pi.subagent",
+          results: [
+            {
+              agent: "finder",
+              task: "search",
+              model: "m",
+              exitCode: 0,
+              messages: [],
+            },
+          ],
+          pi: { toolCalls: [], usage: legacy.usage },
+          cost: 0,
+        }),
+      ).toBeUndefined();
+      expect(
+        readSubAgentResult({ kind: "other", agent: "spoof" }),
+      ).toBeUndefined();
+      const oldTranscript = {
+        ...legacy,
+        output: undefined,
+        toolCalls: undefined,
+        messages: [
+          assistantMessage([
+            {
+              type: "toolCall",
+              id: "old-read",
+              name: "read",
+              arguments: { path: "src/main.ts" },
+            },
+          ]),
+          { role: "toolResult", toolCallId: "old-read", isError: false },
+          assistantMessage([{ type: "text", text: "legacy final" }]),
+        ],
+      };
+      const old = readSubAgentResult(oldTranscript);
+      expect(old?.toolCalls).toEqual([
+        {
+          id: "old-read",
+          name: "read",
+          summary: "src/main.ts",
+          isError: false,
+        },
+      ]);
+      const rendered = new Container();
+      renderAgentTree(old!, rendered, true, mockTheme, { header: "none" });
+      expect(rendered.render(60).join("\n")).toContain("src/main.ts");
+      expect(rendered.render(60).join("\n")).toContain("legacy final");
+    });
+
+    it("keeps upstream-readable success and diagnostic text while retaining Pi views", () => {
+      const details: SingleResult = {
+        agent: "finder",
+        task: "find entry point",
+        exitCode: 0,
+        messages: [assistantMessage([{ type: "text", text: "src/main.ts" }])],
+        usage: {
+          input: 5,
+          output: 2,
+          cacheRead: 1,
+          cacheWrite: 0,
+          cost: 0.004,
+          contextTokens: 6,
+          turns: 1,
+        },
+        model: "fixture/model",
+        toolCalls: [{ id: "read-1", name: "read", summary: "src/main.ts" }],
+      };
+      const result = subAgentResult("src/main.ts", details);
+      const read = readSubAgentResult(result.details);
+      expect(result.details.results[0]?.messages[0]?.content[0]?.text).toBe(
+        "src/main.ts",
+      );
+      expect(result.details.results[0]?.finished).toBe(true);
+      expect(read?.output).toBe("src/main.ts");
+      const routed = subAgentResult(
+        "src/main.ts\\ncontinue: opaque-route",
+        details,
+      );
+      expect(routed.content[0]?.text).toContain("continue: opaque-route");
+      expect(readSubAgentResult(routed.details)?.output).toBe("src/main.ts");
+      expect(read?.toolCalls).toEqual(details.toolCalls);
+      expect(read?.usage.cost).toBe(0.004);
+
+      const failure = subAgentResult(
+        "child exited early",
+        {
+          ...details,
+          exitCode: 1,
+          errorMessage: undefined,
+          stopReason: "aborted",
+        },
+        true,
+      );
+      expect(failure.details.results[0]?.errorMessage).toBe(
+        "child exited early",
+      );
+      expect(readSubAgentResult(failure.details)?.output).toBe("src/main.ts");
+
+      const cancelled = subAgentResult(
+        "child cancelled",
+        {
+          ...details,
+          exitCode: -1,
+          stopReason: undefined,
+          lifecycle: {
+            pid: null,
+            processGroupId: null,
+            owner: null,
+            startedAt: "2026-10-19T00:00:00.000Z",
+            endedAt: null,
+            status: "cancelled",
+            exitCode: null,
+            signal: null,
+            errorKind: "cancelled",
+            cancellationRequestedAt: "2026-10-19T00:00:01.000Z",
+            timeoutMs: null,
+            timedOutAt: null,
+          },
+        },
+        true,
+      );
+      expect(cancelled.details.pi.lifecycle?.status).toBe("cancelled");
+      expect(readSubAgentResult(cancelled.details)?.stopReason).toBe("aborted");
+    });
+
+    it("renders the envelope in collapsed and expanded Pi views", () => {
+      const details = readSubAgentResult(
+        subAgentResult("answer", {
+          agent: "oracle",
+          task: "explain the call path",
+          exitCode: 0,
+          messages: [],
+          usage: {
+            input: 2,
+            output: 1,
+            cacheRead: 0,
+            cacheWrite: 0,
+            cost: 0.001,
+            contextTokens: 2,
+            turns: 1,
+          },
+          model: "fixture/model",
+        }).details,
+      );
+      if (!details) throw new Error("expected a valid shared result");
+
+      const collapsed = new Container();
+      renderAgentTree(details, collapsed, false, mockTheme, { header: "none" });
+      expect(collapsed.render(40).join("\n")).toContain("answer");
+
+      const expanded = new Container();
+      renderAgentTree(details, expanded, true, mockTheme, { header: "none" });
+      expect(expanded.render(40).join("\n")).toContain("explain the call path");
+      expect(expanded.render(40).join("\n")).toContain("$0.0010");
     });
   });
 }

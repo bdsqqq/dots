@@ -15,6 +15,13 @@ export default function fixture(pi: ExtensionAPI) {
     globalThis.fetch = fixtureFetch;
   });
   let turn = 0;
+  const progress = new Map<string, unknown[]>();
+  pi.on("tool_execution_update", (event) => {
+    if (!plan.agentTools?.includes(event.toolName)) return;
+    const updates = progress.get(event.toolName) ?? [];
+    updates.push(event.partialResult.details);
+    progress.set(event.toolName, updates);
+  });
   pi.on("session_start", () => {
     const tools = pi.getAllTools();
     const names = tools.filter((t) =>
@@ -71,6 +78,31 @@ export default function fixture(pi: ExtensionAPI) {
           );
           const first = turn++ === 0;
           if (!first) {
+            for (const name of plan.agentTools ?? []) {
+              const updates = progress.get(name) as any[] | undefined;
+              assert.ok(updates?.length, `${name} emitted no progress`);
+              for (const details of updates) {
+                assert.equal(
+                  details.kind,
+                  "pi.subagent",
+                  `${name} progress marker`,
+                );
+                assert.equal(
+                  details.results.length,
+                  1,
+                  `${name} progress record`,
+                );
+                assert.equal(
+                  details.results[0].finished,
+                  false,
+                  `${name} progress finished early`,
+                );
+                assert.ok(
+                  !("exitCode" in details.results[0]),
+                  `${name} progress leaked exit sentinel`,
+                );
+              }
+            }
             const result = context.messages.findLast(
               (m): m is ToolResultMessage =>
                 m.role === "toolResult" && m.toolName === "codemode",
