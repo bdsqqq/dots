@@ -3,7 +3,7 @@
   stdenvNoCC,
   nodejs,
   esbuild,
-  pnpm_10,
+  pnpm_11,
   fetchPnpmDeps,
   pnpmConfigHook,
   makeWrapper,
@@ -23,16 +23,16 @@ stdenvNoCC.mkDerivation (finalAttrs: {
   };
   pnpmDeps = fetchPnpmDeps {
     inherit (finalAttrs) pname version src;
-    pnpm = pnpm_10;
-    fetcherVersion = 3;
+    pnpm = pnpm_11;
+    fetcherVersion = 4;
     pnpmInstallFlags = [ "--prod" ];
-    hash = "sha256-HNG+2Bc3trvErHQpBvntEzSrD/+4So9ysIwzWT4sSLk=";
+    hash = "sha256-U+vwp2sF4IbY6YVd+KDvEL1mcAgg0a7IcfqAYy5CdyQ=";
   };
   pnpmInstallFlags = [ "--prod" ];
   nativeBuildInputs = [
     nodejs
     esbuild
-    pnpm_10
+    pnpm_11
     pnpmConfigHook
     makeWrapper
   ];

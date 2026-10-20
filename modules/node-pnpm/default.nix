@@ -6,6 +6,19 @@ let
   vpVersion = "0.2.2";
 in
 {
+  nixpkgs.overlays = [
+    (
+      final: prev:
+      prev.lib.optionalAttrs prev.stdenv.hostPlatform.isDarwin {
+        pnpm = final.pnpm_11;
+        # pnpm 11's frozen fetch aborts on Darwin with Node 24.16 (unmanaged
+        # file descriptors, then SIGABRT). The same fetch passes on Node 22.
+        # Only pnpm's interpreter changes; applications keep their chosen Node.
+        pnpm_11 = prev.pnpm_11.override { nodejs-slim = prev.nodejs_22; };
+      }
+    )
+  ];
+
   home-manager.users.bdsqqq =
     { config
     , pkgs

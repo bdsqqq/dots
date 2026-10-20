@@ -3,14 +3,14 @@
   fetchPnpmDeps,
   lib,
   nodejs,
-  pnpm_10,
+  pnpm_11,
   pnpmConfigHook,
   runtimeShell,
   stdenvNoCC,
 }:
 
 let
-  pnpm = pnpm_10;
+  pnpm = pnpm_11;
 in
 stdenvNoCC.mkDerivation (finalAttrs: {
   pname = "hue-control";
@@ -29,9 +29,9 @@ stdenvNoCC.mkDerivation (finalAttrs: {
   pnpmDeps = fetchPnpmDeps {
     inherit (finalAttrs) pname version src;
     inherit pnpm;
-    fetcherVersion = 3;
+    fetcherVersion = 4;
     pnpmInstallFlags = [ "--prod" ];
-    hash = "sha256-fKUReIvuN4AttR/F8zQ9hZkyzlluwqZ4khcigzU+aCs=";
+    hash = "sha256-Py88ADQM9P44WUEzqweooBhnzlBKxGTIDbS5GZ4XBaA=";
   };
   pnpmInstallFlags = [ "--prod" ];
 
