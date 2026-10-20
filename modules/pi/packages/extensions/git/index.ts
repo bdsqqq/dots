@@ -85,6 +85,7 @@ export function createGitExtension() {
 
     pi.on("before_agent_start", async (event) => {
       if (
+        event.messageType !== "user" ||
         !parseMentions(event.prompt).some(
           (mention) => mention.kind === "commit",
         )
@@ -104,3 +105,26 @@ export function createGitExtension() {
 const gitExtension: (pi: ExtensionAPI) => void = createGitExtension();
 
 export default gitExtension;
+
+if (import.meta.vitest) {
+  const { it, expect } = import.meta.vitest;
+  it("adds commit guidance only for user prompts, not custom-message runs", async () => {
+    let beforeStart!: (event: unknown) => Promise<unknown>;
+    gitExtension({
+      on(name: string, handler: typeof beforeStart) {
+        if (name === "before_agent_start") beforeStart = handler;
+      },
+    } as unknown as ExtensionAPI);
+    expect(await beforeStart({ messageType: "custom" })).toBeUndefined();
+    expect(
+      await beforeStart({ messageType: "user", prompt: "hello" }),
+    ).toBeUndefined();
+    expect(
+      await beforeStart({
+        messageType: "user",
+        prompt: "inspect @commit/abcdef1",
+        systemPrompt: "base",
+      }),
+    ).toMatchObject({ systemPrompt: expect.stringContaining("git show") });
+  });
+}
