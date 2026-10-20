@@ -539,6 +539,24 @@ async function runSampler({
     state(`direct-${name}`, [call(name, args)], needles[name]!);
   }
   state(
+    "codemode-head-tail",
+    [
+      call("codemode", {
+        code: [
+          "// SCRIPT_TOP",
+          "text('PREVIEW_' + 'TOP');",
+          ...Array.from(
+            { length: 24 },
+            (_, n) => `text('PREVIEW_ROW_' + ${n}); // SCRIPT_MIDDLE_${n}`,
+          ),
+          "text('PREVIEW_' + 'FINAL_ERROR');",
+          "// SCRIPT_TAIL",
+        ].join("\n"),
+      }),
+    ],
+    "PREVIEW_FINAL_ERROR",
+  );
+  state(
     "codemode-directories-discovery",
     [
       call("codemode", {
@@ -652,6 +670,8 @@ async function runSampler({
     "node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/interactive-mode.js",
     "node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/tool-execution.js",
     "node_modules/@earendil-works/pi-coding-agent/dist/extensions/codemode/renderer.js",
+    "node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/visual-truncate.js",
+    "patches/pi-coding-agent-1.3.0.patch",
     "node_modules/@earendil-works/pi-tui/package.json",
     "node_modules/@earendil-works/pi-tui/dist/tui.js",
   );
@@ -753,7 +773,11 @@ async function runSampler({
       await delay(40);
     }
   };
-  const evidenceFor = (index: number, width: number): RenderEvidence => {
+  const evidenceFor = (
+    index: number,
+    width: number,
+    expanded = true,
+  ): RenderEvidence => {
     const renders = readFileSync(plan.renders, "utf8")
       .trim()
       .split("\n")
@@ -762,7 +786,7 @@ async function runSampler({
       (e) =>
         e.toolCallId === `sampler-${index}-0` &&
         e.viewport === width &&
-        e.expanded &&
+        e.expanded === expanded &&
         !e.isPartial,
     );
     const call = relevant.findLast((e) => e.phase === "call");
@@ -853,6 +877,9 @@ async function runSampler({
         );
         await delay(160);
         const collapsed = capture(`${index}-${width}-collapsed`);
+        const collapsedEvidence = s.calls
+          ? evidenceFor(index, width, false)
+          : undefined;
         tmux("send-keys", "-t", "sampler", "C-o");
         await delay(160);
         const expanded = capture(`${index}-${width}-expanded`);
@@ -901,6 +928,48 @@ async function runSampler({
               assert.ok(
                 !recollapsed.includes("LOCAL_FIXTURE"),
                 "read contents did not collapse again",
+              );
+            }
+            if (s.id === "codemode-head-tail") {
+              for (const grid of [collapsed, recollapsed]) {
+                const compact = assertToolGrid(
+                  grid,
+                  index + 1,
+                  "codemode",
+                  "PREVIEW_TOP",
+                  collapsedEvidence!,
+                );
+                const result = toolResultRegion(compact, collapsedEvidence!);
+                assert.ok(
+                  result.includes("PREVIEW_FINAL_ERROR"),
+                  "collapsed result lost final error",
+                );
+                assert.ok(
+                  !result.includes("PREVIEW_ROW_12"),
+                  "collapsed result exposed middle",
+                );
+                assert.ok(
+                  result.indexOf("47 more lines") >
+                    result.indexOf("PREVIEW_TOP") &&
+                    result.indexOf("47 more lines") <
+                      result.indexOf("PREVIEW_FINAL_ERROR"),
+                  "omission hint not between result excerpts",
+                );
+                assert.ok(
+                  compact.includes("SCRIPT_TOP") &&
+                    compact.includes("SCRIPT_TAIL") &&
+                    !compact.includes("SCRIPT_MIDDLE_12"),
+                  "script head/tail policy missing",
+                );
+                assert.ok(result.includes("Took"), "preview lost timing");
+              }
+              assert.ok(
+                output.includes("PREVIEW_ROW_12"),
+                "expansion lost result middle",
+              );
+              assert.ok(
+                frame.includes("SCRIPT_MIDDLE_12"),
+                "expansion lost code middle",
               );
             }
             if (s.id === "bash-long") {

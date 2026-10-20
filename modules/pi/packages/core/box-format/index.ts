@@ -521,6 +521,211 @@ if (import.meta.vitest) {
       expect(component.handleMouse({ ...event, type: "drag" })).toBeUndefined();
     });
 
+    it("windows wrapped native previews at the omission point, including tiny and odd budgets", async () => {
+      const { load } = await sdk();
+      const { VisualLinePreview, truncateToVisualLines } = await load(
+        "modes/interactive/components/visual-truncate.js",
+      );
+      const {
+        stripTerminalSequences,
+        visibleWidth,
+        truncateToWidth: clip,
+      } = await import("@earendil-works/pi-tui");
+      const text = `\x1b[32m${osc8Link("https://example.com", "日本語 λ é 😀 ".repeat(10))}\x1b[0m\nFINAL_ERROR`;
+      for (const width of [0, 1, 8, 20, 80, 140]) {
+        const full = new Text(text, 0, 0)
+          .render(width)
+          .map((line) => clip(line, width, ""));
+        for (const budget of [
+          0,
+          1,
+          2,
+          3,
+          5,
+          10,
+          full.length,
+          full.length + 1,
+        ]) {
+          const actual = truncateToVisualLines(text, budget, width);
+          const hidden = Math.max(0, full.length - budget);
+          expect(actual.skippedCount).toBe(hidden);
+          const head = Math.floor(budget / 2);
+          const tail = budget - head;
+          expect(actual.visualLines).toEqual(
+            !hidden
+              ? full
+              : budget === 0
+                ? []
+                : [...full.slice(0, head), ...full.slice(-tail)],
+          );
+          const preview = new VisualLinePreview({
+            text,
+            maxVisualLines: budget,
+            formatHint: (n: number) => `HIDDEN ${n}`,
+          });
+          const lines = preview.render(width);
+          expect(
+            lines.every((line: string) => visibleWidth(line) <= width),
+          ).toBe(true);
+          if (hidden && width >= 20)
+            expect(stripTerminalSequences(lines[head])).toBe(
+              `HIDDEN ${hidden}`,
+            );
+          expect(preview.render(width)).toBe(lines);
+          preview.invalidate();
+          expect(preview.render(width)).toEqual(lines);
+          for (const keep of ["start", "end"]) {
+            expect(
+              truncateToVisualLines(text, budget, width, 0, keep).visualLines,
+            ).toEqual(
+              !hidden
+                ? full
+                : budget === 0
+                  ? []
+                  : keep === "start"
+                    ? full.slice(0, budget)
+                    : full.slice(-budget),
+            );
+          }
+        }
+      }
+    });
+
+    it("rejects the isolated pre-fix native preview rather than accepting tail-only output", async () => {
+      const { load } = await sdk();
+      const fixed = await load(
+        "modes/interactive/components/visual-truncate.js",
+      );
+      const before = await import(
+        new URL(
+          "../../../scripts/rendering-preview-before.mjs",
+          import.meta.url,
+        ).href
+      );
+      const text = Array.from({ length: 30 }, (_, n) => `ROW_${n}`).join("\n");
+      const accepts = (implementation: any) => {
+        const component = new implementation.VisualLinePreview({
+          text,
+          maxVisualLines: 5,
+          formatHint: (n: number) => `HIDDEN ${n}`,
+        });
+        const lines = component.render(80).join("\n");
+        expect(lines).toContain("ROW_0");
+        expect(lines).toContain("ROW_29");
+        expect(lines).not.toContain("ROW_15");
+        expect(lines.indexOf("HIDDEN 25")).toBeGreaterThan(
+          lines.indexOf("ROW_0"),
+        );
+        expect(lines.indexOf("HIDDEN 25")).toBeLessThan(
+          lines.indexOf("ROW_29"),
+        );
+      };
+      accepts(fixed);
+      expect(() => accepts(before)).toThrow();
+    });
+
+    it("keeps both ends of native code, results, fallback, shell, MCP and write with reversible expansion", async () => {
+      const { load, make, rows, result } = await sdk();
+      const { codemodeRenderers } = await load(
+        "extensions/codemode/renderer.js",
+      );
+      const { createShellRenderers } = await load(
+        "core/tools/renderers/bash.js",
+      );
+      const { writeRenderers } = await load("core/tools/renderers/write.js");
+      const { createMcpToolDefinition } = await load("extensions/mcp/tools.js");
+      const mcp = createMcpToolDefinition({
+        server: "fixture",
+        tool: { name: "fixture", inputSchema: { type: "object" } },
+      });
+      const code = Array.from(
+        { length: 30 },
+        (_, n) => `// CODE_${String(n).padStart(3, "0")}`,
+      ).join("\n");
+      const output = Array.from(
+        { length: 30 },
+        (_, n) => `OUT_${String(n).padStart(3, "0")}`,
+      ).join("\n");
+      for (const definition of [
+        undefined,
+        {},
+        codemodeRenderers,
+        createShellRenderers("$"),
+        mcp,
+      ]) {
+        const component = make(definition, "fixture", {
+          code,
+          command: "fixture",
+        });
+        component.updateResult({
+          ...result(output + "\nFINAL_ERROR", true),
+          details: {
+            fullOutputPath: "/tmp/full-output",
+            calls: Array.from({ length: 12 }, (_, n) => ({
+              name: `child_${n}`,
+              args: "",
+              status: "ok",
+            })),
+          },
+        });
+        for (const width of [20, 80, 140]) {
+          component.setExpanded(false);
+          const collapsed = rows(component, width).join("\n");
+          expect(collapsed).toContain("OUT_000");
+          expect(collapsed).toContain("FINAL_ERROR");
+          expect(collapsed).not.toContain("OUT_015");
+          if (width >= 80) {
+            const start = collapsed.indexOf("OUT_000");
+            const hint = Math.max(
+              collapsed.indexOf("more lines", start),
+              collapsed.indexOf("hidden lines", start),
+            );
+            expect(hint).toBeGreaterThan(start);
+            expect(hint).toBeLessThan(collapsed.indexOf("FINAL_ERROR"));
+          }
+          if (definition === codemodeRenderers && width >= 80) {
+            expect(collapsed).toContain("CODE_000");
+            expect(collapsed).toContain("CODE_029");
+            expect(collapsed).not.toContain("CODE_015");
+            expect(collapsed).toContain("child_0");
+            expect(collapsed).toContain("child_11");
+            expect(collapsed).not.toContain("child_6");
+            expect(collapsed).toContain("4 more calls");
+            expect(collapsed).toContain("26 more lines");
+            expect(collapsed).toContain("/tmp/full-output");
+            expect(collapsed).toContain("Took 1.2s");
+          }
+          component.setExpanded(true);
+          expect(rows(component, width).join("\n")).toContain("OUT_015");
+          component.setExpanded(false);
+          expect(rows(component, width).join("\n")).toBe(collapsed);
+        }
+      }
+      const write = make(writeRenderers, "write", {
+        path: "fixture.ts",
+        content: code,
+      });
+      write.updateResult(result(""));
+      expect(rows(write).join("\n")).toContain("CODE_000");
+      expect(rows(write).join("\n")).toContain("CODE_029");
+      expect(rows(write).join("\n")).not.toContain("CODE_015");
+      write.setExpanded(true);
+      expect(rows(write).join("\n")).toContain("CODE_015");
+      const { BashExecutionComponent } = await load(
+        "modes/interactive/components/bash-execution.js",
+      );
+      const shell = new BashExecutionComponent("fixture", {
+        requestRender() {},
+      });
+      shell.appendOutput(output + "\nFINAL_ERROR");
+      shell.setComplete(23, false);
+      expect(rows(shell).join("\n")).toContain("OUT_000");
+      expect(rows(shell).join("\n")).toContain("FINAL_ERROR");
+      expect(rows(shell).join("\n")).not.toContain("OUT_015");
+      shell.setExpanded(true);
+      expect(rows(shell).join("\n")).toContain("OUT_015");
+    });
+
     it("retains native codemode scripts, nested statuses, output, timing and reuse", async () => {
       const { load, make, rows, result, visibleWidth } = await sdk();
       const { codemodeRenderers } = await load(
