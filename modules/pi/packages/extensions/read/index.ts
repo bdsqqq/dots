@@ -1,49 +1,37 @@
-/**
- * read tool — replaces pi's built-in with enhanced file reading.
- *
- * differences from pi's built-in:
- * - line-numbered output (`1: content`)
- * - directory listing integrated (no separate ls tool needed)
- * - secret file blocking (.env etc.)
- * - `~` expansion and `@` prefix stripping
- * - image support via base64
- *
- * uses `path` + optional `read_range` [start, end] interface.
- */
-
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type {
-  ExtensionAPI,
-  ToolDefinition,
+import {
+  createReadToolDefinition,
+  DEFAULT_MAX_BYTES,
+  DEFAULT_MAX_LINES,
+  type ExtensionAPI,
+  type ReadToolDetails,
+  type ReadToolInput,
+  type Theme,
+  type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import { Text } from "@earendil-works/pi-tui";
+import { renderLifecycleCall, osc8Link } from "@bds_pi/box-format";
 import {
-  renderLifecycleCall,
-  boxRendererWindowed,
-  framedTextRenderer,
-  osc8Link,
-  type BoxSection,
-  type BoxLine,
-  type Excerpt,
-} from "@bds_pi/box-format";
-import { Type } from "typebox";
-import { formatHeadTail } from "@bds_pi/output-buffer";
+  Type,
+  type Static,
+  type TInteger,
+  type TObject,
+  type TOptional,
+  type TString,
+  type TTuple,
+} from "typebox";
 import {
   clearConfigCache,
   getEnabledExtensionConfig,
   setGlobalSettingsPath,
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
-import {
-  isSecretFile,
-  listDirectory,
-  resolveToAbsolute,
-  resolveWithVariants,
-} from "@bds_pi/fs";
+import { isSecretFile, listDirectory, resolveWithVariants } from "@bds_pi/fs";
 import * as toolPolicy from "@bds_pi/tool-policy";
+
 export {
   expandPath,
   resolveToAbsolute,
@@ -52,39 +40,17 @@ export {
   listDirectory,
 } from "@bds_pi/fs";
 
-// --- limits ---
-
-export interface ReadLimits {
-  maxLines: number;
-  maxFileBytes: number;
-  maxLineBytes: number;
-  maxDirEntries: number;
-}
-
-export const NORMAL_LIMITS: ReadLimits = {
-  maxLines: 500,
-  maxFileBytes: 64 * 1024,
-  maxLineBytes: 4096,
-  maxDirEntries: 1000,
-};
-
-type ReadExtConfig = {
-  maxLines: number;
-  maxFileBytes: number;
-  maxLineBytes: number;
+export type ReadOptions = {
   maxDirEntries: number;
 };
+
+export const DEFAULT_READ_OPTIONS: ReadOptions = { maxDirEntries: 1000 };
+
+type ReadConfig = ReadOptions & Record<string, unknown>;
 
 type ReadExtensionDeps = {
   getEnabledExtensionConfig: typeof getEnabledExtensionConfig;
   withPromptPatch: typeof withPromptPatch;
-};
-
-const CONFIG_DEFAULTS: ReadExtConfig = {
-  maxLines: 500,
-  maxFileBytes: 65536,
-  maxLineBytes: 4096,
-  maxDirEntries: 1000,
 };
 
 const DEFAULT_DEPS: ReadExtensionDeps = {
@@ -96,154 +62,150 @@ function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1;
 }
 
-function isReadConfig(value: Record<string, unknown>): value is ReadExtConfig {
-  return (
-    isPositiveInteger(value.maxLines) &&
-    isPositiveInteger(value.maxFileBytes) &&
-    isPositiveInteger(value.maxLineBytes) &&
-    isPositiveInteger(value.maxDirEntries)
-  );
+function isReadConfig(value: Record<string, unknown>): value is ReadConfig {
+  return isPositiveInteger(value.maxDirEntries);
 }
 
-const READ_CONFIG_SCHEMA: ExtensionConfigSchema<ReadExtConfig> = {
+const READ_CONFIG_SCHEMA: ExtensionConfigSchema<ReadConfig> = {
   validate: isReadConfig,
 };
 
-interface ReadParams {
-  path: string;
-  read_range?: [number, number];
-}
-
-const IMAGE_MIME: Record<string, string> = {
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".png": "image/png",
-  ".gif": "image/gif",
-  ".webp": "image/webp",
+const CONFIG_DEFAULTS: ReadConfig = {
+  maxDirEntries: DEFAULT_READ_OPTIONS.maxDirEntries,
 };
 
-export function getImageMime(filePath: string): string | undefined {
-  return IMAGE_MIME[path.extname(filePath).toLowerCase()];
-}
+const nativeRead = createReadToolDefinition(process.cwd());
+const readDescription =
+  `Read text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. ` +
+  `Text is returned without line numbers, bounded to ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). ` +
+  "Use read_range [start, end] for a 1-indexed inclusive line range. Continue with later ranges to read further.";
+// isolated declarations need a portable type rather than the SDK's nested typebox path.
+const readParameters: TObject<{
+  path: TString;
+  read_range: TOptional<TTuple<[TInteger, TInteger]>>;
+}> = Type.Object({
+  path: nativeRead.parameters.properties.path,
+  read_range: Type.Optional(
+    Type.Tuple([Type.Integer({ minimum: 1 }), Type.Integer({ minimum: 1 })], {
+      description: "inclusive 1-indexed start and end lines.",
+    }),
+  ),
+});
 
-// --- file reading ---
+export type ReadParams = Static<typeof readParameters>;
 
-interface ReadResult {
-  text: string;
-  totalLines: number;
-  shownStart: number;
-  shownEnd: number;
-}
-
-export function readFileContent(
-  filePath: string,
-  limits: ReadLimits,
-  readRange?: [number, number],
-): ReadResult {
-  const raw = fs.readFileSync(filePath, "utf-8");
-  const allLines = raw.split("\n");
-  const totalLines = allLines.length;
-
-  // determine the range to show
-  const start = Math.max(1, readRange?.[0] ?? 1);
-  const end = Math.min(
-    totalLines,
-    readRange?.[1] ?? start + limits.maxLines - 1,
-  );
-  const _requestedLines = end - start + 1;
-
-  // number lines and truncate long lines
-  const numbered: string[] = [];
-  for (let i = start - 1; i < end; i++) {
-    let line = allLines[i];
-    if (line === undefined) continue;
-    const lineBytes = Buffer.byteLength(line, "utf-8");
-
-    if (lineBytes > limits.maxLineBytes) {
-      while (Buffer.byteLength(line, "utf-8") > limits.maxLineBytes) {
-        line = line.slice(0, Math.max(1, line.length - 100));
-      }
-      line += "... (line truncated)";
-    }
-
-    numbered.push(`${i + 1}: ${line}`);
-  }
-
-  // if numbered output fits in byte limit, return as-is
-  const totalBytes = numbered.reduce(
-    (sum, l) => sum + Buffer.byteLength(l, "utf-8") + 1,
-    0,
-  );
-  if (totalBytes <= limits.maxFileBytes) {
-    return {
-      text: numbered.join("\n"),
-      totalLines,
-      shownStart: start,
-      shownEnd: end,
-    };
-  }
-
-  // otherwise apply head+tail truncation on the numbered lines
-  const formatted = formatHeadTail(
-    numbered,
-    limits.maxLines,
-    (n) =>
-      `... [${n} lines truncated, ${limits.maxFileBytes / 1024}KB limit reached] ...`,
-  );
-
+function errorResult(message: string) {
   return {
-    text: formatted,
-    totalLines,
-    shownStart: start,
-    shownEnd: end,
+    content: [{ type: "text" as const, text: message }],
+    details: undefined,
+    structuredContent: message,
+    isError: true,
   };
 }
 
-// --- tool factory ---
-
-export function createReadTool(limits: ReadLimits): ToolDefinition<any> {
-  return {
-    name: "read",
-    label: "Read",
+export function createReadTool(
+  options: ReadOptions = DEFAULT_READ_OPTIONS,
+): ToolDefinition<typeof readParameters, ReadToolDetails | undefined> {
+  const tool: ToolDefinition<
+    typeof readParameters,
+    ReadToolDetails | undefined
+  > = {
+    ...nativeRead,
     description:
-      "Read a file or list a directory from the file system. If the path is a directory, it returns a list of entries. If the file or directory doesn't exist, an error is returned.\n\n" +
-      `- The path parameter MUST be an absolute path.\n` +
-      `- By default, this tool returns the first ${limits.maxLines} lines. To read more, call it multiple times with different read_ranges.\n` +
-      "- Use bash with rg to find specific content in large files or files with long lines.\n" +
-      "- If you are unsure of the correct file path, use the glob tool to look up filenames by glob pattern.\n" +
-      '- The contents are returned with each line prefixed by its line number. For example, if a file has contents "abc\\n", you will receive "1: abc\\n". For directories, entries are returned one per line (without line numbers) with a trailing "/" for subdirectories.\n' +
-      "- This tool can read images (such as PNG, JPEG, and GIF files) and present them to the model visually.\n" +
-      "- When possible, call this tool in parallel for all files you will want to read.\n" +
-      "      - Avoid tiny repeated slices (e.g., 50‑line chunks). If you need more context from the same file, read a larger range or the full default window instead.",
+      `${readDescription}\n\n` +
+      "if path is a directory, its entries are listed. when a native continuation notice gives an offset, use it as read_range's start. " +
+      "paths accept absolute or workspace-relative spelling, ~ for the home directory, and @ as an absolute-path prefix. " +
+      "secret files and paths rejected by tool policy cannot be read.",
+    parameters: readParameters,
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
+      if (signal?.aborted) throw new Error("Operation aborted");
+      if (params.read_range && params.read_range[1] < params.read_range[0]) {
+        return errorResult(
+          "read_range end must be greater than or equal to start.",
+        );
+      }
 
-    parameters: Type.Object({
-      path: Type.String({
-        description:
-          "The absolute path to the file or directory (MUST be absolute, not relative).",
-      }),
-      read_range: Type.Optional(
-        Type.Array(Type.Number(), {
-          description: `An array of two integers specifying the start and end line numbers to view. Line numbers are 1-indexed. If not provided, defaults to [1, ${limits.maxLines}]. Examples: [500, 700], [700, 1400]`,
-          minItems: 2,
-          maxItems: 2,
-        }),
-      ),
-    }),
+      const candidate = resolveWithVariants(params.path, ctx.cwd);
+      let target = candidate;
+      try {
+        target = fs.realpathSync(candidate);
+      } catch {
+        // Keep the expanded candidate so missing paths retain the SDK error.
+      }
 
-    renderCall(args: any, theme: any, context: any) {
+      const policy = toolPolicy.loadToolPolicy();
+      // neither an alias nor its canonical target may bypass a path restriction.
+      for (const policyPath of new Set([candidate, target])) {
+        const verdict = toolPolicy.evaluateToolPolicy(
+          "read",
+          { path: policyPath, sessionCwd: ctx.cwd },
+          policy,
+        );
+        if (verdict.action === "reject") {
+          return errorResult(
+            verdict.message
+              ? `path rejected: ${verdict.message}`
+              : "path rejected by tool policy.",
+          );
+        }
+      }
+
+      if (isSecretFile(target) || isSecretFile(candidate)) {
+        return errorResult(
+          `refused to read ${path.basename(target)}: file may contain secrets. ask the user to share relevant values.`,
+        );
+      }
+
+      try {
+        if (fs.statSync(target).isDirectory()) {
+          if (signal?.aborted) throw new Error("Operation aborted");
+          const text = listDirectory(target, options.maxDirEntries);
+          return {
+            content: [{ type: "text" as const, text }],
+            details: undefined,
+            structuredContent: text,
+          };
+        }
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message.startsWith("cannot list directory:")
+        ) {
+          return errorResult(error.message);
+        }
+        // Missing and unreadable paths are reported by the native read operation.
+      }
+
+      const [start, end] = params.read_range ?? [];
+      const nativeParams: ReadToolInput = {
+        path: target,
+        ...(start === undefined ? {} : { offset: start }),
+        ...(start === undefined || end === undefined
+          ? {}
+          : { limit: end - start + 1 }),
+      };
+      return nativeRead.execute(
+        toolCallId,
+        nativeParams,
+        signal,
+        onUpdate,
+        ctx,
+      );
+    },
+    renderCall(args, theme, context) {
       const filePath = args.path || "...";
       const home = os.homedir();
       const shortened = filePath.startsWith(home)
         ? `~${filePath.slice(home.length)}`
         : filePath;
-      const readRange = args.read_range;
-      let displayContext = shortened;
-      if (Array.isArray(readRange) && readRange.length === 2) {
-        displayContext += `:${readRange[0]}-${readRange[1]}`;
-      }
+      const [start, end] = args.read_range ?? [];
+      const displayPath =
+        start === undefined || end === undefined
+          ? shortened
+          : `${shortened}:${start}-${end}`;
       const linked = filePath.startsWith("/")
-        ? osc8Link(`file://${filePath}`, displayContext)
-        : displayContext;
+        ? osc8Link(`file://${filePath}`, displayPath)
+        : displayPath;
       return renderLifecycleCall(
         new Text(
           theme.fg("toolTitle", theme.bold("Read ")) + theme.fg("dim", linked),
@@ -254,205 +216,42 @@ export function createReadTool(limits: ReadLimits): ToolDefinition<any> {
         context,
       );
     },
-
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const p = params as ReadParams;
-      const requestedPath = resolveToAbsolute(p.path, ctx.cwd);
-      const verdict = toolPolicy.evaluateToolPolicy(
-        "read",
-        {
-          path: requestedPath,
-          sessionCwd: ctx.cwd,
-        },
-        toolPolicy.loadToolPolicy(),
-      );
-      if (verdict.action === "reject") {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: verdict.message
-                ? `path rejected: ${verdict.message}`
-                : "path rejected by tool policy.",
-            },
-          ],
-          isError: true,
-        } as any;
-      }
-
-      const resolved = resolveWithVariants(p.path, ctx.cwd);
-
-      if (isSecretFile(resolved)) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `refused to read ${path.basename(resolved)}: file may contain secrets. ask the user to share relevant values.`,
-            },
-          ],
-          isError: true,
-        } as any;
-      }
-
-      if (!fs.existsSync(resolved)) {
-        return {
-          content: [
-            { type: "text" as const, text: `file not found: ${resolved}` },
-          ],
-          isError: true,
-        } as any;
-      }
-
-      const stat = fs.statSync(resolved);
-
-      // --- directory ---
-      if (stat.isDirectory()) {
-        try {
-          let text = listDirectory(resolved, limits.maxDirEntries);
-          return {
-            content: [{ type: "text" as const, text }],
-            details: { filePath: resolved, isDirectory: true },
-          } as any;
-        } catch (err: any) {
-          return {
-            content: [{ type: "text" as const, text: err.message }],
-            isError: true,
-          } as any;
-        }
-      }
-
-      // --- image ---
-      const mime = getImageMime(resolved);
-      if (mime) {
-        try {
-          const base64 = fs.readFileSync(resolved).toString("base64");
-          return {
-            content: [{ type: "image" as const, data: base64, mimeType: mime }],
-          } as any;
-        } catch (err: any) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `failed to read image: ${err.message}`,
-              },
-            ],
-            isError: true,
-          } as any;
-        }
-      }
-
-      // --- text file ---
-      try {
-        const readRange = p.read_range;
-        const { text, totalLines, shownStart, shownEnd } = readFileContent(
-          resolved,
-          limits,
-          readRange,
-        );
-
-        let output = text;
-        let notice: string | undefined;
-
-        if (shownEnd < totalLines) {
-          notice = `showing lines ${shownStart}-${shownEnd} of ${totalLines}`;
-          output += `\n\n(${notice}. use read_range to see more.)`;
-        }
-
-        return {
-          content: [{ type: "text" as const, text: output }],
-          details: { filePath: resolved, notice },
-        } as any;
-      } catch (err: any) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `failed to read file: ${err.message}`,
-            },
-          ],
-          isError: true,
-        } as any;
-      }
-    },
-
-    renderResult(
-      result: any,
-      { expanded }: { expanded: boolean },
-      _theme: any,
-    ) {
-      const text = result.content?.[0];
-      if (text?.type !== "text")
-        return framedTextRenderer("(no output)", expanded);
-
-      const _filePath: string = result.details?.filePath ?? "";
-      const _isDir: boolean = result.details?.isDirectory ?? false;
-      const notice: string | undefined = result.details?.notice;
-
-      const rawLines = (text.text as string).split("\n");
-
-      // parse numbered lines (e.g., "  42: content") into BoxLine[]
-      const parsed: BoxLine[] = rawLines.map((line) => {
-        const m = line.match(/^(\s*\d+): (.*)$/);
-        if (m && m[1] && m[2])
-          return { gutter: m[1].trim(), text: m[2], highlight: true };
-        return { text: line, highlight: true };
-      });
-
-      // strip trailing notice that we'll move to the box footer
-      if (notice && parsed.length > 0) {
-        const last = parsed[parsed.length - 1];
-        if (last && last.text.startsWith(`(${notice}`)) {
-          parsed.pop(); // notice line
-          const newLast = parsed[parsed.length - 1];
-          if (parsed.length && newLast && newLast.text === "") {
-            parsed.pop(); // blank before notice
-          }
-        }
-      }
-
-      const notices = notice ? [notice] : undefined;
-
-      /** collapsed: head 3 + tail 5 visual lines */
-      const COLLAPSED_EXCERPTS: Excerpt[] = [
-        { focus: "head", context: 3 },
-        { focus: "tail", context: 5 },
-      ];
-
-      const section: BoxSection = { blocks: [{ lines: parsed }] };
-
-      return boxRendererWindowed(
-        () => [section],
-        {
-          collapsed: { excerpts: COLLAPSED_EXCERPTS },
-          expanded: {},
-        },
-        notices,
-        expanded,
+    renderResult(result, options, theme, context) {
+      const [offset, end] = context.args.read_range ?? [];
+      const args: ReadToolInput = {
+        path: context.args.path,
+        ...(offset === undefined ? {} : { offset }),
+        ...(offset === undefined || end === undefined
+          ? {}
+          : { limit: end - offset + 1 }),
+      };
+      return (
+        nativeRead.renderResult?.(result, options, theme, {
+          ...context,
+          args,
+        }) ?? new Text("", 0, 0)
       );
     },
   };
+
+  return tool;
 }
 
 /**
- * read is hotter than the other shadow tools because sibling extensions import
- * its exported limits/types at module load time. config gating therefore needs
- * to stay at startup registration only: skip the custom read wrapper when
- * disabled, but keep this module's exports stable so imports like `@bds_pi/read`
- * in `ls` still evaluate normally.
+ * Keep config gating at startup registration: sibling extensions import this
+ * module while loading, even when read itself is disabled.
  */
 function createReadExtension(
   deps: ReadExtensionDeps = DEFAULT_DEPS,
 ): (pi: ExtensionAPI) => void {
   return function readExtension(pi: ExtensionAPI): void {
-    const { enabled, config: cfg } = deps.getEnabledExtensionConfig(
+    const { enabled, config } = deps.getEnabledExtensionConfig(
       "@bds_pi/read",
       CONFIG_DEFAULTS,
       { schema: READ_CONFIG_SCHEMA },
     );
     if (!enabled) return;
-
-    pi.registerTool(deps.withPromptPatch(createReadTool(cfg)));
+    pi.registerTool(deps.withPromptPatch(createReadTool(config)));
   };
 }
 
@@ -461,258 +260,342 @@ const readExtension: (pi: ExtensionAPI) => void = createReadExtension();
 export default readExtension;
 
 if (import.meta.vitest) {
-  const { afterEach, beforeEach, describe, expect, it, vi } = import.meta
-    .vitest;
+  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
   const tmpdir = os.tmpdir();
+  const directories: string[] = [];
 
-  function writeTmpJson(dir: string, filename: string, data: unknown): string {
-    const filePath = path.join(dir, filename);
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(data));
-    return filePath;
+  function makeDirectory(): string {
+    const directory = fs.mkdtempSync(path.join(tmpdir, "pi-read-sdk-"));
+    directories.push(directory);
+    return directory;
   }
 
-  function createMockExtensionApiHarness() {
-    const tools: unknown[] = [];
-
-    const pi = {
-      registerTool(tool: unknown) {
-        tools.push(tool);
-      },
-    } as unknown as ExtensionAPI;
-
-    return { pi, tools };
+  function callContext(cwd: string) {
+    return { cwd } as Parameters<
+      NonNullable<ReturnType<typeof createReadTool>["execute"]>
+    >[4];
   }
 
   afterEach(() => {
+    for (const directory of directories.splice(0)) {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
     vi.restoreAllMocks();
     clearConfigCache();
-    setGlobalSettingsPath(path.join(tmpdir, `nonexistent-${Date.now()}.json`));
+    setGlobalSettingsPath(
+      path.join(tmpdir, `missing-read-settings-${Date.now()}.json`),
+    );
   });
 
-  // --- pure function tests (Layer 1) ---
+  describe("read SDK adapter", () => {
+    it("reads Unicode text and inclusive ranges through the SDK", async () => {
+      const cwd = makeDirectory();
+      const file = path.join(cwd, "unicode.txt");
+      fs.writeFileSync(file, "olá\n世界\nthird\nfourth");
+      const tool = createReadTool();
 
-  describe("getImageMime", () => {
-    it("returns mime type for known image extensions", () => {
-      expect(getImageMime("photo.jpg")).toBe("image/jpeg");
-      expect(getImageMime("photo.jpeg")).toBe("image/jpeg");
-      expect(getImageMime("icon.png")).toBe("image/png");
-      expect(getImageMime("animation.gif")).toBe("image/gif");
-      expect(getImageMime("modern.webp")).toBe("image/webp");
+      const ordinary = await tool.execute(
+        "ordinary",
+        { path: file },
+        undefined,
+        undefined,
+        callContext(cwd),
+      );
+      const ranged = await tool.execute(
+        "range",
+        { path: file, read_range: [2, 3] },
+        undefined,
+        undefined,
+        callContext(cwd),
+      );
+
+      expect(ordinary.content).toContainEqual({
+        type: "text",
+        text: "olá\n世界\nthird\nfourth",
+      });
+      expect(ranged.content[0]).toMatchObject({
+        type: "text",
+        text: expect.stringMatching(/^世界\nthird\n\n\[1 more lines/),
+      });
     });
 
-    it("is case-insensitive", () => {
-      expect(getImageMime("PHOTO.JPG")).toBe("image/jpeg");
-      expect(getImageMime("Photo.PnG")).toBe("image/png");
+    it("rejects reversed ranges without reading file content", async () => {
+      const cwd = makeDirectory();
+      const result = await withPromptPatch(createReadTool()).execute(
+        "range",
+        { path: path.join(cwd, "absent.txt"), read_range: [5, 2] },
+        undefined,
+        undefined,
+        callContext(cwd),
+      );
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent).toBe(
+        "read_range end must be greater than or equal to start.",
+      );
     });
 
-    it("returns undefined for non-image files", () => {
-      expect(getImageMime("file.txt")).toBeUndefined();
-      expect(getImageMime("file.json")).toBeUndefined();
-      expect(getImageMime("file.ts")).toBeUndefined();
-      expect(getImageMime("file")).toBeUndefined();
-    });
-  });
+    it("uses native bounds for large and long text", async () => {
+      const cwd = makeDirectory();
+      const file = path.join(cwd, "large.txt");
+      fs.writeFileSync(
+        file,
+        `${"x".repeat(20_000)}\n${Array.from({ length: 3000 }, (_, index) => `line ${index + 1}`).join("\n")}`,
+      );
+      const result = await createReadTool().execute(
+        "large",
+        { path: file },
+        undefined,
+        undefined,
+        callContext(cwd),
+      );
+      const text = result.content.find((part) => part.type === "text");
 
-  describe("readFileContent", () => {
-    let testDir: string;
-
-    beforeEach(() => {
-      testDir = fs.mkdtempSync(path.join(tmpdir, "pi-read-content-"));
-    });
-
-    afterEach(() => {
-      fs.rmSync(testDir, { recursive: true, force: true });
-    });
-
-    it("numbers lines starting from 1", () => {
-      const filePath = path.join(testDir, "test.txt");
-      fs.writeFileSync(filePath, "first\nsecond\nthird");
-
-      const result = readFileContent(filePath, NORMAL_LIMITS);
-
-      expect(result.text).toBe("1: first\n2: second\n3: third");
-      expect(result.totalLines).toBe(3);
-      expect(result.shownStart).toBe(1);
-      expect(result.shownEnd).toBe(3);
+      expect(text?.type).toBe("text");
+      if (text?.type === "text")
+        expect(text.text).toMatch(/exceeds|Showing lines|limit/);
+      expect(result.details?.truncation?.truncated).toBe(true);
     });
 
-    it("respects read_range [start, end]", () => {
-      const filePath = path.join(testDir, "test.txt");
-      fs.writeFileSync(filePath, "line1\nline2\nline3\nline4\nline5");
+    it("keeps native empty and missing-file behavior", async () => {
+      const cwd = makeDirectory();
+      const empty = path.join(cwd, "empty.txt");
+      fs.writeFileSync(empty, "");
 
-      const result = readFileContent(filePath, NORMAL_LIMITS, [2, 4]);
-
-      expect(result.text).toBe("2: line2\n3: line3\n4: line4");
-      expect(result.totalLines).toBe(5);
-      expect(result.shownStart).toBe(2);
-      expect(result.shownEnd).toBe(4);
+      const result = await createReadTool().execute(
+        "empty",
+        { path: empty },
+        undefined,
+        undefined,
+        callContext(cwd),
+      );
+      expect(result.content).toContainEqual({ type: "text", text: "" });
+      await expect(
+        createReadTool().execute(
+          "missing",
+          { path: path.join(cwd, "missing.txt") },
+          undefined,
+          undefined,
+          callContext(cwd),
+        ),
+      ).rejects.toThrow();
     });
 
-    it("clamps read_range to file bounds", () => {
-      const filePath = path.join(testDir, "test.txt");
-      fs.writeFileSync(filePath, "only\nline");
+    it("lists directories with the configured directory cap", async () => {
+      const cwd = makeDirectory();
+      const directory = path.join(cwd, "entries");
+      fs.mkdirSync(directory);
+      for (const name of ["a", "b", "c", "d", "e"])
+        fs.writeFileSync(path.join(directory, name), "");
 
-      const result = readFileContent(filePath, NORMAL_LIMITS, [0, 100]);
-
-      expect(result.text).toBe("1: only\n2: line");
-      expect(result.shownStart).toBe(1);
-      expect(result.shownEnd).toBe(2);
+      const result = await createReadTool({ maxDirEntries: 4 }).execute(
+        "directory",
+        { path: directory },
+        undefined,
+        undefined,
+        callContext(cwd),
+      );
+      expect(result.content[0]).toMatchObject({
+        type: "text",
+        text: expect.stringContaining("more entries"),
+      });
+      expect(result.structuredContent).toEqual(
+        result.content[0]?.type === "text" ? result.content[0].text : undefined,
+      );
     });
 
-    it("truncates long lines exceeding maxLineBytes", () => {
-      const filePath = path.join(testDir, "test.txt");
-      const longLine = "x".repeat(5000);
-      fs.writeFileSync(filePath, longLine);
+    it("sniffs image bytes and forwards native image content and details", async () => {
+      const cwd = makeDirectory();
+      const image = path.join(cwd, "misleading.txt");
+      const bmp = Buffer.alloc(58);
+      bmp.write("BM");
+      bmp.writeUInt32LE(58, 2);
+      bmp.writeUInt32LE(54, 10);
+      bmp.writeUInt32LE(40, 14);
+      bmp.writeInt32LE(1, 18);
+      bmp.writeInt32LE(1, 22);
+      bmp.writeUInt16LE(1, 26);
+      bmp.writeUInt16LE(24, 28);
+      bmp.writeUInt32LE(4, 34);
+      fs.writeFileSync(image, bmp);
 
-      const result = readFileContent(filePath, {
-        ...NORMAL_LIMITS,
-        maxLineBytes: 100,
+      const result = await createReadTool().execute(
+        "image",
+        { path: image },
+        undefined,
+        undefined,
+        callContext(cwd),
+      );
+      expect(
+        result.content.some(
+          (part) => part.type === "image" && part.mimeType === "image/png",
+        ),
+      ).toBe(true);
+      expect(result.details).toBeUndefined();
+      fs.unlinkSync(image);
+    });
+
+    it("checks policy and secret refusal against resolved targets", async () => {
+      const cwd = makeDirectory();
+      const secret = path.join(cwd, ".env");
+      const alias = path.join(cwd, "safe-name.txt");
+      fs.writeFileSync(secret, "secret");
+      fs.symlinkSync(secret, alias);
+      const loadRules = vi.spyOn(toolPolicy, "loadToolPolicy").mockReturnValue([
+        {
+          tool: "read",
+          matches: { path: fs.realpathSync(secret) },
+          action: "reject",
+          message: "blocked",
+        },
+      ]);
+
+      const result = await createReadTool().execute(
+        "policy",
+        { path: alias },
+        undefined,
+        undefined,
+        callContext(cwd),
+      );
+      expect(result.isError).toBe(true);
+      expect(result.content).toContainEqual({
+        type: "text",
+        text: "path rejected: blocked",
       });
 
-      expect(result.text).toContain("... (line truncated)");
-      expect(result.text.length).toBeLessThan(200);
+      loadRules.mockReturnValue([{ tool: "read", action: "allow" }]);
+      loadRules.mockReturnValue([
+        {
+          tool: "read",
+          matches: { path: alias },
+          action: "reject",
+          message: "alias blocked",
+        },
+      ]);
+      const aliasResult = await createReadTool().execute(
+        "alias",
+        { path: alias },
+        undefined,
+        undefined,
+        callContext(cwd),
+      );
+      expect(aliasResult.structuredContent).toBe(
+        "path rejected: alias blocked",
+      );
+
+      loadRules.mockReturnValue([{ tool: "read", action: "allow" }]);
+      const secretResult = await createReadTool().execute(
+        "secret",
+        { path: alias },
+        undefined,
+        undefined,
+        callContext(cwd),
+      );
+      expect(secretResult.isError).toBe(true);
+      expect(secretResult.content[0]).toMatchObject({
+        type: "text",
+        text: expect.stringContaining("may contain secrets"),
+      });
     });
 
-    it("applies head+tail truncation when exceeding maxFileBytes", () => {
-      const filePath = path.join(testDir, "test.txt");
-      // Create 100 lines, each ~210 chars = ~21KB total
-      const lines = Array.from(
-        { length: 100 },
-        (_, i) => `line ${i + 1}: ${"x".repeat(200)}`,
-      );
-      fs.writeFileSync(filePath, lines.join("\n"));
+    it("propagates SDK cancellation", async () => {
+      const cwd = makeDirectory();
+      const file = path.join(cwd, "text.txt");
+      fs.writeFileSync(file, "content");
+      const controller = new AbortController();
+      controller.abort();
 
-      // Use read_range to read all 100 lines, maxFileBytes triggers truncation
-      // formatHeadTail will show head+tail with 25 each (maxLines=50)
-      const result = readFileContent(
-        filePath,
-        { ...NORMAL_LIMITS, maxFileBytes: 1000, maxLines: 50 },
-        [1, 100],
-      );
+      await expect(
+        createReadTool().execute(
+          "cancelled",
+          { path: file },
+          controller.signal,
+          undefined,
+          callContext(cwd),
+        ),
+      ).rejects.toThrow("Operation aborted");
+    });
 
-      expect(result.text).toContain("truncated");
-      expect(result.totalLines).toBe(100);
+    it("renders normal and error output through the Pi read renderer", async () => {
+      const cwd = makeDirectory();
+      const file = path.join(cwd, "display.txt");
+      fs.writeFileSync(file, "visible output");
+      const tool = createReadTool();
+      const result = await tool.execute(
+        "display",
+        { path: file },
+        undefined,
+        undefined,
+        callContext(cwd),
+      );
+      const theme = {
+        fg: (_color: string, text: string) => text,
+        bold: (text: string) => text,
+      } as Theme;
+      const context = {
+        args: { path: file },
+        cwd,
+        showImages: false,
+        isError: false,
+        lastComponent: undefined,
+      } as Parameters<NonNullable<typeof tool.renderResult>>[3];
+
+      const normal = tool.renderResult?.(
+        result,
+        { expanded: true, isPartial: false },
+        theme,
+        context,
+      );
+      expect(normal?.render(80).join("\n")).toContain("visible output");
+
+      vi.spyOn(toolPolicy, "loadToolPolicy").mockReturnValue([
+        {
+          tool: "read",
+          matches: { path: fs.realpathSync(file) },
+          action: "reject",
+          message: "blocked",
+        },
+      ]);
+      const denied = await tool.execute(
+        "denied",
+        { path: file },
+        undefined,
+        undefined,
+        callContext(cwd),
+      );
+      const errorContext = { ...context, isError: true };
+      const error = tool.renderResult?.(
+        denied,
+        { expanded: false, isPartial: false },
+        theme,
+        errorContext,
+      );
+      expect(error?.render(80).join("\n")).toContain("path rejected: blocked");
     });
   });
 
-  // --- extension registration tests ---
-
-  describe("read extension", () => {
-    it("registers the tool with default config when enabled", () => {
-      const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(
-          _namespace: string,
-          defaults: T,
-        ) => ({
+  describe("read extension registration", () => {
+    it("registers the default adapter with prompt patching", () => {
+      const tools: unknown[] = [];
+      const pi = {
+        registerTool: (tool: unknown) => tools.push(tool),
+      } as unknown as ExtensionAPI;
+      const patched: unknown[] = [];
+      const extension = createReadExtension({
+        getEnabledExtensionConfig: ((_name, defaults) => ({
           enabled: true,
           config: defaults,
-        }),
-      );
-      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
-      const extension = createReadExtension({
-        getEnabledExtensionConfig:
-          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
-        withPromptPatch:
-          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
+        })) as typeof getEnabledExtensionConfig,
+        withPromptPatch: ((tool) => {
+          patched.push(tool);
+          return tool;
+        }) as typeof withPromptPatch,
       });
-      const harness = createMockExtensionApiHarness();
 
-      extension(harness.pi);
+      extension(pi);
 
-      expect(getEnabledExtensionConfigSpy).toHaveBeenCalledWith(
-        "@bds_pi/read",
-        CONFIG_DEFAULTS,
-        { schema: READ_CONFIG_SCHEMA },
-      );
-      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
-      expect(harness.tools).toHaveLength(1);
-      expect(harness.tools[0]).toMatchObject({ name: "read" });
-    });
-
-    it("registers no extension tool when disabled", () => {
-      const getEnabledExtensionConfigSpy = vi.fn(
-        <T extends Record<string, unknown>>(
-          _namespace: string,
-          defaults: T,
-        ) => ({
-          enabled: false,
-          config: defaults,
-        }),
-      );
-      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
-      const extension = createReadExtension({
-        getEnabledExtensionConfig:
-          getEnabledExtensionConfigSpy as typeof DEFAULT_DEPS.getEnabledExtensionConfig,
-        withPromptPatch:
-          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
-      });
-      const harness = createMockExtensionApiHarness();
-
-      extension(harness.pi);
-
-      expect(withPromptPatchSpy).not.toHaveBeenCalled();
-      expect(harness.tools).toHaveLength(0);
-    });
-
-    it("falls back to defaults for invalid config and still registers", () => {
-      const dir = fs.mkdtempSync(path.join(tmpdir, "pi-read-test-"));
-      const settingsPath = writeTmpJson(dir, "settings.json", {
-        "@bds_pi/read": {
-          maxLines: 0,
-          maxFileBytes: 0,
-          maxLineBytes: 0,
-          maxDirEntries: 0,
-        },
-      });
-      setGlobalSettingsPath(settingsPath);
-      const errorSpy = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => undefined);
-      const withPromptPatchSpy = vi.fn((tool: ToolDefinition) => tool);
-      const extension = createReadExtension({
-        ...DEFAULT_DEPS,
-        withPromptPatch:
-          withPromptPatchSpy as typeof DEFAULT_DEPS.withPromptPatch,
-      });
-      const harness = createMockExtensionApiHarness();
-
-      extension(harness.pi);
-
-      expect(errorSpy).toHaveBeenCalledWith(
-        "[@bds_pi/config] invalid config for @bds_pi/read; falling back to defaults.",
-      );
-      expect(withPromptPatchSpy).toHaveBeenCalledTimes(1);
-      expect(harness.tools).toHaveLength(1);
-      expect(harness.tools[0]).toMatchObject({ name: "read" });
-    });
-  });
-
-  describe("read tool policy", () => {
-    it("rejects disallowed paths before filesystem checks", async () => {
-      const tool = createReadTool(NORMAL_LIMITS);
-      const evaluateToolPolicySpy = vi
-        .spyOn(toolPolicy, "evaluateToolPolicy")
-        .mockReturnValue({ action: "reject", message: "workspace only" });
-      vi.spyOn(toolPolicy, "loadToolPolicy").mockReturnValue([]);
-
-      const result = await tool.execute!(
-        "test-id",
-        { path: "../sibling/secret.txt" },
-        undefined,
-        undefined,
-        { cwd: "/repo/project" } as any,
-      );
-
-      expect("isError" in result && result.isError).toBe(true);
-      expect(result.content.find((part) => part.type === "text")?.text).toBe(
-        "path rejected: workspace only",
-      );
-      expect(evaluateToolPolicySpy).toHaveBeenCalledWith(
-        "read",
-        { path: "/repo/sibling/secret.txt", sessionCwd: "/repo/project" },
-        [],
-      );
+      expect(tools).toHaveLength(1);
+      expect((tools[0] as ToolDefinition).name).toBe("read");
+      expect(patched).toHaveLength(1);
     });
   });
 }

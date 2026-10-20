@@ -46,7 +46,9 @@ import {
   renderAgentTree,
   renderSubAgentCall,
   renderSubAgentFallback,
+  readSubAgentResult,
   registerSubAgentErrorNormalization,
+  subAgentProgress,
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
@@ -198,6 +200,7 @@ export function createDelegateTool(
         exitCode: -1,
         messages: [],
         usage: zeroUsage(),
+        model: config.model ?? CONFIG_DEFAULTS.model,
       };
 
       const result = await piSpawn({
@@ -217,21 +220,18 @@ export function createDelegateTool(
         onUpdate: (partial) => {
           singleResult.messages = partial.messages;
           singleResult.usage = partial.usage;
-          singleResult.model = partial.model;
+          singleResult.model = partial.model ?? singleResult.model;
           singleResult.stopReason = partial.stopReason;
           singleResult.errorMessage = partial.errorMessage;
           singleResult.lifecycle = partial.lifecycle;
           applySessionMeta(singleResult, partial.session);
           if (onUpdate) {
-            onUpdate({
-              content: [
-                {
-                  type: "text",
-                  text: getFinalOutput(partial.messages) || "(working...)",
-                },
-              ],
-              details: singleResult,
-            } as any);
+            onUpdate(
+              subAgentProgress(
+                getFinalOutput(partial.messages) || "(working...)",
+                singleResult,
+              ),
+            );
           }
         },
       });
@@ -239,7 +239,7 @@ export function createDelegateTool(
       singleResult.exitCode = result.exitCode;
       singleResult.messages = result.messages;
       singleResult.usage = result.usage;
-      singleResult.model = result.model;
+      singleResult.model = result.model ?? singleResult.model;
       singleResult.stopReason = result.stopReason;
       singleResult.errorMessage = result.errorMessage;
       singleResult.lifecycle = result.lifecycle;
@@ -269,7 +269,7 @@ export function createDelegateTool(
     },
 
     renderResult(result: any, { expanded }: { expanded: boolean }, theme: any) {
-      const details = result.details as SingleResult | undefined;
+      const details = readSubAgentResult(result.details);
       if (!details) return renderSubAgentFallback(result, theme);
       const container = new Container();
       renderAgentTree(details, container, expanded, theme, {

@@ -40,7 +40,9 @@ import {
   renderAgentTree,
   renderSubAgentCall,
   renderSubAgentFallback,
+  readSubAgentResult,
   registerSubAgentErrorNormalization,
+  subAgentProgress,
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
@@ -297,6 +299,7 @@ export function createCodeReviewTool(
         exitCode: -1,
         messages: [],
         usage: zeroUsage(),
+        model: config.model ?? CONFIG_DEFAULTS.model,
       };
 
       const systemPrompt = config.systemPrompt || DEFAULT_SYSTEM_PROMPT;
@@ -316,21 +319,18 @@ export function createCodeReviewTool(
         onUpdate: (partial) => {
           singleResult.messages = partial.messages;
           singleResult.usage = partial.usage;
-          singleResult.model = partial.model;
+          singleResult.model = partial.model ?? singleResult.model;
           singleResult.stopReason = partial.stopReason;
           singleResult.errorMessage = partial.errorMessage;
           singleResult.lifecycle = partial.lifecycle;
           applySessionMeta(singleResult, partial.session);
           if (onUpdate) {
-            onUpdate({
-              content: [
-                {
-                  type: "text",
-                  text: getFinalOutput(partial.messages) || "(reviewing...)",
-                },
-              ],
-              details: singleResult,
-            } as any);
+            onUpdate(
+              subAgentProgress(
+                getFinalOutput(partial.messages) || "(reviewing...)",
+                singleResult,
+              ),
+            );
           }
         },
       });
@@ -338,7 +338,7 @@ export function createCodeReviewTool(
       singleResult.exitCode = result.exitCode;
       singleResult.messages = result.messages;
       singleResult.usage = result.usage;
-      singleResult.model = result.model;
+      singleResult.model = result.model ?? singleResult.model;
       singleResult.stopReason = result.stopReason;
       singleResult.errorMessage = result.errorMessage;
       singleResult.lifecycle = result.lifecycle;
@@ -368,7 +368,7 @@ export function createCodeReviewTool(
     },
 
     renderResult(result: any, { expanded }: { expanded: boolean }, theme: any) {
-      const details = result.details as SingleResult | undefined;
+      const details = readSubAgentResult(result.details);
       if (!details) return renderSubAgentFallback(result, theme);
 
       const container = new Container();
@@ -1034,7 +1034,15 @@ if (import.meta.vitest) {
                   content: [{ type: "text", text: markdownOutput }],
                 },
               ],
-              usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+              usage: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                cost: 0,
+                contextTokens: 0,
+                turns: 0,
+              },
             },
           },
           { expanded: false, isPartial: false },

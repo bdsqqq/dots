@@ -551,9 +551,6 @@ importers:
       '@bds_pi/fs':
         specifier: workspace:*
         version: link:../../core/fs
-      '@bds_pi/output-buffer':
-        specifier: workspace:*
-        version: link:../../core/output-buffer
       '@bds_pi/prompt-patch':
         specifier: workspace:*
         version: link:../../core/prompt-patch
