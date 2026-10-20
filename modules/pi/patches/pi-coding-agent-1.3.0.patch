@@ -776,16 +776,17 @@ diff --git a/dist/modes/interactive/components/tool-execution.d.ts b/dist/modes/
  //# sourceMappingURL=tool-execution.d.ts.map
 \ No newline at end of file
 diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/interactive/components/tool-execution.js
-index d447db5ade5e37d6bc91cb91006ea0c711821b29..1ffed6fbe7de39608fb4e45c8f0d7bb0c261a201 100644
+index d447db5ade5e37d6bc91cb91006ea0c711821b29..73348332cbc32da436c370b16341dc463854a4bb 100644
 --- a/dist/modes/interactive/components/tool-execution.js
 +++ b/dist/modes/interactive/components/tool-execution.js
-@@ -1,4 +1,4 @@
+@@ -1,13 +1,17 @@
 -import { Box, Container, getCapabilities, Image, MouseRegion, Spacer, Text, } from "@earendil-works/pi-tui";
 +import { Box, Container, getCapabilities, Image, MarkerColumn, MouseRegion, Spacer, Text, truncateToWidth, } from "@earendil-works/pi-tui";
  import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.js";
  import { ensurePngTranscoder } from "../../../utils/image-convert.js";
  import { theme } from "../theme/theme.js";
-@@ -6,8 +6,11 @@ import { keyHint } from "./keybinding-hints.js";
+ import { keyHint } from "./keybinding-hints.js";
++import { VisualLinePreview } from "./visual-truncate.js";
  const FALLBACK_PREVIEW_LINES = 10;
  export class ToolExecutionComponent extends Container {
      contentBox;
@@ -799,7 +800,7 @@ index d447db5ade5e37d6bc91cb91006ea0c711821b29..1ffed6fbe7de39608fb4e45c8f0d7bb0
      selfRenderContainer;
      selfRenderHeight = 0;
      callRendererComponent;
-@@ -34,6 +37,7 @@ export class ToolExecutionComponent extends Container {
+@@ -34,6 +38,7 @@ export class ToolExecutionComponent extends Container {
      hideComponent = false;
      constructor(toolName, toolCallId, args, options = {}, toolDefinition, ui, cwd) {
          super();
@@ -807,7 +808,7 @@ index d447db5ade5e37d6bc91cb91006ea0c711821b29..1ffed6fbe7de39608fb4e45c8f0d7bb0
          this.toolName = toolName;
          this.toolCallId = toolCallId;
          this.args = args;
-@@ -44,19 +48,17 @@ export class ToolExecutionComponent extends Container {
+@@ -44,19 +49,17 @@ export class ToolExecutionComponent extends Container {
          this.ui = ui;
          this.cwd = cwd;
          this.addChild(new Spacer(1));
@@ -837,7 +838,7 @@ index d447db5ade5e37d6bc91cb91006ea0c711821b29..1ffed6fbe7de39608fb4e45c8f0d7bb0
          this.updateDisplay();
      }
      getCallRenderer() {
-@@ -93,19 +95,19 @@ export class ToolExecutionComponent extends Container {
+@@ -93,21 +96,19 @@ export class ToolExecutionComponent extends Container {
          };
      }
      createCallFallback() {
@@ -850,18 +851,24 @@ index d447db5ade5e37d6bc91cb91006ea0c711821b29..1ffed6fbe7de39608fb4e45c8f0d7bb0
 -            return undefined;
 +            return new Text(this.theme.fg("muted", "(no output)"), 0, 0);
          }
-         const lines = output.split("\n");
-         const displayLines = this.expanded ? lines : lines.slice(0, FALLBACK_PREVIEW_LINES);
-         const remaining = lines.length - displayLines.length;
+-        const lines = output.split("\n");
+-        const displayLines = this.expanded ? lines : lines.slice(0, FALLBACK_PREVIEW_LINES);
+-        const remaining = lines.length - displayLines.length;
 -        let text = displayLines.map((line) => theme.fg("toolOutput", line)).join("\n");
-+        let text = displayLines.map((line) => this.theme.fg("toolOutput", line)).join("\n");
-         if (remaining > 0) {
+-        if (remaining > 0) {
 -            text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
-+            text += `${this.theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${this.theme.fg("muted", ")")}`;
-         }
-         return new Text(text, 0, 0);
+-        }
+-        return new Text(text, 0, 0);
++        const text = output.split("\n").map((line) => this.theme.fg("toolOutput", line)).join("\n");
++        return this.expanded ? new Text(text, 0, 0) : new VisualLinePreview({
++            text,
++            maxVisualLines: FALLBACK_PREVIEW_LINES,
++            formatHint: (hidden) => `${this.theme.fg("muted", `... (${hidden} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${this.theme.fg("muted", ")")}`,
++        });
      }
-@@ -156,8 +158,8 @@ export class ToolExecutionComponent extends Container {
+     createResultRegion(component) {
+         return new MouseRegion(component, (event) => {
+@@ -156,8 +157,8 @@ export class ToolExecutionComponent extends Container {
          super.invalidate();
          this.updateDisplay();
      }
@@ -872,7 +879,7 @@ index d447db5ade5e37d6bc91cb91006ea0c711821b29..1ffed6fbe7de39608fb4e45c8f0d7bb0
              return [];
          }
          if (this.hasRendererDefinition() && this.getRenderShell() === "self") {
-@@ -183,7 +185,18 @@ export class ToolExecutionComponent extends Container {
+@@ -183,7 +184,18 @@ export class ToolExecutionComponent extends Container {
              }
              return lines;
          }
@@ -892,7 +899,7 @@ index d447db5ade5e37d6bc91cb91006ea0c711821b29..1ffed6fbe7de39608fb4e45c8f0d7bb0
      }
      handleMouse(event) {
          if (!this.hasRendererDefinition() || this.getRenderShell() !== "self")
-@@ -197,19 +210,24 @@ export class ToolExecutionComponent extends Container {
+@@ -197,19 +209,24 @@ export class ToolExecutionComponent extends Container {
          });
      }
      updateDisplay() {
@@ -928,7 +935,7 @@ index d447db5ade5e37d6bc91cb91006ea0c711821b29..1ffed6fbe7de39608fb4e45c8f0d7bb0
              renderContainer.clear();
              const callRenderer = this.getCallRenderer();
              if (!callRenderer) {
-@@ -218,7 +236,7 @@ export class ToolExecutionComponent extends Container {
+@@ -218,7 +235,7 @@ export class ToolExecutionComponent extends Container {
              }
              else {
                  try {
@@ -937,7 +944,7 @@ index d447db5ade5e37d6bc91cb91006ea0c711821b29..1ffed6fbe7de39608fb4e45c8f0d7bb0
                      this.callRendererComponent = component;
                      renderContainer.addChild(this.createResultRegion(component));
                      hasContent = true;
-@@ -240,7 +258,7 @@ export class ToolExecutionComponent extends Container {
+@@ -240,7 +257,7 @@ export class ToolExecutionComponent extends Container {
                  }
                  else {
                      try {
@@ -946,7 +953,7 @@ index d447db5ade5e37d6bc91cb91006ea0c711821b29..1ffed6fbe7de39608fb4e45c8f0d7bb0
                          this.resultRendererComponent = component;
                          renderContainer.addChild(this.createResultRegion(component));
                          hasContent = true;
-@@ -256,12 +274,6 @@ export class ToolExecutionComponent extends Container {
+@@ -256,12 +273,6 @@ export class ToolExecutionComponent extends Container {
                  }
              }
          }
@@ -959,7 +966,7 @@ index d447db5ade5e37d6bc91cb91006ea0c711821b29..1ffed6fbe7de39608fb4e45c8f0d7bb0
          const previousImages = this.imageComponents;
          const previousSources = this.imageSources;
          for (const img of this.imageComponents) {
-@@ -279,7 +291,7 @@ export class ToolExecutionComponent extends Container {
+@@ -279,7 +290,7 @@ export class ToolExecutionComponent extends Container {
              for (const img of imageBlocks) {
                  if (caps.images && this.showImages && img.data && img.mimeType) {
                      const spacer = new Spacer(1);
@@ -968,7 +975,7 @@ index d447db5ade5e37d6bc91cb91006ea0c711821b29..1ffed6fbe7de39608fb4e45c8f0d7bb0
                      this.imageSpacers.push(spacer);
                      const source = { data: img.data, mimeType: img.mimeType, widthCells: this.imageWidthCells };
                      const index = this.imageComponents.length;
-@@ -288,7 +300,7 @@ export class ToolExecutionComponent extends Container {
+@@ -288,7 +299,7 @@ export class ToolExecutionComponent extends Container {
                          previous.mimeType === source.mimeType &&
                          previous.widthCells === source.widthCells
                          ? previousImages[index]
@@ -977,7 +984,7 @@ index d447db5ade5e37d6bc91cb91006ea0c711821b29..1ffed6fbe7de39608fb4e45c8f0d7bb0
                      if (source.mimeType !== "image/png") {
                          ensurePngTranscoder(() => {
                              this.invalidate();
-@@ -297,7 +309,8 @@ export class ToolExecutionComponent extends Container {
+@@ -297,7 +308,8 @@ export class ToolExecutionComponent extends Container {
                      }
                      this.imageComponents.push(imageComponent);
                      this.imageSources.push(source);
@@ -987,7 +994,7 @@ index d447db5ade5e37d6bc91cb91006ea0c711821b29..1ffed6fbe7de39608fb4e45c8f0d7bb0
                  }
              }
          }
-@@ -308,17 +321,5 @@ export class ToolExecutionComponent extends Container {
+@@ -308,17 +320,5 @@ export class ToolExecutionComponent extends Container {
      getTextOutput() {
          return getRenderedTextOutput(this.result, this.showImages);
      }
@@ -1153,3 +1160,348 @@ diff --git a/dist/core/tools/renderers/edit.js b/dist/core/tools/renderers/edit.
          return component;
      },
  };
+diff --git a/dist/core/tools/renderers/bash.js b/dist/core/tools/renderers/bash.js
+index 43430f16caa03ec9b2c57a5e105b257f4b11416b..898f96ae85a0541b3089d58881184d170fcf265f 100644
+--- a/dist/core/tools/renderers/bash.js
++++ b/dist/core/tools/renderers/bash.js
+@@ -44,8 +44,7 @@ function rebuildBashResultRenderComponent(component, result, options, showImages
+             component.addChild(new VisualLinePreview({
+                 text: styledOutput,
+                 maxVisualLines: BASH_PREVIEW_LINES,
+-                keep: "end",
+-                formatHint: (hidden) => theme.fg("muted", `... (${hidden} earlier lines,`) +
++                formatHint: (hidden) => theme.fg("muted", `... (${hidden} hidden lines,`) +
+                     ` ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
+             }));
+         }
+diff --git a/dist/core/tools/renderers/read.js b/dist/core/tools/renderers/read.js
+index c76b38e397be910466b4e12cebb07f13c0cceca0..5dd63183c9ffdfe202d6ea5ffc75f12e42bec37c 100644
+--- a/dist/core/tools/renderers/read.js
++++ b/dist/core/tools/renderers/read.js
+@@ -9,6 +9,7 @@ import { basename, dirname, isAbsolute, relative, resolve as resolvePath, sep }
+ import { Text } from "@earendil-works/pi-tui";
+ import { getReadmePath } from "../../../config.js";
+ import { keyHint, keyText } from "../../../modes/interactive/components/keybinding-hints.js";
++import { VisualLinePreview } from "../../../modes/interactive/components/visual-truncate.js";
+ import { getLanguageFromPath, highlightCode } from "../../../modes/interactive/theme/theme.js";
+ import { formatPathRelativeToCwdOrAbsolute } from "../../../utils/paths.js";
+ import { resolveToCwd } from "../path-utils.js";
+@@ -88,13 +89,7 @@ function formatReadResult(args, result, options, theme, showImages, _cwd, isErro
+     const lang = !isError && rawPath ? getLanguageFromPath(rawPath) : undefined;
+     const renderedLines = lang ? highlightCode(replaceTabs(output), lang) : output.split("\n");
+     const lines = trimTrailingEmptyLines(renderedLines);
+-    const maxLines = options.expanded ? lines.length : 10;
+-    const displayLines = lines.slice(0, maxLines);
+-    const remaining = lines.length - maxLines;
+-    let text = `\n${displayLines.map((line) => (lang ? replaceTabs(line) : theme.fg("toolOutput", replaceTabs(line)))).join("\n")}`;
+-    if (remaining > 0) {
+-        text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+-    }
++    let text = `\n${lines.map((line) => (lang ? replaceTabs(line) : theme.fg("toolOutput", replaceTabs(line)))).join("\n")}`;
+     const truncation = result.details?.truncation;
+     if (truncation?.truncated) {
+         if (truncation.firstLineExceedsLimit) {
+@@ -118,9 +113,17 @@ export const readRenderers = {
+         return text;
+     },
+     renderResult(result, options, theme, context) {
+-        const text = context.lastComponent ?? new Text("", 0, 0);
+-        text.setText(formatReadResult(context.args, result, options, theme, context.showImages, context.cwd, context.isError));
+-        return text;
++        const output = formatReadResult(context.args, result, options, theme, context.showImages, context.cwd, context.isError);
++        if (options.expanded || !output) {
++            const component = context.lastComponent instanceof Text ? context.lastComponent : new Text("", 0, 0);
++            component.setText(output);
++            return component;
++        }
++        return new VisualLinePreview({
++            text: output,
++            maxVisualLines: 10,
++            formatHint: (hidden) => `${theme.fg("muted", `... (${hidden} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
++        });
+     },
+ };
+ //# sourceMappingURL=read.js.map
+\ No newline at end of file
+diff --git a/dist/core/tools/renderers/write.js b/dist/core/tools/renderers/write.js
+index dcf5bf9b84394f2d151e6862733b239d8d6fbe84..3461fea40046f4a26bb4dd9189ec4ee3389e8e47 100644
+--- a/dist/core/tools/renderers/write.js
++++ b/dist/core/tools/renderers/write.js
+@@ -7,12 +7,13 @@
+  */
+ import { Container, Text } from "@earendil-works/pi-tui";
+ import { keyHint } from "../../../modes/interactive/components/keybinding-hints.js";
++import { VisualLinePreview } from "../../../modes/interactive/components/visual-truncate.js";
+ import { getLanguageFromPath, highlightCode } from "../../../modes/interactive/theme/theme.js";
+ import { normalizeDisplayText, renderToolPath, replaceTabs, str } from "../render-utils.js";
+-class WriteCallRenderComponent extends Text {
++class WriteCallRenderComponent extends Container {
+     cache;
+     constructor() {
+-        super("", 0, 0);
++        super();
+     }
+ }
+ const WRITE_PARTIAL_FULL_HIGHLIGHT_LINES = 50;
+@@ -87,9 +88,10 @@ function formatWriteCall(args, options, theme, cache, cwd) {
+     const rawPath = str(args?.file_path ?? args?.path);
+     const fileContent = str(args?.content);
+     const pathDisplay = renderToolPath(rawPath, theme, cwd);
+-    let text = `${theme.fg("toolTitle", theme.bold("write"))} ${pathDisplay}`;
++    const component = new Container();
++    component.addChild(new Text(`${theme.fg("toolTitle", theme.bold("write"))} ${pathDisplay}`, 0, 0));
+     if (fileContent === null) {
+-        text += `\n\n${theme.fg("error", "[invalid content arg - expected string]")}`;
++        component.addChild(new Text(`\n${theme.fg("error", "[invalid content arg - expected string]")}`, 0, 0));
+     }
+     else if (fileContent) {
+         const lang = rawPath ? getLanguageFromPath(rawPath) : undefined;
+@@ -97,16 +99,15 @@ function formatWriteCall(args, options, theme, cache, cwd) {
+             ? (cache?.highlightedLines ?? highlightCode(replaceTabs(normalizeDisplayText(fileContent)), lang))
+             : normalizeDisplayText(fileContent).split("\n");
+         const lines = trimTrailingEmptyLines(renderedLines);
+-        const totalLines = lines.length;
+-        const maxLines = options.expanded ? lines.length : 10;
+-        const displayLines = lines.slice(0, maxLines);
+-        const remaining = lines.length - maxLines;
+-        text += `\n\n${displayLines.map((line) => (lang ? line : theme.fg("toolOutput", replaceTabs(line)))).join("\n")}`;
+-        if (remaining > 0) {
+-            text += `${theme.fg("muted", `\n... (${remaining} more lines, ${totalLines} total,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+-        }
++        const text = lines.map((line) => (lang ? line : theme.fg("toolOutput", replaceTabs(line)))).join("\n");
++        component.addChild(new Text("", 0, 0));
++        component.addChild(options.expanded ? new Text(text, 0, 0) : new VisualLinePreview({
++            text,
++            maxVisualLines: 10,
++            formatHint: (hidden) => `${theme.fg("muted", `... (${hidden} more lines, ${lines.length} total logical lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
++        }));
+     }
+-    return text;
++    return component;
+ }
+ function formatWriteResult(result, theme) {
+     if (!result.isError) {
+@@ -135,7 +136,8 @@ export const writeRenderers = {
+         else {
+             component.cache = undefined;
+         }
+-        component.setText(formatWriteCall(renderArgs, { expanded: context.expanded, isPartial: context.isPartial }, theme, component.cache, context.cwd));
++        component.clear();
++        component.addChild(formatWriteCall(renderArgs, { expanded: context.expanded, isPartial: context.isPartial }, theme, component.cache, context.cwd));
+         return component;
+     },
+     renderResult(result, _options, theme, context) {
+diff --git a/dist/extensions/codemode/renderer.js b/dist/extensions/codemode/renderer.js
+index d97b1dff66f1171964618c08d778923f49adb8a9..86e99c1656d6b15b39b2b91eee040ac29387a88c 100644
+--- a/dist/extensions/codemode/renderer.js
++++ b/dist/extensions/codemode/renderer.js
+@@ -76,7 +76,6 @@ export const codemodeRenderers = {
+                 : new VisualLinePreview({
+                     text: highlighted,
+                     maxVisualLines: CODE_PREVIEW_LINES,
+-                    keep: "start",
+                     formatHint: (hidden) => expandHint(theme, hidden, "lines"),
+                 }));
+         }
+@@ -88,12 +87,14 @@ export const codemodeRenderers = {
+         component.clear();
+         const calls = result.details?.calls ?? [];
+         if (calls.length > 0) {
+-            const shown = options.expanded ? calls : calls.slice(-CALL_PREVIEW_COUNT);
++            const hidden = Math.max(0, calls.length - CALL_PREVIEW_COUNT);
++            const head = Math.floor(CALL_PREVIEW_COUNT / 2);
++            const shown = options.expanded || !hidden ? calls : [...calls.slice(0, head), ...calls.slice(-(CALL_PREVIEW_COUNT - head))];
+             const lines = shown.map((call) => formatCall(call, theme, options.expanded));
+             if (shown.length < calls.length) {
+-                lines.unshift(`${theme.fg("muted", `... (${calls.length - shown.length} earlier calls,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`);
++                lines.splice(head, 0, expandHint(theme, hidden, "calls"));
+             }
+-            // Collapsed rows hide earlier calls, so the total covers every call.
++            // Cost totals cover hidden calls too.
+             const priced = calls.filter((call) => call.cost);
+             if (priced.length > 1) {
+                 const total = priced.reduce((sum, call) => sum + (call.cost ?? 0), 0);
+@@ -124,10 +125,9 @@ export const codemodeRenderers = {
+                 component.addChild(new VisualLinePreview({
+                     text: styled,
+                     maxVisualLines: OUTPUT_PREVIEW_LINES,
+-                    keep: "start",
+                     formatHint: (hidden) => expandHint(theme, hidden, "lines"),
+                 }));
+-                // The collapsed preview hides the truncation notice at the end, so name the file here.
++                // Keep the full-output path accessible even when the notice wraps beyond the preview.
+                 const fullOutputPath = result.details?.fullOutputPath;
+                 if (fullOutputPath)
+                     component.addChild(new Text(theme.fg("muted", `Full output: ${fullOutputPath}`), 0, 0));
+diff --git a/dist/extensions/mcp/tools.js b/dist/extensions/mcp/tools.js
+index 7884fb2e84d582bdeb2e6b81c249401f6a95b8a6..b0822db6b211de21eb83611a2d571565d8c8687b 100644
+--- a/dist/extensions/mcp/tools.js
++++ b/dist/extensions/mcp/tools.js
+@@ -295,7 +295,6 @@ export function createMcpToolRenderers(label) {
+                 component.addChild(new VisualLinePreview({
+                     text: styled,
+                     maxVisualLines: OUTPUT_PREVIEW_LINES,
+-                    keep: "start",
+                     formatHint: (hidden) => `${theme.fg("muted", `... (${hidden} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
+                 }));
+                 const fullOutputPath = result.details?.fullOutputPath;
+diff --git a/dist/modes/interactive/components/bash-execution.js b/dist/modes/interactive/components/bash-execution.js
+index 45a755862b076edf24f4bc9ef9dd46ca11868d78..bd200abc788d8340f9ba32f927911851f2a3e48f 100644
+--- a/dist/modes/interactive/components/bash-execution.js
++++ b/dist/modes/interactive/components/bash-execution.js
+@@ -1,13 +1,13 @@
+ /**
+  * Component for displaying bash command execution with streaming output.
+  */
+-import { Container, Loader, Spacer, Text } from "@earendil-works/pi-tui";
++import { Box, Container, Loader, Spacer, Text } from "@earendil-works/pi-tui";
+ import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncateTail, } from "../../../core/tools/truncate.js";
+ import { stripAnsi } from "../../../utils/ansi.js";
+ import { theme } from "../theme/theme.js";
+ import { DynamicBorder } from "./dynamic-border.js";
+ import { keyHint, keyText } from "./keybinding-hints.js";
+-import { truncateToVisualLines } from "./visual-truncate.js";
++import { VisualLinePreview } from "./visual-truncate.js";
+ // Preview line limit when not expanded (matches tool execution behavior)
+ const PREVIEW_LINES = 20;
+ export class BashExecutionComponent extends Container {
+@@ -94,9 +94,6 @@ export class BashExecutionComponent extends Container {
+         });
+         // Get the lines to potentially display (after context truncation)
+         const availableLines = contextTruncation.content ? contextTruncation.content.split("\n") : [];
+-        // Apply preview truncation based on expanded state
+-        const previewLogicalLines = availableLines.slice(-PREVIEW_LINES);
+-        const hiddenLineCount = availableLines.length - previewLogicalLines.length;
+         // Rebuild content container
+         this.contentContainer.clear();
+         // Command header
+@@ -110,25 +107,14 @@ export class BashExecutionComponent extends Container {
+                 this.contentContainer.addChild(new Text(`\n${displayText}`, this.outputPad, 0));
+             }
+             else {
+-                // Use shared visual truncation utility with width-aware caching
+-                const styledOutput = previewLogicalLines.map((line) => theme.fg("muted", line)).join("\n");
+-                const styledInput = `\n${styledOutput}`;
+-                let cachedWidth;
+-                let cachedLines;
+-                this.contentContainer.addChild({
+-                    render: (width) => {
+-                        if (cachedLines === undefined || cachedWidth !== width) {
+-                            const result = truncateToVisualLines(styledInput, PREVIEW_LINES, width, this.outputPad);
+-                            cachedLines = result.visualLines;
+-                            cachedWidth = width;
+-                        }
+-                        return cachedLines ?? [];
+-                    },
+-                    invalidate: () => {
+-                        cachedWidth = undefined;
+-                        cachedLines = undefined;
+-                    },
+-                });
++                const preview = new Box(this.outputPad, 0);
++                preview.addChild(new VisualLinePreview({
++                    text: availableLines.map((line) => theme.fg("muted", line)).join("\n"),
++                    maxVisualLines: PREVIEW_LINES,
++                    formatHint: (hidden) => `${theme.fg("muted", `... (${hidden} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
++                }));
++                this.contentContainer.addChild(new Spacer(1));
++                this.contentContainer.addChild(preview);
+             }
+         }
+         // Loader or status
+@@ -137,14 +123,8 @@ export class BashExecutionComponent extends Container {
+         }
+         else {
+             const statusParts = [];
+-            // Show how many lines are hidden (collapsed preview)
+-            if (hiddenLineCount > 0) {
+-                if (this.expanded) {
+-                    statusParts.push(`${theme.fg("muted", "(")}${keyHint("app.tools.expand", "to collapse")}${theme.fg("muted", ")")}`);
+-                }
+-                else {
+-                    statusParts.push(`${theme.fg("muted", `... ${hiddenLineCount} more lines (`)}${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`);
+-                }
++            if (this.expanded) {
++                statusParts.push(`${theme.fg("muted", "(")}${keyHint("app.tools.expand", "to collapse")}${theme.fg("muted", ")")}`);
+             }
+             if (this.status === "cancelled") {
+                 statusParts.push(theme.fg("warning", "(cancelled)"));
+diff --git a/dist/modes/interactive/components/visual-truncate.d.ts b/dist/modes/interactive/components/visual-truncate.d.ts
+index 2cba1feac6c555fa709bd8842173970feafbfb62..0cc8eff9a6888420561de685bce173808e7b99b0 100644
+--- a/dist/modes/interactive/components/visual-truncate.d.ts
++++ b/dist/modes/interactive/components/visual-truncate.d.ts
+@@ -19,16 +19,16 @@ export interface VisualTruncateResult {
+  * @param paddingX - Horizontal padding for Text component (default 0).
+  *                   Use 0 when result will be placed in a Box (Box adds its own padding).
+  *                   Use 1 when result will be placed in a plain Container.
+- * @param keep - Which visual lines to keep: the last ones (default) or the first ones.
++ * @param keep - Keep both ends (default), or explicitly keep only the start or end.
+  * @returns The truncated visual lines and count of skipped lines
+  */
+-export declare function truncateToVisualLines(text: string, maxVisualLines: number, width: number, paddingX?: number, keep?: "start" | "end"): VisualTruncateResult;
++export declare function truncateToVisualLines(text: string, maxVisualLines: number, width: number, paddingX?: number, keep?: "middle" | "start" | "end"): VisualTruncateResult;
+ export interface VisualLinePreviewOptions {
+     /** Styled text; may contain newlines. */
+     text: string;
+     maxVisualLines: number;
+-    /** Which visual lines to keep. The hint goes before kept end lines and after kept start lines. */
+-    keep: "start" | "end";
++    /** Defaults to both ends, with the hint at the omission point. Explicit start/end remain available. */
++    keep?: "middle" | "start" | "end";
+     /** Styled hint line for the given number of hidden visual lines. */
+     formatHint: (hidden: number) => string;
+ }
+diff --git a/dist/modes/interactive/components/visual-truncate.js b/dist/modes/interactive/components/visual-truncate.js
+index c5212e7f073d96dd64716f91fd4893e269aa9757..732427084cedac8e59e7bacd207c150d9b429846 100644
+--- a/dist/modes/interactive/components/visual-truncate.js
++++ b/dist/modes/interactive/components/visual-truncate.js
+@@ -13,21 +13,27 @@ import { Text, truncateToWidth } from "@earendil-works/pi-tui";
+  * @param paddingX - Horizontal padding for Text component (default 0).
+  *                   Use 0 when result will be placed in a Box (Box adds its own padding).
+  *                   Use 1 when result will be placed in a plain Container.
+- * @param keep - Which visual lines to keep: the last ones (default) or the first ones.
++ * @param keep - Keep both ends (default), or explicitly keep only the start or end.
+  * @returns The truncated visual lines and count of skipped lines
+  */
+-export function truncateToVisualLines(text, maxVisualLines, width, paddingX = 0, keep = "end") {
++export function truncateToVisualLines(text, maxVisualLines, width, paddingX = 0, keep = "middle") {
+     if (!text) {
+         return { visualLines: [], skippedCount: 0 };
+     }
+     // Create a temporary Text component to render and get visual lines
+     const tempText = new Text(text, paddingX, 0);
+-    const allVisualLines = tempText.render(width);
++    const allVisualLines = tempText.render(width).map((line) => truncateToWidth(line, width, ""));
+     if (allVisualLines.length <= maxVisualLines) {
+         return { visualLines: allVisualLines, skippedCount: 0 };
+     }
+-    const truncatedLines = keep === "start" ? allVisualLines.slice(0, maxVisualLines) : allVisualLines.slice(-maxVisualLines);
+-    const skippedCount = allVisualLines.length - maxVisualLines;
++    // Zero must not become slice(-0), which would expose the entire output.
++    const budget = Math.max(0, Math.floor(maxVisualLines));
++    const head = Math.floor(budget / 2);
++    const tail = budget - head;
++    const truncatedLines = budget === 0 ? [] : keep === "start" ? allVisualLines.slice(0, budget)
++        : keep === "end" ? allVisualLines.slice(-budget)
++        : [...allVisualLines.slice(0, head), ...allVisualLines.slice(-tail)];
++    const skippedCount = allVisualLines.length - budget;
+     return { visualLines: truncatedLines, skippedCount };
+ }
+ /**
+@@ -44,12 +50,13 @@ export class VisualLinePreview {
+     }
+     render(width) {
+         if (this.cachedLines === undefined || this.cachedWidth !== width) {
+-            const { text, maxVisualLines, keep, formatHint } = this.options;
++            const { text, maxVisualLines, keep = "middle", formatHint } = this.options;
+             const preview = truncateToVisualLines(text, maxVisualLines, width, 0, keep);
+             const lines = preview.visualLines;
+             if (preview.skippedCount > 0) {
+-                const hint = truncateToWidth(formatHint(preview.skippedCount), width, "...");
+-                this.cachedLines = keep === "start" ? [...lines, hint] : [hint, ...lines];
++                const hint = truncateToWidth(formatHint(preview.skippedCount), width, width < 3 ? "…" : "...");
++                const split = keep === "start" ? lines.length : keep === "end" ? 0 : Math.floor(lines.length / 2);
++                this.cachedLines = [...lines.slice(0, split), hint, ...lines.slice(split)];
+             }
+             else {
+                 this.cachedLines = lines;
