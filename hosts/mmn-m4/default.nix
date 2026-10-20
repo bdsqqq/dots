@@ -22,7 +22,6 @@ in
     ../../modules/syncthing
     ../../modules/terraria-sync
     ../../modules/sleepless
-    ../../modules/cmux
     ../../modules/fonts
     ../../modules/core-cli
     ../../modules/shell
