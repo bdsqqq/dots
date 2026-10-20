@@ -21,7 +21,7 @@ import type {
   ExtensionAPI,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { Container } from "@earendil-works/pi-tui";
+import { Container, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import {
   clearConfigCache,
@@ -34,8 +34,6 @@ import {
   isPiSpawnModelValue,
   isPiSpawnFailure,
   getToolCalls,
-  getToolResults,
-  getToolResultText,
   piSpawn,
   zeroUsage,
   type PiSpawnModel,
@@ -44,7 +42,6 @@ import {
   applySessionMeta,
   getFinalOutput,
   renderAgentTree,
-  renderSubAgentCall,
   renderSubAgentFallback,
   readSubAgentResult,
   registerSubAgentErrorNormalization,
@@ -257,14 +254,14 @@ export function createDelegateTool(
       return subAgentResult(finalText, singleResult, isError);
     },
 
-    renderCall(args: any, theme: any, context: any) {
+    renderCall(args: any, theme: any) {
       const desc = args.description || "...";
       const preview = desc.length > 80 ? `${desc.slice(0, 80)}...` : desc;
-      return renderSubAgentCall(
+      return new Text(
         theme.fg("toolTitle", theme.bold("Delegate ")) +
           theme.fg("dim", preview),
-        theme,
-        context,
+        0,
+        0,
       );
     },
 

@@ -20,7 +20,7 @@ import type {
   ExtensionAPI,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { Container } from "@earendil-works/pi-tui";
+import { Container, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import {
   clearConfigCache,
@@ -41,7 +41,6 @@ import {
   applySessionMeta,
   getFinalOutput,
   renderAgentTree,
-  renderSubAgentCall,
   renderSubAgentFallback,
   readSubAgentResult,
   registerSubAgentErrorNormalization,
@@ -211,16 +210,16 @@ export function createFinderTool(
       return subAgentResult(text, singleResult, isError);
     },
 
-    renderCall(args: any, theme: any, context: any) {
+    renderCall(args: any, theme: any) {
       const preview = args.query
         ? args.query.length > 80
           ? `${args.query.slice(0, 80)}...`
           : args.query
         : "...";
-      return renderSubAgentCall(
+      return new Text(
         theme.fg("toolTitle", theme.bold("finder ")) + theme.fg("dim", preview),
-        theme,
-        context,
+        0,
+        0,
       );
     },
 
@@ -542,10 +541,10 @@ if (import.meta.vitest) {
       const lines = container.render(80);
       const output = lines.join("\n");
 
-      // tree connector followed by the shared open result frame
+      // Child connectors remain content; the parent shell adds its own frame.
       expect(output).toContain("├ ");
-      expect(output).toContain("│ Found it in src/tools/grep.ts");
-      expect(output).toContain("╰────");
+      expect(output).toContain("Found it in src/tools/grep.ts");
+      expect(output).not.toContain("╰────");
 
       // success icon
       expect(output).toContain("✓");
@@ -590,14 +589,16 @@ if (import.meta.vitest) {
       expect(output).toContain("connection timeout");
     });
 
-    it("renders an active status badge", () => {
-      const lines = renderSubAgentCall("finder search in progress", mockTheme, {
-        isError: false,
-        isPartial: true,
-      }).render(80);
-      const output = lines.join("\n");
-
-      expect(output).toContain("●");
+    it("leaves parent lifecycle status to the shared shell", () => {
+      const tool = createFinderTool();
+      const component = tool.renderCall!(
+        { query: "search in progress" },
+        mockTheme as any,
+        {} as any,
+      );
+      const output = component.render(80).join("\n");
+      expect(output.trimEnd()).toBe("finder search in progress");
+      expect(output).not.toMatch(/[●✓✕│╰]/);
     });
   });
 

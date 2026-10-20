@@ -27,13 +27,11 @@ import {
   truncate,
 } from "@bds_pi/github-api";
 import {
-  renderLifecycleCall,
-  boxRendererWindowed,
-  framedTextRenderer,
+  sectionRendererWindowed,
   textSection,
   osc8Link,
-  type BoxSection,
-  type BoxLine,
+  type ContentSection,
+  type SectionLine,
   type Excerpt,
 } from "@bds_pi/box-format";
 
@@ -175,7 +173,7 @@ export function createReadGithubTool(): ToolDefinition<any> {
       }
     },
 
-    renderCall(args: any, theme: any, context: any) {
+    renderCall(args: any, theme: any) {
       const path = args.path || "...";
       const repo = args.repository
         ? args.repository.replace(/^https?:\/\/github\.com\//, "")
@@ -185,15 +183,11 @@ export function createReadGithubTool(): ToolDefinition<any> {
         ? `${args.repository.replace(/\/$/, "")}/blob/HEAD/${path}`
         : "";
       const linked = url ? osc8Link(url, display) : display;
-      return renderLifecycleCall(
-        new Text(
-          theme.fg("toolTitle", theme.bold("read_github ")) +
-            theme.fg("dim", linked),
-          0,
-          0,
-        ),
-        theme,
-        context,
+      return new Text(
+        theme.fg("toolTitle", theme.bold("read_github ")) +
+          theme.fg("dim", linked),
+        0,
+        0,
       );
     },
 
@@ -204,18 +198,20 @@ export function createReadGithubTool(): ToolDefinition<any> {
     ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
-        return framedTextRenderer("(no output)", expanded);
+        return new Text("(no output)", 0, 0);
 
-      // parse numbered lines into BoxLine[] with gutters
-      const parsed: BoxLine[] = content.text.split("\n").map((line: string) => {
-        const m = line.match(/^(\s*\d+): (.*)$/);
-        if (m && m[1] && m[2])
-          return { gutter: m[1].trim(), text: m[2], highlight: true };
-        return { text: line, highlight: true };
-      });
+      // parse numbered lines into SectionLine[] with gutters
+      const parsed: SectionLine[] = content.text
+        .split("\n")
+        .map((line: string) => {
+          const m = line.match(/^(\s*\d+): (.*)$/);
+          if (m && m[1] && m[2] !== undefined)
+            return { gutter: m[1].trim(), text: m[2], highlight: true };
+          return { text: line, highlight: true };
+        });
 
-      const section: BoxSection = { blocks: [{ lines: parsed }] };
-      return boxRendererWindowed(
+      const section: ContentSection = { blocks: [{ lines: parsed }] };
+      return sectionRendererWindowed(
         () => [section],
         {
           collapsed: { excerpts: COLLAPSED_EXCERPTS },
@@ -330,7 +326,7 @@ export function createSearchGithubTool(): ToolDefinition<any> {
       }
     },
 
-    renderCall(args: any, theme: any, context: any) {
+    renderCall(args: any, theme: any) {
       const pattern = args.pattern || "...";
       const repo = args.repository
         ? args.repository.replace(/^https?:\/\/github\.com\//, "")
@@ -338,15 +334,11 @@ export function createSearchGithubTool(): ToolDefinition<any> {
       const linkedRepo = args.repository
         ? osc8Link(args.repository, repo)
         : repo;
-      return renderLifecycleCall(
-        new Text(
-          theme.fg("toolTitle", theme.bold("search_github ")) +
-            theme.fg("dim", `/${pattern}/ in ${linkedRepo}`),
-          0,
-          0,
-        ),
-        theme,
-        context,
+      return new Text(
+        theme.fg("toolTitle", theme.bold("search_github ")) +
+          theme.fg("dim", `/${pattern}/ in ${linkedRepo}`),
+        0,
+        0,
       );
     },
 
@@ -357,8 +349,8 @@ export function createSearchGithubTool(): ToolDefinition<any> {
     ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
-        return framedTextRenderer("(no output)", expanded);
-      return boxRendererWindowed(
+        return new Text("(no output)", 0, 0);
+      return sectionRendererWindowed(
         () => [textSection(undefined, content.text)],
         {
           collapsed: { excerpts: COLLAPSED_EXCERPTS },
@@ -432,7 +424,7 @@ export function createListDirectoryGithubTool(): ToolDefinition<any> {
       }
     },
 
-    renderCall(args: any, theme: any, context: any) {
+    renderCall(args: any, theme: any) {
       const path = args.path || "/";
       const repo = args.repository
         ? args.repository.replace(/^https?:\/\/github\.com\//, "")
@@ -442,15 +434,11 @@ export function createListDirectoryGithubTool(): ToolDefinition<any> {
         ? `${args.repository.replace(/\/$/, "")}/tree/HEAD/${path}`
         : "";
       const linked = url ? osc8Link(url, display) : display;
-      return renderLifecycleCall(
-        new Text(
-          theme.fg("toolTitle", theme.bold("list_directory_github ")) +
-            theme.fg("dim", linked),
-          0,
-          0,
-        ),
-        theme,
-        context,
+      return new Text(
+        theme.fg("toolTitle", theme.bold("list_directory_github ")) +
+          theme.fg("dim", linked),
+        0,
+        0,
       );
     },
 
@@ -461,8 +449,8 @@ export function createListDirectoryGithubTool(): ToolDefinition<any> {
     ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
-        return framedTextRenderer("(no output)", expanded);
-      return boxRendererWindowed(
+        return new Text("(no output)", 0, 0);
+      return sectionRendererWindowed(
         () => [textSection(undefined, content.text)],
         {
           collapsed: { excerpts: COLLAPSED_EXCERPTS },
@@ -570,17 +558,13 @@ export function createListRepositoriesTool(): ToolDefinition<any> {
       }
     },
 
-    renderCall(args: any, theme: any, context: any) {
+    renderCall(args: any, theme: any) {
       const query = args.pattern || args.organization || "...";
-      return renderLifecycleCall(
-        new Text(
-          theme.fg("toolTitle", theme.bold("list_repositories ")) +
-            theme.fg("dim", query),
-          0,
-          0,
-        ),
-        theme,
-        context,
+      return new Text(
+        theme.fg("toolTitle", theme.bold("list_repositories ")) +
+          theme.fg("dim", query),
+        0,
+        0,
       );
     },
 
@@ -591,8 +575,8 @@ export function createListRepositoriesTool(): ToolDefinition<any> {
     ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
-        return framedTextRenderer("(no output)", expanded);
-      return boxRendererWindowed(
+        return new Text("(no output)", 0, 0);
+      return sectionRendererWindowed(
         () => [textSection(undefined, content.text)],
         {
           collapsed: { excerpts: COLLAPSED_EXCERPTS },
@@ -678,7 +662,7 @@ export function createGlobGithubTool(): ToolDefinition<any> {
       }
     },
 
-    renderCall(args: any, theme: any, context: any) {
+    renderCall(args: any, theme: any) {
       const pattern = args.filePattern || "...";
       const repo = args.repository
         ? args.repository.replace(/^https?:\/\/github\.com\//, "")
@@ -686,15 +670,11 @@ export function createGlobGithubTool(): ToolDefinition<any> {
       const linkedRepo = args.repository
         ? osc8Link(args.repository, repo)
         : repo;
-      return renderLifecycleCall(
-        new Text(
-          theme.fg("toolTitle", theme.bold("glob_github ")) +
-            theme.fg("dim", `${pattern} in ${linkedRepo}`),
-          0,
-          0,
-        ),
-        theme,
-        context,
+      return new Text(
+        theme.fg("toolTitle", theme.bold("glob_github ")) +
+          theme.fg("dim", `${pattern} in ${linkedRepo}`),
+        0,
+        0,
       );
     },
 
@@ -705,8 +685,8 @@ export function createGlobGithubTool(): ToolDefinition<any> {
     ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
-        return framedTextRenderer("(no output)", expanded);
-      return boxRendererWindowed(
+        return new Text("(no output)", 0, 0);
+      return sectionRendererWindowed(
         () => [textSection(undefined, content.text)],
         {
           collapsed: { excerpts: COLLAPSED_EXCERPTS },
@@ -828,7 +808,7 @@ export function createCommitSearchTool(): ToolDefinition<any> {
       }
     },
 
-    renderCall(args: any, theme: any, context: any) {
+    renderCall(args: any, theme: any) {
       const repo = args.repository
         ? args.repository.replace(/^https?:\/\/github\.com\//, "")
         : "...";
@@ -836,15 +816,11 @@ export function createCommitSearchTool(): ToolDefinition<any> {
         ? osc8Link(args.repository, repo)
         : repo;
       const query = args.query || args.author || "";
-      return renderLifecycleCall(
-        new Text(
-          theme.fg("toolTitle", theme.bold("commit_search ")) +
-            theme.fg("dim", `${linkedRepo} ${query}`.trim()),
-          0,
-          0,
-        ),
-        theme,
-        context,
+      return new Text(
+        theme.fg("toolTitle", theme.bold("commit_search ")) +
+          theme.fg("dim", `${linkedRepo} ${query}`.trim()),
+        0,
+        0,
       );
     },
 
@@ -855,8 +831,8 @@ export function createCommitSearchTool(): ToolDefinition<any> {
     ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
-        return framedTextRenderer("(no output)", expanded);
-      return boxRendererWindowed(
+        return new Text("(no output)", 0, 0);
+      return sectionRendererWindowed(
         () => [textSection(undefined, content.text)],
         {
           collapsed: { excerpts: COLLAPSED_EXCERPTS },
@@ -944,7 +920,7 @@ export function createDiffTool(): ToolDefinition<any> {
       }
     },
 
-    renderCall(args: any, theme: any, context: any) {
+    renderCall(args: any, theme: any) {
       const repo = args.repository
         ? args.repository.replace(/^https?:\/\/github\.com\//, "")
         : "...";
@@ -952,15 +928,11 @@ export function createDiffTool(): ToolDefinition<any> {
         ? osc8Link(args.repository, repo)
         : repo;
       const range = `${args.base || "?"}...${args.head || "?"}`;
-      return renderLifecycleCall(
-        new Text(
-          theme.fg("toolTitle", theme.bold("diff ")) +
-            theme.fg("dim", `${linkedRepo} ${range}`),
-          0,
-          0,
-        ),
-        theme,
-        context,
+      return new Text(
+        theme.fg("toolTitle", theme.bold("diff ")) +
+          theme.fg("dim", `${linkedRepo} ${range}`),
+        0,
+        0,
       );
     },
 
@@ -971,8 +943,8 @@ export function createDiffTool(): ToolDefinition<any> {
     ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
-        return framedTextRenderer("(no output)", expanded);
-      return boxRendererWindowed(
+        return new Text("(no output)", 0, 0);
+      return sectionRendererWindowed(
         () => [textSection(undefined, content.text)],
         {
           collapsed: { excerpts: COLLAPSED_EXCERPTS },
@@ -1015,4 +987,93 @@ export default function (pi: ExtensionAPI): void {
   pi.registerTool(withPromptPatch(createGlobGithubTool()));
   pi.registerTool(withPromptPatch(createCommitSearchTool()));
   pi.registerTool(withPromptPatch(createDiffTool()));
+}
+
+if (import.meta.vitest) {
+  const { describe, it, expect } = import.meta.vitest;
+  const theme = {
+    fg: (_color: string, text: string) => text,
+    bold: (text: string) => text,
+  };
+  const factories = [
+    createReadGithubTool,
+    createSearchGithubTool,
+    createListDirectoryGithubTool,
+    createListRepositoriesTool,
+    createGlobGithubTool,
+    createCommitSearchTool,
+    createDiffTool,
+  ];
+  describe("github content renderers", () => {
+    it.each(factories)(
+      "keeps remote links and unframed previews for %s",
+      (factory) => {
+        const tool = factory();
+        expect(tool).not.toHaveProperty("renderShell");
+        const args = {
+          repository: "https://github.com/owner/repo",
+          path: "file.ts",
+          pattern: "needle",
+          base: "main",
+          head: "branch",
+        };
+        const call = tool.renderCall!(args, theme as any, {} as any)
+          .render(120)
+          .join("\n");
+        if (tool.name !== "list_repositories")
+          expect(call).toContain("\x1b]8;;https://github.com/");
+        expect(call).not.toMatch(/[●✓✕╭╰]/);
+        const result = {
+          content: [
+            {
+              type: "text" as const,
+              text: Array.from({ length: 30 }, (_, i) => `line-${i}`).join(
+                "\n",
+              ),
+            },
+          ],
+          details: undefined,
+        };
+        const collapsed = tool.renderResult!(
+          result,
+          { expanded: false, isPartial: false },
+          theme as any,
+          {} as any,
+        )
+          .render(80)
+          .join("\n");
+        const expanded = tool.renderResult!(
+          result,
+          { expanded: true, isPartial: false },
+          theme as any,
+          {} as any,
+        )
+          .render(80)
+          .join("\n");
+        expect(collapsed).toContain("line-0");
+        expect(collapsed).toContain("line-29");
+        expect(collapsed).toContain("more lines");
+        expect(expanded).toContain("line-15");
+        expect(expanded).not.toMatch(/[╭╰]/);
+      },
+    );
+    it("preserves numbered blank lines and diff text", () => {
+      const render = (tool: ToolDefinition<any>, text: string) =>
+        tool.renderResult!(
+          { content: [{ type: "text", text }], details: undefined },
+          { expanded: true, isPartial: false },
+          theme as any,
+          {} as any,
+        )
+          .render(80)
+          .join("\n")
+          .replace(/\x1b\[[0-9;]*m/g, "");
+      expect(
+        render(createReadGithubTool(), "1: before\n2: \n3: after"),
+      ).toContain("2 │");
+      const patch = "```diff\n-old\n+new\n```";
+      expect(render(createDiffTool(), patch)).toContain(patch.split("\n")[1]);
+      expect(render(createDiffTool(), patch)).toContain("+new");
+    });
+  });
 }

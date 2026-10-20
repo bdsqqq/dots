@@ -19,7 +19,7 @@ import type {
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 
-import { Container } from "@earendil-works/pi-tui";
+import { Container, Text } from "@earendil-works/pi-tui";
 import { Type, type TObject } from "typebox";
 import {
   getEnabledExtensionConfig,
@@ -39,7 +39,6 @@ import {
   applySessionMeta,
   getFinalOutput,
   renderAgentTree,
-  renderSubAgentCall,
   renderSubAgentFallback,
   readSubAgentResult,
   registerSubAgentErrorNormalization,
@@ -241,7 +240,7 @@ export function createOracleTool(
       return subAgentResult(text, singleResult, isError);
     },
 
-    renderCall(args: any, theme: any, context: any) {
+    renderCall(args: any, theme: any) {
       const preview = args.task
         ? args.task.length > 80
           ? `${args.task.slice(0, 80)}...`
@@ -255,7 +254,7 @@ export function createOracleTool(
           ` (${args.files.length} file${args.files.length > 1 ? "s" : ""})`,
         );
       }
-      return renderSubAgentCall(text, theme, context);
+      return new Text(text, 0, 0);
     },
 
     renderResult(result: any, { expanded }: { expanded: boolean }, theme: any) {
@@ -550,10 +549,9 @@ if (import.meta.vitest) {
         } as any);
         const lines = result.render(80).map((line) => line.trimEnd());
 
-        expect(lines[0]).toBe("✓ oracle");
-        expect(lines.slice(1).every((line) => line.startsWith("  "))).toBe(
-          true,
-        );
+        expect(lines[0]).toBe("oracle");
+        expect(lines.slice(1).join("")).toBe(`${"a".repeat(80)}...`);
+        expect(lines.join("\n")).not.toMatch(/[●✓✕│╰]/);
       });
 
       it("shows file count when files provided", () => {

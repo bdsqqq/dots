@@ -25,7 +25,6 @@ import {
   truncateToWidth,
   visibleWidth,
 } from "@earendil-works/pi-tui";
-import { boxBottom } from "@bds_pi/box-chrome";
 import {
   modelCliString,
   isPiSpawnModelValue,
@@ -675,13 +674,6 @@ function renderToolLine(
 // --- tree rendering ---
 
 const COLLAPSED_ITEM_COUNT = 10;
-type SubAgentCallContext = {
-  isError: boolean;
-  isPartial: boolean;
-  invalidate?: () => void;
-  lastComponent?: Component;
-  state?: Record<PropertyKey, unknown>;
-};
 
 class SingleLineText implements Component {
   constructor(private readonly text: string) {}
@@ -712,21 +704,7 @@ function trimBlankLines(text: string): string {
   return lines.slice(start, end).join("\n");
 }
 
-function openFrame(
-  child: Component,
-  fg: (color: any, text: string) => string,
-): Component {
-  const marker = fg("muted", "│");
-  return new MarkerColumn(marker, child, {
-    continuationMarker: marker,
-    footerMarker: boxBottom({
-      variant: "open",
-      style: { dim: (text) => fg("muted", text) },
-    }),
-  });
-}
-
-export function renderSubAgentFallback(result: any, theme: any): Component {
+export function renderSubAgentFallback(result: any, _theme: any): Component {
   const text =
     trimBlankLines(
       result.content
@@ -736,58 +714,7 @@ export function renderSubAgentFallback(result: any, theme: any): Component {
         .map((part: any) => part.text)
         .join("\n") ?? "",
     ) || "(no output)";
-  return openFrame(new Text(text, 0, 0), theme.fg.bind(theme));
-}
-
-class SubAgentCallComponent implements Component {
-  private row: MarkerColumn;
-  private icon: string;
-  private content: string;
-
-  constructor(icon: string, content: string) {
-    this.icon = icon;
-    this.content = content;
-    this.row = new MarkerColumn(icon, new Text(content, 0, 0));
-  }
-
-  update(icon: string, content: string): void {
-    if (this.icon !== icon) {
-      this.icon = icon;
-      this.row.setMarker(icon);
-    }
-    if (this.content !== content) {
-      this.content = content;
-      this.row.setChild(new Text(content, 0, 0));
-    }
-  }
-
-  render(width: number): string[] {
-    return this.row.render(width);
-  }
-
-  invalidate(): void {
-    this.row.invalidate();
-  }
-}
-
-export function renderSubAgentCall(
-  content: string,
-  theme: any,
-  context: SubAgentCallContext,
-): Component {
-  const active = context.isPartial && !context.isError;
-
-  const icon = context.isError
-    ? theme.fg("error", "✕")
-    : active
-      ? theme.fg("accent", "●")
-      : theme.fg("success", "✓");
-  const component =
-    context.lastComponent instanceof SubAgentCallComponent
-      ? context.lastComponent
-      : new SubAgentCallComponent(icon, content);
-  component.update(icon, content);
-  return component;
+  return new Text(text, 0, 0);
 }
 
 export function renderAgentTree(
@@ -800,7 +727,7 @@ export function renderAgentTree(
     | {
         label?: string;
         header?: "full" | "none";
-        summary?: "tree" | "open-box";
+        summary?: "tree" | "plain";
       },
 ): void {
   const fg = theme.fg.bind(theme);
@@ -809,12 +736,12 @@ export function renderAgentTree(
       ? {
           label: labelOrOpts,
           header: "full" as const,
-          summary: "open-box" as const,
+          summary: "plain" as const,
         }
       : {
           label: labelOrOpts?.label,
           header: labelOrOpts?.header ?? ("full" as const),
-          summary: labelOrOpts?.summary ?? ("open-box" as const),
+          summary: labelOrOpts?.summary ?? ("plain" as const),
         };
   const MID = fg("muted", "├");
   const END = fg("muted", "╰");
@@ -829,17 +756,10 @@ export function renderAgentTree(
     r.stopReason === "error" ||
     r.stopReason === "aborted";
   const errorLabel = r.lifecycle?.errorKind ?? r.stopReason;
-  const icon =
-    r.exitCode === -1
-      ? fg("warning", "⋯")
-      : isError
-        ? fg("error", "✕")
-        : fg("success", "✓");
-
   if (opts.header === "full") {
     let header = fg("toolTitle", theme.bold(opts.label ?? r.agent));
     if (isError && errorLabel) header += ` ${fg("error", `[${errorLabel}]`)}`;
-    container.addChild(new MarkerColumn(icon, new Text(header, 0, 0)));
+    container.addChild(new Text(header, 0, 0));
   }
 
   if (isError && (errorLabel || r.errorMessage)) {
@@ -858,8 +778,8 @@ export function renderAgentTree(
 
   const toolCalls = r.toolCalls ?? getToolDisplayItems(r.messages ?? []);
   const finalOutput = getResultOutput(r);
-  const boxedSummary =
-    opts.summary === "open-box"
+  const plainSummary =
+    opts.summary === "plain"
       ? trimBlankLines(finalOutput) || "(no output)"
       : undefined;
 
@@ -886,14 +806,14 @@ export function renderAgentTree(
   if (finalOutput && opts.summary === "tree")
     children.push({ kind: "summary", output: finalOutput.trim() });
 
-  if (children.length === 0 && !boxedSummary) {
+  if (children.length === 0 && !plainSummary) {
     container.addChild(
       new MarkerColumn(END, new Text(fg("muted", "(no output)"), 0, 0)),
     );
   } else {
     for (let i = 0; i < children.length; i++) {
       const child = children[i]!;
-      const isLast = i === children.length - 1 && !boxedSummary;
+      const isLast = i === children.length - 1 && !plainSummary;
       const connector = isLast ? END : MID;
       const continuation = isLast ? "" : CONT;
 
@@ -929,16 +849,15 @@ export function renderAgentTree(
   if (!showExpanded && toolCalls.length > COLLAPSED_ITEM_COUNT) {
     const hint = new Text(fg("muted", "(Ctrl+O to expand)"), 0, 0);
     container.addChild(
-      boxedSummary
+      plainSummary
         ? new MarkerColumn(CONT, hint, { continuationMarker: CONT })
         : hint,
     );
   }
 
-  if (boxedSummary) {
-    container.addChild(
-      openFrame(new Markdown(boxedSummary, 0, 0, mdTheme), fg),
-    );
+  if (plainSummary) {
+    // The parent tool shell owns continuation markers and its single footer.
+    container.addChild(new Markdown(plainSummary, 0, 0, mdTheme));
   }
 
   const usageStr = formatUsageStats(r.usage, r.model);
@@ -978,7 +897,7 @@ if (import.meta.vitest) {
       expect(trimBlankLines("\n \n    code\n\n")).toBe("    code");
     });
 
-    it("closes detail-less sub-agent results with one shared frame", () => {
+    it("returns detail-less content without a parent frame", () => {
       const component = renderSubAgentFallback(
         {
           content: [
@@ -990,13 +909,12 @@ if (import.meta.vitest) {
       );
 
       expect(component.render(40).map((line) => line.trimEnd())).toEqual([
-        "│ first line",
-        "│ second line",
-        "╰────",
+        "first line",
+        "second line",
       ]);
     });
 
-    it("closes final output with the shared open frame by default", () => {
+    it("returns markdown summary content without a parent frame", () => {
       const result: SingleResult = {
         agent: "delegate",
         task: "summarize",
@@ -1021,63 +939,9 @@ if (import.meta.vitest) {
       renderAgentTree(result, container, false, mockTheme, { header: "none" });
 
       expect(container.render(40).map((line) => line.trimEnd())).toEqual([
-        "│ summary line one",
-        "│ summary line two",
-        "╰────",
+        "summary line one",
+        "summary line two",
       ]);
-    });
-
-    it("keeps wrapped call content aligned after its status column", () => {
-      const component = renderSubAgentCall(
-        "Delegate verify settlement and abort findings",
-        mockTheme,
-        { isError: false, isPartial: false },
-      );
-
-      expect(component.render(24).map((line) => line.trimEnd())).toEqual([
-        "✓ Delegate verify",
-        "  settlement and abort",
-        "  findings",
-      ]);
-      expect(component.render(1)).toEqual(["✓"]);
-      expect(component.render(2)).toEqual(["✓ "]);
-      for (const width of [1, 2, 3, 12]) {
-        expect(
-          component.render(width).every((line) => visibleWidth(line) <= width),
-        ).toBe(true);
-      }
-    });
-
-    it("gives errors precedence over pending call status", () => {
-      const line = renderSubAgentCall("Delegate task", mockTheme, {
-        isError: true,
-        isPartial: true,
-      }).render(80)[0];
-
-      expect(line?.trimEnd()).toBe("✕ Delegate task");
-    });
-
-    it("keeps active calls static and reuses their component", () => {
-      const colors: string[] = [];
-      const theme = {
-        fg: (color: string, text: string) => {
-          if (text === "●") colors.push(color);
-          return text;
-        },
-      };
-      const first = renderSubAgentCall("Delegate task", theme, {
-        isError: false,
-        isPartial: true,
-      });
-      const second = renderSubAgentCall("Delegate task", theme, {
-        isError: false,
-        isPartial: true,
-        lastComponent: first,
-      });
-
-      expect(second).toBe(first);
-      expect(colors).toEqual(["accent", "accent"]);
-      expect(second.render(80)[0]?.trimEnd()).toBe("● Delegate task");
     });
 
     it("keeps wrapped tree content inside the connector column", () => {
@@ -1184,9 +1048,226 @@ if (import.meta.vitest) {
 
       expect(container.render(80).map((line) => line.trimEnd())).toEqual([
         "├ [aborted]",
-        "│ (no output)",
-        "╰────",
+        "(no output)",
       ]);
+    });
+  });
+
+  describe("installed sub-agent tool shell", () => {
+    it("owns parent status, expansion, padding and one footer for all six renderers", async () => {
+      const { getPackageDir } = await import("@earendil-works/pi-coding-agent");
+      const { pathToFileURL } = await import("node:url");
+      const load = (path: string) =>
+        import(pathToFileURL(`${getPackageDir()}/dist/${path}`).href);
+      const { initTheme } = await load("modes/interactive/theme/theme.js");
+      initTheme("dark", false);
+      const { ToolExecutionComponent } = await load(
+        "modes/interactive/components/tool-execution.js",
+      );
+      const tools = [
+        (
+          await import("../../extensions/code-review/index.js")
+        ).createCodeReviewTool(),
+        (
+          await import("../../extensions/delegate/index.js")
+        ).createDelegateTool(),
+        (await import("../../extensions/finder/index.js")).createFinderTool(),
+        (
+          await import("../../extensions/librarian/index.js")
+        ).createLibrarianTool(),
+        (await import("../../extensions/look-at/index.js")).createLookAtTool(),
+        (await import("../../extensions/oracle/index.js")).createOracleTool(),
+      ];
+      const args = {
+        diff_description: "fixture review",
+        description: "fixture delegate",
+        query: "fixture query",
+        path: "fixture.png",
+        task: "fixture oracle",
+      };
+      for (const tool of tools) {
+        expect(tool).not.toHaveProperty("renderShell");
+        const callContent = tool.renderCall!(args, mockTheme as any, {} as any);
+        expect(callContent.render(80).join("\n")).not.toMatch(/[●✓✕│╰]/);
+        const component = new ToolExecutionComponent(
+          tool.name,
+          "fixture-call",
+          args,
+          {},
+          tool,
+          { requestRender() {} },
+          process.cwd(),
+        );
+        const rows = () => component.render(80).map(stripTerminalSequences);
+        expect(rows().join("\n")).toContain("●");
+        expect(rows().join("\n")).not.toContain("╰────");
+        const source: SingleResult = {
+          agent: tool.name,
+          task: "expanded task details",
+          exitCode: 0,
+          output: "**markdown summary**",
+          toolCalls: Array.from({ length: 11 }, (_, index) => ({
+            id: `child-${index}`,
+            name: "read",
+            summary: `child-${index}.ts`,
+            isError: index === 1,
+          })),
+          model: "fixture/model",
+          usage: {
+            input: 1,
+            output: 2,
+            cacheRead: 0,
+            cacheWrite: 0,
+            cost: 0.001,
+            contextTokens: 1,
+            turns: 1,
+          },
+        };
+        component.markExecutionStarted();
+        component.updateResult(
+          subAgentProgress("working", { ...source, exitCode: -1 }),
+          true,
+        );
+        expect(rows()[1]).toContain("●");
+        component.updateResult(subAgentResult("answer", source));
+        let text = rows().join("\n");
+        expect(text).toContain("✓");
+        expect(
+          rows().filter((line: string) => line.includes("╰────")),
+        ).toHaveLength(1);
+        expect(text).toContain("│ ├ ✕ Read child-1.ts");
+        expect(text).toContain("…1 earlier calls");
+        expect(text).not.toContain("child-0.ts");
+        expect(text).not.toContain("expanded task details");
+        expect(text).toContain("markdown summary");
+        expect(text).toContain("fixture/model");
+        component.setExpanded(true);
+        text = rows().join("\n");
+        expect(text).toContain("expanded task details");
+        expect(text).toContain("child-0.ts");
+        for (const status of ["failed", "cancelled", "timed_out"] as const) {
+          const failedSource: SingleResult = {
+            ...source,
+            exitCode: 1,
+            errorMessage: status,
+            lifecycle: {
+              status,
+              errorKind:
+                status === "timed_out"
+                  ? "timeout"
+                  : status === "cancelled"
+                    ? "cancelled"
+                    : "agent",
+              pid: null,
+              processGroupId: null,
+              owner: null,
+              startedAt: "2026-10-19T00:00:00.000Z",
+              endedAt: "2026-10-19T00:00:01.000Z",
+              exitCode: 1,
+              signal: null,
+              cancellationRequestedAt: null,
+              timeoutMs: status === "timed_out" ? 1000 : null,
+              timedOutAt:
+                status === "timed_out" ? "2026-10-19T00:00:01.000Z" : null,
+            },
+          };
+          const failure = subAgentResult("child failed", failedSource, true);
+          expect(readSubAgentResult(failure.details)?.lifecycle?.status).toBe(
+            status,
+          );
+          let normalize: any;
+          registerSubAgentErrorNormalization(
+            {
+              on(_event: string, handler: unknown) {
+                normalize = handler;
+              },
+            } as unknown as ExtensionAPI,
+            tool.name,
+          );
+          await expect(
+            normalize({ toolName: tool.name, details: failure.details }),
+          ).resolves.toEqual({ isError: true });
+          component.updateResult(failure);
+          expect(rows()[1]).toContain("✕");
+          expect(rows().join("\n")).toContain(status);
+          expect(
+            rows().filter((line: string) => line.includes("╰────")),
+          ).toHaveLength(1);
+        }
+        component.setOutputPad(3);
+        expect(rows().some((line: string) => line.startsWith("   ✕"))).toBe(
+          true,
+        );
+        for (const width of [0, 1, 2, 3, 8, 20, 40]) {
+          expect(
+            component
+              .render(width)
+              .every((line: string) => visibleWidth(line) <= width),
+          ).toBe(true);
+        }
+        component.updateResult({
+          content: [{ type: "text", text: "fallback text" }],
+          details: undefined,
+        });
+        expect(rows().join("\n")).toContain("│ fallback text");
+        expect(
+          rows().filter((line: string) => line.includes("╰────")),
+        ).toHaveLength(1);
+      }
+    });
+
+    it("leaves messaging and history tools on native fallback", async () => {
+      const { createAgentMessageTool } =
+        await import("../../extensions/agent-message/index.js");
+      const { default: history } =
+        await import("../../extensions/session-history/index.js");
+      const tools: any[] = [
+        createAgentMessageTool({ queueDir: "/unused", sessionsDirs: [] }),
+      ];
+      history({
+        registerTool: (tool: unknown) => tools.push(tool),
+        on() {},
+      } as unknown as ExtensionAPI);
+      expect(tools.map((tool) => tool.name)).toEqual([
+        "agent_message",
+        "history_list",
+        "history_read",
+      ]);
+      const { getPackageDir } = await import("@earendil-works/pi-coding-agent");
+      const { pathToFileURL } = await import("node:url");
+      const { initTheme } = await import(
+        pathToFileURL(
+          `${getPackageDir()}/dist/modes/interactive/theme/theme.js`,
+        ).href
+      );
+      initTheme("dark", false);
+      const { ToolExecutionComponent } = await import(
+        pathToFileURL(
+          `${getPackageDir()}/dist/modes/interactive/components/tool-execution.js`,
+        ).href
+      );
+      for (const tool of tools) {
+        expect(tool).not.toHaveProperty("renderShell");
+        expect(tool).not.toHaveProperty("renderCall");
+        expect(tool).not.toHaveProperty("renderResult");
+        const component = new ToolExecutionComponent(
+          tool.name,
+          "fixture-call",
+          {},
+          {},
+          tool,
+          { requestRender() {} },
+          process.cwd(),
+        );
+        component.updateResult({
+          content: [{ type: "text", text: "native fallback output" }],
+          details: undefined,
+        });
+        const rows: string[] = component.render(80).map(stripTerminalSequences);
+        expect(rows[1]).toContain("✓");
+        expect(rows.join("\n")).toContain("│ native fallback output");
+        expect(rows.filter((line) => line.includes("╰────"))).toHaveLength(1);
+      }
     });
   });
 

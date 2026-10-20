@@ -38,7 +38,6 @@ import {
   getFinalOutput,
   getResultOutput,
   renderAgentTree,
-  renderSubAgentCall,
   renderSubAgentFallback,
   readSubAgentResult,
   registerSubAgentErrorNormalization,
@@ -352,7 +351,7 @@ export function createCodeReviewTool(
       return subAgentResult(text, singleResult, isError);
     },
 
-    renderCall(args: any, theme: any, context: any) {
+    renderCall(args: any, theme: any) {
       const desc = args.diff_description || "...";
       const preview = desc.length > 70 ? `${desc.slice(0, 70)}...` : desc;
       let text =
@@ -364,7 +363,7 @@ export function createCodeReviewTool(
           ` (${args.files.length} file${args.files.length > 1 ? "s" : ""})`,
         );
       }
-      return renderSubAgentCall(text, theme, context);
+      return new Text(text, 0, 0);
     },
 
     renderResult(result: any, { expanded }: { expanded: boolean }, theme: any) {
@@ -1114,9 +1113,9 @@ No issues found.`;
 
         const lines = result.render(40);
         expect(lines[0]).toBe("├ ⋯ Bash echo ok");
-        expect(lines.at(-1)).toBe("╰────");
-        expect(lines.slice(1, -1).every((line) => line.startsWith("│ "))).toBe(
-          true,
+        expect(lines.join("\n")).not.toContain("╰────");
+        expect(lines.slice(1).some((line) => line.startsWith("│ "))).toBe(
+          false,
         );
         expect(lines.join("\n")).toContain("Code review");
         expect(lines.join("\n")).not.toContain("Summary:");
@@ -1145,8 +1144,7 @@ No issues found.`;
           {} as any,
         );
         expect(emptyResult.render(40).map((line) => line.trimEnd())).toEqual([
-          "│ (no output)",
-          "╰────",
+          "(no output)",
         ]);
       });
 

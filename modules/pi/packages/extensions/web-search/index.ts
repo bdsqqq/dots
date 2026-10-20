@@ -20,7 +20,6 @@ import {
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
-import { renderLifecycleCall, framedTextRenderer } from "@bds_pi/box-format";
 import {
   Type,
   type Static,
@@ -403,7 +402,7 @@ export function createWebSearchTool(
       );
     },
 
-    renderCall(args: any, theme: any, context: any) {
+    renderCall(args: any, theme: any) {
       const objective = args.objective || "...";
       const short =
         objective.length > 70 ? `${objective.slice(0, 70)}...` : objective;
@@ -413,19 +412,12 @@ export function createWebSearchTool(
       if (args.search_queries?.length) {
         text += theme.fg("muted", ` [${args.search_queries.join(", ")}]`);
       }
-      return renderLifecycleCall(new Text(text, 0, 0), theme, context);
+      return new Text(text, 0, 0);
     },
 
-    renderResult(
-      result: any,
-      { expanded }: { expanded: boolean },
-      _theme: any,
-    ) {
+    renderResult(result: any) {
       const text = result.content?.[0];
-      return framedTextRenderer(
-        text?.type === "text" ? text.text : "(no output)",
-        expanded,
-      );
+      return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
     },
   };
 }

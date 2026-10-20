@@ -12,8 +12,6 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
-import { Text } from "@earendil-works/pi-tui";
-import { renderLifecycleCall, osc8Link } from "@bds_pi/box-format";
 import {
   Type,
   type Static,
@@ -93,6 +91,18 @@ const readParameters: TObject<{
 });
 
 export type ReadParams = Static<typeof readParameters>;
+
+/** Keep execution and both native renderers on the same inclusive-range adapter. */
+function toNativeReadArgs(args: Partial<ReadParams>): ReadToolInput {
+  const [offset, end] = args.read_range ?? [];
+  return {
+    path: args.path ?? "",
+    ...(offset === undefined ? {} : { offset }),
+    ...(offset === undefined || end === undefined
+      ? {}
+      : { limit: end - offset + 1 }),
+  };
+}
 
 function errorResult(message: string) {
   return {
@@ -176,14 +186,7 @@ export function createReadTool(
         // Missing and unreadable paths are reported by the native read operation.
       }
 
-      const [start, end] = params.read_range ?? [];
-      const nativeParams: ReadToolInput = {
-        path: target,
-        ...(start === undefined ? {} : { offset: start }),
-        ...(start === undefined || end === undefined
-          ? {}
-          : { limit: end - start + 1 }),
-      };
+      const nativeParams = toNativeReadArgs({ ...params, path: target });
       return nativeRead.execute(
         toolCallId,
         nativeParams,
@@ -193,44 +196,16 @@ export function createReadTool(
       );
     },
     renderCall(args, theme, context) {
-      const filePath = args.path || "...";
-      const home = os.homedir();
-      const shortened = filePath.startsWith(home)
-        ? `~${filePath.slice(home.length)}`
-        : filePath;
-      const [start, end] = args.read_range ?? [];
-      const displayPath =
-        start === undefined || end === undefined
-          ? shortened
-          : `${shortened}:${start}-${end}`;
-      const linked = filePath.startsWith("/")
-        ? osc8Link(`file://${filePath}`, displayPath)
-        : displayPath;
-      return renderLifecycleCall(
-        new Text(
-          theme.fg("toolTitle", theme.bold("Read ")) + theme.fg("dim", linked),
-          0,
-          0,
-        ),
-        theme,
-        context,
-      );
+      return nativeRead.renderCall!(toNativeReadArgs(args), theme, {
+        ...context,
+        args: toNativeReadArgs(context.args),
+      });
     },
     renderResult(result, options, theme, context) {
-      const [offset, end] = context.args.read_range ?? [];
-      const args: ReadToolInput = {
-        path: context.args.path,
-        ...(offset === undefined ? {} : { offset }),
-        ...(offset === undefined || end === undefined
-          ? {}
-          : { limit: end - offset + 1 }),
-      };
-      return (
-        nativeRead.renderResult?.(result, options, theme, {
-          ...context,
-          args,
-        }) ?? new Text("", 0, 0)
-      );
+      return nativeRead.renderResult!(result, options, theme, {
+        ...context,
+        args: toNativeReadArgs(context.args),
+      });
     },
   };
 
@@ -513,6 +488,61 @@ if (import.meta.vitest) {
           callContext(cwd),
         ),
       ).rejects.toThrow("Operation aborted");
+    });
+
+    it("adapts inclusive ranges for native call rendering and reuses native components", () => {
+      const tool = createReadTool();
+      const theme = {
+        fg: (_color: string, text: string) => text,
+        bold: (text: string) => text,
+      } as Theme;
+      const state = {};
+      const args = {
+        path: "fixture.txt",
+        read_range: [3, 5] as [number, number],
+      };
+      const context = {
+        args,
+        cwd: process.cwd(),
+        expanded: false,
+        state,
+        showImages: false,
+        isError: false,
+      } as Parameters<NonNullable<typeof tool.renderCall>>[2];
+      const call = tool.renderCall!(args, theme, context);
+      const native = nativeRead.renderCall!(
+        { path: "fixture.txt", offset: 3, limit: 3 },
+        theme,
+        { ...context, args: { path: "fixture.txt", offset: 3, limit: 3 } },
+      );
+      expect(call.render(80)).toEqual(native.render(80));
+      const next = tool.renderCall!({ path: "other.txt" }, theme, {
+        ...context,
+        lastComponent: call,
+      });
+      expect(next).toBe(call);
+      expect(next.render(80).join("\n")).toContain("other.txt");
+      const result = {
+        content: [{ type: "text" as const, text: "native output" }],
+        details: undefined,
+      };
+      const output = tool.renderResult!(
+        result,
+        { expanded: false, isPartial: true },
+        theme,
+        context,
+      );
+      expect(output.render(80).join("\n").trim()).toBe("");
+      const expanded = tool.renderResult!(
+        result,
+        { expanded: true, isPartial: false },
+        theme,
+        { ...context, lastComponent: output },
+      );
+      expect(expanded).toBe(output);
+      expect(expanded.render(80).join("\n")).toContain("native output");
+      expect(context.state).toBe(state);
+      expect(args.read_range).toEqual([3, 5]);
     });
 
     it("renders normal and error output through the Pi read renderer", async () => {

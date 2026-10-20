@@ -27,9 +27,7 @@ import { Type } from "typebox";
 import { Text } from "@earendil-works/pi-tui";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
-  renderLifecycleCall,
-  boxRendererWindowed,
-  framedTextRenderer,
+  sectionRendererWindowed,
   textSection,
   type Excerpt,
 } from "@bds_pi/box-format";
@@ -151,18 +149,14 @@ export function createSkillTool(): ToolDefinition<any> {
       ),
     }),
 
-    renderCall(args: any, theme: any, context: any) {
+    renderCall(args: any, theme: any) {
       const name = args.name || "...";
-      return renderLifecycleCall(
-        new Text(
-          theme.fg("dim", "using ") +
-            theme.fg("toolTitle", theme.bold(name)) +
-            theme.fg("dim", " skill"),
-          0,
-          0,
-        ),
-        theme,
-        context,
+      return new Text(
+        theme.fg("dim", "using ") +
+          theme.fg("toolTitle", theme.bold(name)) +
+          theme.fg("dim", " skill"),
+        0,
+        0,
       );
     },
 
@@ -249,16 +243,16 @@ export function createSkillTool(): ToolDefinition<any> {
     ) {
       const content = result.content?.[0];
       if (!content || content.type !== "text")
-        return framedTextRenderer("(no output)", expanded);
+        return new Text("(no output)", 0, 0);
       if (content.text.startsWith("<loaded_skill")) {
-        return boxRendererWindowed(
+        return sectionRendererWindowed(
           () => [textSection(undefined, "skill loaded", true)],
           { collapsed: {}, expanded: {} },
           undefined,
           expanded,
         );
       }
-      return boxRendererWindowed(
+      return sectionRendererWindowed(
         () => [textSection(undefined, content.text)],
         {
           collapsed: { excerpts: COLLAPSED_EXCERPTS },
@@ -269,6 +263,37 @@ export function createSkillTool(): ToolDefinition<any> {
       );
     },
   };
+}
+
+if (import.meta.vitest) {
+  const { it, expect } = import.meta.vitest;
+  it("suppresses loaded skill bodies in both views but retains errors as content", () => {
+    const tool = createSkillTool();
+    const theme = {
+      fg: (_color: string, text: string) => text,
+      bold: (text: string) => text,
+    };
+    for (const expanded of [false, true]) {
+      const render = (text: string) =>
+        tool.renderResult!(
+          { content: [{ type: "text", text }], details: undefined },
+          { expanded, isPartial: false },
+          theme as any,
+          {} as any,
+        )
+          .render(80)
+          .join("\n");
+      const loaded = render(
+        '<loaded_skill name="fixture">private instructions</loaded_skill>',
+      );
+      expect(loaded).toContain("skill loaded");
+      expect(loaded).not.toContain("private instructions");
+      expect(loaded).not.toMatch(/[╭╰│]/);
+      expect(render('skill "missing" not found.')).toContain(
+        'skill "missing" not found.',
+      );
+    }
+  });
 }
 
 // --- exports for testing ---
