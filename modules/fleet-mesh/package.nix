@@ -4,13 +4,13 @@
   lib,
   makeWrapper,
   nodejs,
-  pnpm_10,
+  pnpm_11,
   pnpmConfigHook,
   stdenvNoCC,
 }:
 
 let
-  pnpm = pnpm_10;
+  pnpm = pnpm_11;
 in
 stdenvNoCC.mkDerivation (finalAttrs: {
   pname = "fleet-mesh-daemon";
@@ -29,9 +29,9 @@ stdenvNoCC.mkDerivation (finalAttrs: {
   pnpmDeps = fetchPnpmDeps {
     inherit (finalAttrs) pname version src;
     inherit pnpm;
-    fetcherVersion = 3;
+    fetcherVersion = 4;
     pnpmInstallFlags = [ "--prod" ];
-    hash = "sha256-ZWaO3eI6m4hnsSEqdthSOEO4TgwKmq2zSLwzxytYVnQ=";
+    hash = "sha256-sCshoAbnHr77RHFzeUrcGmC+nBVbL9ajvtBQ0YOnV8Y=";
   };
   pnpmInstallFlags = [ "--prod" ];
 

@@ -3,14 +3,14 @@
 , lib
 , makeWrapper
 , nodejs
-, pnpm_10
+, pnpm_11
 , pnpmConfigHook
 , stdenvNoCC
 ,
 }:
 
 let
-  pnpm = pnpm_10;
+  pnpm = pnpm_11;
 in
 stdenvNoCC.mkDerivation (finalAttrs: {
   pname = "company-money";
@@ -33,9 +33,9 @@ stdenvNoCC.mkDerivation (finalAttrs: {
   pnpmDeps = fetchPnpmDeps {
     inherit (finalAttrs) pname version src;
     inherit pnpm;
-    fetcherVersion = 3;
+    fetcherVersion = 4;
     pnpmInstallFlags = [ "--prod" ];
-    hash = "sha256-zH5oMwOjfc7NJYrru1XE8zhMyNBvyg8rL5nqB8C1238=";
+    hash = "sha256-A05R5voUZri3LTmcy1SEbEFkiFkY0Edglg20KFTGteo=";
   };
   pnpmInstallFlags = [ "--prod" ];
 
