@@ -1,102 +1,24 @@
 /**
- * box-format — shared diagnostic-style box renderer for tool output.
- *
- * produces miette/ariadne-style box-drawing output:
- *   ╭─[header text]
- *    42 │ highlighted line (base-color gutter)
- *    43 │ dim context line
- *       ·
- *   100 │ another block
- *   ╰────
- *
- * chrome (╭│╰─·) renders DIM. highlighted lines get base-color
- * gutter + content; non-highlighted lines are fully dim.
- * tools without line numbers omit the gutter column.
- *
- * pipeline: callers produce BoxSection[], optionally pass Excerpt[] for
- * per-block visual-line windowing. box-format computes chrome width,
- * expands content to visual lines at (width - chrome), applies
- * windowItems() from show.ts, then wraps the result in box chrome.
- *
- * IMPORTANT: all output lines are truncated to the provided `width`
- * via truncateToWidth() as a safety net. the TUI will crash if any
- * rendered line exceeds terminal width.
+ * Diagnostic content sections: labels, line-number gutters and visual-line
+ * excerpts. The transcript shell owns lifecycle markers, padding and framing.
  */
 
-import { MarkerColumn, Text, type Component } from "@earendil-works/pi-tui";
-import { boxBottom, boxTop } from "@bds_pi/box-chrome";
+import {
+  Text,
+  truncateToWidth,
+  visibleWidth as nativeVisibleWidth,
+  type Component,
+} from "@earendil-works/pi-tui";
 import { windowItems, type Excerpt } from "@bds_pi/show";
 
 const DIM = "\x1b[2m";
 const RST = "\x1b[0m";
 
-/**
- * ANSI-aware visible width + truncation.
- * pi-tui exports these too (with better wide-char support), but we
- * keep local versions so box-format works in test environments where
- * pi-tui isn't available.
- */
-const ANSI_RE = /\x1b\[[0-9;]*m|\x1b\]8;;[^\x07]*\x07/g;
-
-/** tab stop width — terminals default to 8 but most code uses 4 */
-const TAB_WIDTH = 4;
-
 function visibleWidth(text: string): number {
-  const stripped = text.replace(ANSI_RE, "");
-  let w = 0;
-  for (const ch of stripped) {
-    w += ch === "\t" ? TAB_WIDTH : 1;
-  }
-  return w;
+  return nativeVisibleWidth(text.replace(/\t/g, "    "));
 }
 
-function truncateToWidth(
-  text: string,
-  maxWidth: number,
-  ellipsis = "…",
-): string {
-  if (visibleWidth(text) <= maxWidth) return text;
-
-  const ellipsisLen = ellipsis.length;
-  const target = maxWidth - ellipsisLen;
-  if (target <= 0) return ellipsis.slice(0, maxWidth);
-
-  let visible = 0;
-  let i = 0;
-  while (i < text.length && visible < target) {
-    // skip SGR escape sequences (\x1b[...m)
-    if (text[i] === "\x1b" && text[i + 1] === "[") {
-      const end = text.indexOf("m", i);
-      if (end !== -1) {
-        i = end + 1;
-        continue;
-      }
-    }
-    // skip OSC 8 hyperlink sequences (\x1b]8;;...\x07)
-    if (text[i] === "\x1b" && text[i + 1] === "]") {
-      const end = text.indexOf("\x07", i);
-      if (end !== -1) {
-        i = end + 1;
-        continue;
-      }
-    }
-    visible += text[i] === "\t" ? TAB_WIDTH : 1;
-    i++;
-  }
-
-  return text.slice(0, i) + RST + ellipsis;
-}
-
-/**
- * defensive padding subtracted from width before truncating.
- * the pi TUI passes the content-area width to render(), but
- * border/padding chars can still cause off-by-one wrapping
- * that eats subsequent lines. 2 chars is conservative enough
- * to prevent wrapping without wasting visible space.
- */
-const WIDTH_SAFETY_MARGIN = 2;
-
-export interface BoxLine {
+export interface SectionLine {
   /** optional gutter text (e.g., line number). right-aligned to gutter width. */
   gutter?: string;
   /** line content */
@@ -105,15 +27,15 @@ export interface BoxLine {
   highlight?: boolean;
 }
 
-export interface BoxBlock {
-  lines: BoxLine[];
+export interface SectionBlock {
+  lines: SectionLine[];
 }
 
-export interface BoxSection {
-  /** text inside ╭─[...]. omit for headless boxes (no opening line). */
+export interface ContentSection {
+  /** Optional section label, without an enclosing frame. */
   header?: string;
   /** contiguous blocks. gaps between blocks show · elision marker. */
-  blocks: BoxBlock[];
+  blocks: SectionBlock[];
 }
 
 // --- visual-line-aware rendering (show + box-format pipeline) ---
@@ -121,8 +43,8 @@ export interface BoxSection {
 /** re-export Excerpt so consumers import from box-format only */
 export type { Excerpt };
 
-/** intermediate visual line produced by expanding BoxLine text */
-interface VisualBoxLine {
+/** intermediate visual line produced by expanding SectionLine text */
+interface VisualSectionLine {
   text: string;
   gutter: string;
   highlight: boolean;
@@ -131,15 +53,18 @@ interface VisualBoxLine {
 }
 
 /**
- * expand a block's logical BoxLine[] to visual lines at contentWidth.
+ * expand a block's logical SectionLine[] to visual lines at contentWidth.
  * wrapping is done by pi-tui's Text.render(). first visual line of
  * a wrapped logical line gets the gutter; continuation lines get "".
  */
-function expandBlock(block: BoxBlock, contentWidth: number): VisualBoxLine[] {
-  const result: VisualBoxLine[] = [];
+function expandBlock(
+  block: SectionBlock,
+  contentWidth: number,
+): VisualSectionLine[] {
+  const result: VisualSectionLine[] = [];
   for (const line of block.lines) {
     const visualLines =
-      contentWidth > 0
+      contentWidth > 0 && line.text !== ""
         ? new Text(line.text, 0, 0).render(contentWidth)
         : [line.text];
 
@@ -161,13 +86,13 @@ function expandBlock(block: BoxBlock, contentWidth: number): VisualBoxLine[] {
 /**
  * compute the chrome prefix width for a given gutter width.
  * with gutter:  "  42 │ " = gutterWidth + 3
- * without:      "│ "      = 2
+ * without:      no prefix
  */
 function chromeWidth(gutterWidth: number): number {
-  return gutterWidth > 0 ? gutterWidth + 3 : 2;
+  return gutterWidth > 0 ? gutterWidth + 3 : 0;
 }
 
-export interface BoxWindowedOpts {
+export interface SectionWindowOptions {
   /** max sections to show (rest get "… N more" footer) */
   maxSections?: number;
   /**
@@ -179,25 +104,24 @@ export interface BoxWindowedOpts {
 }
 
 /**
- * visual-line-aware box renderer.
+ * Visual-line-aware content renderer.
  *
- * pipeline: compute chrome width → expand to visual lines at content width
- * → window per-block via excerpts → render chrome around the result.
+ * Compute gutter width, wrap content, then window each block independently.
  *
  * wraps content to fit width
  * via pi-tui Text.render(). truncateToWidth is kept as a safety net.
  *
  * usage:
- *   formatBoxesWindowed(
+ *   formatSectionsWindowed(
  *     sections,
  *     { excerpts: [{ focus: "head", context: 12 }, { focus: "tail", context: 13 }] },
  *     ["some notice"],
  *     90,
  *   )
  */
-export function formatBoxesWindowed(
-  sections: BoxSection[],
-  opts: BoxWindowedOpts = {},
+export function formatSectionsWindowed(
+  sections: ContentSection[],
+  opts: SectionWindowOptions = {},
   notices?: string[],
   width?: number,
 ): string {
@@ -206,8 +130,8 @@ export function formatBoxesWindowed(
   const shown = sections.slice(0, maxSections);
   const out: string[] = [];
 
-  const safeWidth =
-    width != null ? Math.max(1, width - WIDTH_SAFETY_MARGIN) : undefined;
+  const safeWidth = width != null ? Math.max(0, width) : undefined;
+  if (safeWidth === 0) return "";
   const clamp = (line: string): string =>
     safeWidth != null ? truncateToWidth(line, safeWidth, "…") : line;
 
@@ -230,23 +154,8 @@ export function formatBoxesWindowed(
 
     if (si > 0) out.push("");
 
-    // header (omitted for headless sections)
-    if (section.header != null) {
-      out.push(
-        clamp(
-          boxTop({
-            variant: "open",
-            style: chrome,
-            header: {
-              text: section.header,
-              width: section.header.replace(/\x1b\[[0-9;]*m/g, "").length,
-            },
-          }),
-        ),
-      );
-    }
-
-    let _anyBlockTruncated = false;
+    // Section labels are content; the transcript shell owns the outer frame.
+    if (section.header != null) out.push(clamp(chrome.dim(section.header)));
 
     for (let bi = 0; bi < section.blocks.length; bi++) {
       const block = section.blocks[bi];
@@ -262,7 +171,7 @@ export function formatBoxesWindowed(
       // apply per-block excerpts
       const windowed =
         excerpts.length > 0
-          ? windowItems(expanded, excerpts, (count): VisualBoxLine => ({
+          ? windowItems(expanded, excerpts, (count): VisualSectionLine => ({
               text: `· ··· ${count} more lines`,
               gutter: "",
               highlight: false,
@@ -270,8 +179,6 @@ export function formatBoxesWindowed(
               isGap: false,
             }))
           : { items: expanded, skippedRanges: [] as Array<[number, number]> };
-
-      if (windowed.skippedRanges.length > 0) _anyBlockTruncated = true;
 
       // render each visual line with chrome
       for (const vl of windowed.items) {
@@ -287,24 +194,13 @@ export function formatBoxesWindowed(
           }
         } else {
           if (vl.highlight) {
-            out.push(clamp(`${DIM}│${RST} ${vl.text}`));
+            out.push(clamp(vl.text));
           } else {
-            out.push(clamp(`${DIM}│ ${vl.text}${RST}`));
+            out.push(clamp(`${DIM}${vl.text}${RST}`));
           }
         }
       }
     }
-
-    // footer
-    out.push(
-      safeWidth == null
-        ? boxBottom({ variant: "open", style: chrome })
-        : truncateToWidth(
-            boxBottom({ variant: "open", style: chrome }),
-            safeWidth,
-            "",
-          ),
-    );
   }
 
   // section elision
@@ -318,7 +214,7 @@ export function formatBoxesWindowed(
     out.push(clamp(`${DIM}[${notices.join(". ")}]${RST}`));
   }
 
-  return out.join("\n");
+  return out.map(clamp).join("\n");
 }
 
 /**
@@ -329,7 +225,7 @@ export function textSection(
   header: string | undefined,
   text: string,
   dim = false,
-): BoxSection {
+): ContentSection {
   return {
     ...(header != null && { header }),
     blocks: [
@@ -343,27 +239,13 @@ export function textSection(
   };
 }
 
-/** Frames short fallback text with the same open chrome as structured output. */
-export function framedTextRenderer(
-  text: string,
-  expanded = false,
-  dim = false,
-): Component & { invalidate(): void } {
-  return boxRendererWindowed(
-    () => [textSection(undefined, text, dim)],
-    { collapsed: {}, expanded: {} },
-    undefined,
-    expanded,
-  );
-}
-
 /**
- * visual-line-aware boxRenderer. uses formatBoxesWindowed under the hood.
- * caches by (width, expanded).
+ * Content-only section renderer; the transcript shell owns the outer frame.
+ * Caches by (width, expanded).
  */
-export function boxRendererWindowed(
-  buildSections: () => BoxSection[],
-  opts: { collapsed: BoxWindowedOpts; expanded: BoxWindowedOpts },
+export function sectionRendererWindowed(
+  buildSections: () => ContentSection[],
+  opts: { collapsed: SectionWindowOptions; expanded: SectionWindowOptions },
   notices?: string[],
   expanded: boolean = false,
 ): Component & { invalidate(): void } {
@@ -382,7 +264,7 @@ export function boxRendererWindowed(
         return cachedLines;
       }
       const sections = buildSections();
-      const visual = formatBoxesWindowed(
+      const visual = formatSectionsWindowed(
         sections,
         expanded ? opts.expanded : opts.collapsed,
         notices,
@@ -408,135 +290,6 @@ export function boxRendererWindowed(
  */
 export function osc8Link(url: string, text: string): string {
   return `\x1b]8;;${url}\x07${text}\x1b]8;;\x07`;
-}
-
-const LIFECYCLE_CALL_INTERVAL_MS = 320;
-
-export interface LifecycleCallContext {
-  isError: boolean;
-  isPartial: boolean;
-  invalidate?: () => void;
-  lastComponent?: Component;
-}
-
-class LifecycleCallComponent implements Component {
-  private rows: Component[];
-  private marker = "";
-  private middleMarker = "";
-  private endMarker = "";
-  private continuationMarker = "";
-  private frame = 0;
-  private interval?: ReturnType<typeof setInterval>;
-  private renderVersion = 0;
-  private requestRender?: () => void;
-
-  constructor(content: Component | readonly Component[]) {
-    this.rows = Array.isArray(content) ? [...content] : [content as Component];
-  }
-
-  update(
-    content: Component | readonly Component[],
-    theme: any,
-    context: LifecycleCallContext,
-  ): void {
-    this.renderVersion++;
-    this.requestRender = context.invalidate;
-    const active = context.isPartial && !context.isError;
-
-    if (active && this.requestRender && !this.interval) {
-      this.interval = setInterval(() => {
-        this.frame = (this.frame + 1) % 2;
-        const renderedVersion = this.renderVersion;
-        try {
-          this.requestRender?.();
-        } finally {
-          // a component removed from the transcript cannot settle through another
-          // renderCall. Stop after one unanswered invalidation instead of leaking.
-          if (this.renderVersion === renderedVersion) this.stop();
-        }
-      }, LIFECYCLE_CALL_INTERVAL_MS);
-      this.interval.unref?.();
-    } else if (!active) {
-      this.stop();
-    }
-
-    this.marker = context.isError
-      ? theme.fg("error", "✕")
-      : active
-        ? theme.fg(this.frame % 2 === 0 ? "muted" : "accent", "●")
-        : theme.fg("success", "✓");
-    this.middleMarker = theme.fg("muted", "├");
-    this.endMarker = theme.fg("muted", "╰");
-    this.continuationMarker = theme.fg("muted", "│");
-    this.rows = Array.isArray(content) ? [...content] : [content as Component];
-  }
-
-  render(width: number): string[] {
-    if (this.rows.length === 1) {
-      return new MarkerColumn(this.marker, this.rows[0]!).render(width);
-    }
-    return this.rows.flatMap((row, index) => {
-      const first = index === 0;
-      const last = index === this.rows.length - 1;
-      return new MarkerColumn(
-        first ? this.marker : last ? this.endMarker : this.middleMarker,
-        row,
-        {
-          continuationMarker: last ? "" : this.continuationMarker,
-        },
-      ).render(width);
-    });
-  }
-
-  invalidate(): void {
-    for (const row of this.rows) row.invalidate();
-  }
-
-  private stop(): void {
-    if (!this.interval) return;
-    clearInterval(this.interval);
-    this.interval = undefined;
-  }
-}
-
-/**
- * adds a stable lifecycle column without taking over the tool's own call UI.
- * reuse keeps one pulse timer attached to a row while MarkerColumn delegates
- * wrapping to the original component at the remaining width.
- */
-export function renderLifecycleCall(
-  content: Component | readonly Component[],
-  theme: any,
-  context: LifecycleCallContext,
-): Component {
-  const component =
-    context.lastComponent instanceof LifecycleCallComponent
-      ? context.lastComponent
-      : new LifecycleCallComponent(content);
-  component.update(content, theme, context);
-  return component;
-}
-
-/**
- * standardized call-line component for renderCall.
- * renders: bold(label) dim(context)
- *
- * usage: renderCallLine("Edit", "~/path/to/file.ts", theme)
- */
-export function renderCallLine(
-  label: string,
-  context: string,
-  theme: any,
-): { render(width: number): string[]; invalidate(): void } {
-  const line =
-    theme.fg("toolTitle", theme.bold(label)) +
-    (context ? " " + theme.fg("dim", context) : "");
-  return {
-    render(_width: number): string[] {
-      return [line];
-    },
-    invalidate() {},
-  };
 }
 
 // --- inline tests ---
@@ -608,6 +361,923 @@ if (import.meta.vitest) {
     );
   });
 
+  describe("installed shared tool shell", () => {
+    async function sdk() {
+      const { getPackageDir } = await import("@earendil-works/pi-coding-agent");
+      const { pathToFileURL } = await import("node:url");
+      const load = (path: string) =>
+        import(pathToFileURL(`${getPackageDir()}/dist/${path}`).href);
+      const { initTheme } = await load("modes/interactive/theme/theme.js");
+      initTheme("dark", false);
+      const { ToolExecutionComponent } = await load(
+        "modes/interactive/components/tool-execution.js",
+      );
+      const { stripTerminalSequences, visibleWidth } =
+        await import("@earendil-works/pi-tui");
+      const make = (definition?: unknown, name = "fixture", args = {}) =>
+        new ToolExecutionComponent(
+          name,
+          "fixture-call",
+          args,
+          {},
+          definition,
+          { requestRender() {} },
+          process.cwd(),
+        );
+      const rows = (component: Component, width = 80): string[] =>
+        component.render(width).map(stripTerminalSequences);
+      const result = (text = "output", isError = false) => ({
+        content: [{ type: "text", text }],
+        details: undefined,
+        isError,
+        durationMs: 1234,
+      });
+      return { load, make, rows, result, visibleWidth };
+    }
+
+    it("owns lifecycle and fallback framing for registered and unknown tools", async () => {
+      const { make, rows, result, visibleWidth } = await sdk();
+      for (const definition of [undefined, {}]) {
+        const component = make(definition);
+        expect(rows(component).join("\n")).toContain("● fixture");
+        expect(rows(component).join("\n")).not.toContain("╰────");
+        component.markExecutionStarted();
+        component.updateResult(result());
+        expect(rows(component).join("\n")).toContain("✓ fixture");
+        expect(rows(component).join("\n")).toContain("│ output");
+        expect(
+          rows(component).filter((line) => line.includes("╰────")),
+        ).toHaveLength(1);
+        component.updateResult(result("failed", true));
+        expect(rows(component).join("\n")).toContain("✕ fixture");
+        expect(rows(component).join("\n")).toContain("│ failed");
+        component.updateResult(result(""));
+        expect(rows(component).join("\n")).toContain("│ (no output)");
+        for (const width of [0, 1, 2, 3, 4, 8, 20]) {
+          expect(
+            component
+              .render(width)
+              .every((line: string) => visibleWidth(line) <= width),
+          ).toBe(true);
+        }
+        component.setOutputPad(3);
+        expect(rows(component).some((line) => line.startsWith("   ✓"))).toBe(
+          true,
+        );
+      }
+    });
+
+    it("keeps failed custom renderers inside the same fallback shell", async () => {
+      const { make, rows, result } = await sdk();
+      const component = make({
+        renderCall() {
+          throw new Error("call renderer failed");
+        },
+        renderResult() {
+          throw new Error("result renderer failed");
+        },
+      });
+      component.updateResult(result("fallback output", true));
+      const text = rows(component).join("\n");
+      expect(text).toContain("✕ fixture");
+      expect(text).toContain("│ fallback output");
+      expect(
+        rows(component).filter((line) => line.includes("╰────")),
+      ).toHaveLength(1);
+    });
+
+    it("preserves content instances, state, links, click coordinates and expansion", async () => {
+      const { make, rows, result } = await sdk();
+      const calls: Component[] = [];
+      const results: Component[] = [];
+      const clicks: Array<{ x: number; y: number }> = [];
+      const states: unknown[] = [];
+      const expanded: boolean[] = [];
+      const call = new Text("call", 0, 0);
+      const output = {
+        render: () => [osc8Link("https://example.com", "linked output")],
+        invalidate() {},
+        handleMouse(event: { x: number; y: number; type: string }) {
+          if (event.type === "click") {
+            clicks.push(event);
+            return { handled: true };
+          }
+          return undefined;
+        },
+      };
+      const component = make({
+        renderCall(_args: unknown, _theme: unknown, context: any) {
+          states.push(context.state);
+          if (context.lastComponent) calls.push(context.lastComponent);
+          return call;
+        },
+        renderResult(
+          _result: unknown,
+          options: any,
+          _theme: unknown,
+          context: any,
+        ) {
+          expanded.push(options.expanded);
+          states.push(context.state);
+          if (context.lastComponent) results.push(context.lastComponent);
+          return output;
+        },
+      });
+      component.updateResult(result());
+      component.setExpanded(true);
+      component.invalidate();
+      expect(calls.every((last) => last === call)).toBe(true);
+      expect(results.every((last) => last === output)).toBe(true);
+      expect(new Set(states).size).toBe(1);
+      expect(expanded).toContain(true);
+      expect(component.render(80).join("\n")).toContain(
+        "\x1b]8;;https://example.com",
+      );
+      const y = rows(component).findIndex((line) =>
+        line.includes("linked output"),
+      );
+      const event = {
+        type: "click",
+        button: "left",
+        x: 5,
+        y,
+        screenX: 5,
+        screenY: y,
+        width: 80,
+        height: rows(component).length,
+        shift: false,
+        alt: false,
+        ctrl: false,
+      } as const;
+      expect(component.handleMouse(event)).toMatchObject({ handled: true });
+      expect(clicks.at(-1)).toMatchObject({ x: 2, y: 0 });
+      const callY = rows(component).findIndex((line) => line.includes("call"));
+      component.handleMouse({ ...event, y: callY });
+      expect(expanded.at(-1)).toBe(false);
+      component.render(80);
+      component.handleMouse({ ...event, x: 1 });
+      expect(expanded.at(-1)).toBe(true);
+      // Unhandled drags remain available for transcript selection.
+      expect(component.handleMouse({ ...event, type: "drag" })).toBeUndefined();
+    });
+
+    it("retains native codemode scripts, nested statuses, output, timing and reuse", async () => {
+      const { load, make, rows, result, visibleWidth } = await sdk();
+      const { codemodeRenderers } = await load(
+        "extensions/codemode/renderer.js",
+      );
+      const code =
+        "const answer = await tools.read({ path: 'fixture' });\nconsole.log(answer);";
+      const component = make(codemodeRenderers, "codemode", { code });
+      component.markExecutionStarted();
+      const partial = {
+        ...result(""),
+        details: {
+          calls: [{ name: "read", args: "fixture", status: "running" }],
+        },
+      };
+      component.updateResult(partial, true);
+      expect(rows(component).join("\n")).toContain("… read fixture");
+      const call = component.callRendererComponent;
+      const output = component.resultRendererComponent;
+      component.updateResult({
+        ...result("script output"),
+        details: {
+          calls: [
+            { name: "read", args: "fixture", status: "ok", durationMs: 23 },
+            {
+              name: "probe",
+              args: "bad",
+              status: "error",
+              durationMs: 4,
+              error: "nested failure",
+            },
+            { name: "cancelled", args: "", status: "cancelled" },
+          ],
+        },
+      });
+      const text = rows(component).join("\n");
+      expect(text).toContain("const answer");
+      // Native highlighted content survives composition byte-for-byte at its allotted width.
+      const nativeCallRows: string[] =
+        component.callRendererComponent.render(76);
+      const shellRows: string[] = component.render(80);
+      expect(
+        nativeCallRows.every((native) =>
+          shellRows.some((shell) => shell.includes(native)),
+        ),
+      ).toBe(true);
+      expect(text).toContain("✓ read fixture 23ms");
+      expect(text).toContain("✗ probe bad 4ms");
+      expect(text).toContain("⊘ cancelled");
+      expect(text).toContain("script output");
+      expect(text).toContain("Took 1.2s");
+      component.setExpanded(true);
+      expect(rows(component).join("\n")).toContain("nested failure");
+      expect(component.callRendererComponent).toBe(call);
+      expect(component.resultRendererComponent).toBe(output);
+      expect(text.match(/╰────/g)).toHaveLength(1);
+      for (const width of [0, 1, 2, 3, 8, 20]) {
+        expect(
+          component
+            .render(width)
+            .every((line: string) => visibleWidth(line) <= width),
+        ).toBe(true);
+      }
+    });
+
+    it("keeps genuine self-shell ownership explicit while sharing native edit chrome", async () => {
+      const { load, make, rows, result } = await sdk();
+      const own = make({
+        renderShell: "self",
+        renderCall: () => new Text("own shell", 0, 0),
+        renderResult: () => new Text("own output", 0, 0),
+      });
+      own.updateResult(result());
+      expect(rows(own).join("\n")).toContain("own output");
+      expect(rows(own).join("\n")).not.toMatch(/[✓│╰]/);
+      const { createEditToolDefinition } = await load("core/tools/edit.js");
+      const native = createEditToolDefinition(process.cwd());
+      expect(native.renderShell).toBeUndefined();
+      const component = make(native, "edit", {
+        path: "fixture.ts",
+        edits: [{ oldText: "before", newText: "after" }],
+      });
+      const call = component.callRendererComponent;
+      component.updateResult({
+        ...result(),
+        details: { diff: "-1 before\n+1 after", firstChangedLine: 1 },
+      });
+      expect(component.callRendererComponent).toBe(call);
+      expect(rows(component).join("\n")).toContain("before");
+      expect(rows(component).join("\n")).toContain("after");
+      expect(rows(component).join("\n")).toContain("✓ edit");
+      expect(
+        rows(component).filter((line) => line.includes("╰────")),
+      ).toHaveLength(1);
+    });
+
+    it("preserves native asynchronous edit previews without writing the fixture", async () => {
+      const { load, make, rows, result, visibleWidth } = await sdk();
+      const { mkdtemp, writeFile, readFile, rm } =
+        await import("node:fs/promises");
+      const { tmpdir } = await import("node:os");
+      const { join } = await import("node:path");
+      const directory = await mkdtemp(join(tmpdir(), "pi-edit-preview-"));
+      try {
+        const path = join(directory, "fixture.ts");
+        await writeFile(path, "const before = 1;\n");
+        const { createEditToolDefinition } = await load("core/tools/edit.js");
+        const component = make(createEditToolDefinition(directory), "edit", {
+          path,
+          edits: [{ oldText: "before", newText: "after" }],
+        });
+        component.setArgsComplete();
+        await vi.waitFor(() =>
+          expect(rows(component).join("\n")).toContain("after"),
+        );
+        expect(rows(component).join("\n")).toContain("● edit");
+        expect(await readFile(path, "utf8")).toBe("const before = 1;\n");
+        const call = component.callRendererComponent;
+        const diff = call.preview.diff;
+        component.updateResult({
+          ...result(),
+          details: { diff, firstChangedLine: 1 },
+        });
+        expect(component.callRendererComponent).toBe(call);
+        expect(
+          rows(component).filter((line) => line.includes("const after")),
+        ).toHaveLength(1);
+        expect(
+          rows(component).filter((line) => line.includes("╰────")),
+        ).toHaveLength(1);
+        for (const width of [0, 1, 2, 3, 8, 20]) {
+          expect(
+            component
+              .render(width)
+              .every((line: string) => visibleWidth(line) <= width),
+          ).toBe(true);
+        }
+        component.updateResult(result("edit failed", true));
+        expect(rows(component).join("\n")).toContain("✕ edit");
+        expect(rows(component).join("\n")).toContain("edit failed");
+      } finally {
+        await rm(directory, { recursive: true });
+      }
+    });
+
+    it("reuses native image components and honors showImages", async () => {
+      const { make, rows, result } = await sdk();
+      const { getCapabilities, setCapabilities } =
+        await import("@earendil-works/pi-tui");
+      const previous = getCapabilities();
+      try {
+        setCapabilities({ ...previous, images: "kitty" });
+        const image = {
+          type: "image",
+          mimeType: "image/png",
+          data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jq6kAAAAASUVORK5CYII=",
+        };
+        const component = make();
+        component.updateResult({ ...result(""), content: [image] });
+        const first = component.imageComponents[0];
+        expect(first).toBeDefined();
+        component.setExpanded(true);
+        expect(component.imageComponents[0]).toBe(first);
+        component.setOutputPad(3);
+        expect(component.imageComponents[0]).toBe(first);
+        component.setShowImages(false);
+        expect(component.imageComponents).toHaveLength(0);
+        expect(rows(component).join("\n")).toContain("image/png");
+      } finally {
+        setCapabilities(previous);
+      }
+    });
+
+    it("composes local content renderers without duplicate lifecycle, padding or footer", async () => {
+      const { make, rows, result, visibleWidth } = await sdk();
+      const { createBashTool } = await import("../../extensions/bash/index.js");
+      const { createReadTool } = await import("../../extensions/read/index.js");
+      const github = await import("../../extensions/github/index.js");
+      const { createWebSearchTool } =
+        await import("../../extensions/web-search/index.js");
+      const { createReadWebPageTool } =
+        await import("../../extensions/read-web-page/index.js");
+      const { createSkillTool } =
+        await import("../../extensions/skill/index.js");
+      const tools = [
+        createBashTool(),
+        createReadTool(),
+        createWebSearchTool(),
+        createReadWebPageTool(),
+        createSkillTool(),
+        github.createReadGithubTool(),
+        github.createSearchGithubTool(),
+        github.createListDirectoryGithubTool(),
+        github.createListRepositoriesTool(),
+        github.createGlobGithubTool(),
+        github.createCommitSearchTool(),
+        github.createDiffTool(),
+      ];
+      const args = {
+        cmd: "echo first && echo second",
+        path: "fixture.txt",
+        read_range: [3, 5],
+        repository: "https://github.com/owner/repo",
+        name: "fixture-skill",
+        objective: "fixture objective",
+        url: "https://example.com",
+        base: "before",
+        head: "after",
+      };
+      for (const tool of tools) {
+        expect(tool).not.toHaveProperty("renderShell");
+        const component = make(tool, tool.name, args);
+        expect(rows(component).join("\n").match(/●/g)).toHaveLength(1);
+        for (const partial of [true, false]) {
+          component.updateResult(result("fixture output"), partial);
+          const text = rows(component).join("\n");
+          expect(text.match(/╰────/g)).toHaveLength(1);
+          expect(text.match(partial ? /●/g : /✓/g)).toHaveLength(1);
+        }
+        component.setExpanded(true);
+        expect(rows(component).join("\n")).toContain("fixture output");
+        component.updateResult(result("fixture failure", true));
+        expect(rows(component).join("\n").match(/✕/g)).toHaveLength(1);
+        expect(rows(component).join("\n")).toContain("fixture failure");
+        component.setOutputPad(3);
+        expect(rows(component).some((line) => line.startsWith("   ✕"))).toBe(
+          true,
+        );
+        for (const width of [0, 1, 2, 3, 8, 20]) {
+          expect(
+            component
+              .render(width)
+              .every((line: string) => visibleWidth(line) <= width),
+          ).toBe(true);
+        }
+        component.updateResult(result(""));
+        expect(
+          rows(component)
+            .join("\n")
+            .match(/╰────/g),
+        ).toHaveLength(1);
+      }
+    });
+
+    it("pulses only rendered pending rows and stops on settlement or detachment", async () => {
+      const { make, result } = await sdk();
+      vi.useFakeTimers();
+      try {
+        const component = make();
+        const first = component.render(80).join("\n");
+        expect(vi.getTimerCount()).toBe(1);
+        vi.advanceTimersByTime(320);
+        expect(vi.getTimerCount()).toBe(0);
+        expect(component.render(80).join("\n")).not.toBe(first);
+        expect(vi.getTimerCount()).toBe(1);
+        component.updateResult(result());
+        expect(vi.getTimerCount()).toBe(0);
+        component.render(80);
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe("installed HTML shared shell", () => {
+    it("completes settled renderer arguments without starting native edit file previews", async () => {
+      const { getPackageDir } = await import("@earendil-works/pi-coding-agent");
+      const { pathToFileURL } = await import("node:url");
+      const load = (path: string) =>
+        import(pathToFileURL(`${getPackageDir()}/dist/${path}`).href);
+      const { initTheme, theme } = await load(
+        "modes/interactive/theme/theme.js",
+      );
+      initTheme("dark", false);
+      const { createToolHtmlRenderer } = await load(
+        "core/export-html/tool-renderer.js",
+      );
+      const { createEditToolDefinition } = await load("core/tools/edit.js");
+      const contexts: Array<{
+        kind: string;
+        expanded: boolean;
+        complete: boolean;
+      }> = [];
+      const definition = {
+        renderCall(_args: unknown, _theme: unknown, context: any) {
+          if (!context.isPartial)
+            contexts.push({
+              kind: "call",
+              expanded: context.expanded,
+              complete: context.argsComplete,
+            });
+          return new Text(
+            context.argsComplete ? "ready call" : "loading call",
+            0,
+            0,
+          );
+        },
+        renderResult(
+          _result: unknown,
+          _options: unknown,
+          _theme: unknown,
+          context: any,
+        ) {
+          if (!context.isPartial)
+            contexts.push({
+              kind: "result",
+              expanded: context.expanded,
+              complete: context.argsComplete,
+            });
+          return new Text(
+            context.argsComplete ? "ready result" : "loading result",
+            0,
+            0,
+          );
+        },
+      };
+      const renderer = createToolHtmlRenderer({
+        getToolRenderers: () => definition,
+        theme,
+        cwd: process.cwd(),
+      });
+      renderer.renderCall("complete", "custom", {});
+      const rendered = renderer.renderResult(
+        "complete",
+        "custom",
+        [{ type: "text", text: "out" }],
+        undefined,
+        false,
+      );
+      for (const html of [
+        rendered.collapsed ?? rendered.expanded,
+        rendered.expanded,
+      ]) {
+        expect(html).toContain("ready call");
+        expect(html).toContain("ready result");
+        expect(html).not.toContain("loading");
+      }
+      expect(contexts.every((context) => context.complete)).toBe(true);
+      for (const kind of ["call", "result"])
+        for (const expanded of [false, true]) {
+          expect(
+            contexts
+              .filter(
+                (context) =>
+                  context.kind === kind && context.expanded === expanded,
+              )
+              .at(-1)?.complete,
+          ).toBe(true);
+        }
+      const native = createEditToolDefinition(process.cwd());
+      const calls: any[] = [];
+      const edit = {
+        ...native,
+        renderCall(args: any, currentTheme: any, context: any) {
+          const component = native.renderCall(args, currentTheme, context);
+          calls.push(component);
+          return component;
+        },
+      };
+      const exporter = createToolHtmlRenderer({
+        getToolRenderers: () => edit,
+        theme,
+        cwd: process.cwd(),
+      });
+      const fs = (await import("node:fs/promises")).default;
+      const { syncBuiltinESMExports } = await import("node:module");
+      const access = vi.spyOn(fs, "access");
+      const read = vi.spyOn(fs, "readFile");
+      syncBuiltinESMExports();
+      vi.useFakeTimers();
+      try {
+        for (const isError of [false, true]) {
+          const id = `edit-${isError}`;
+          exporter.renderCall(id, "edit", {
+            path: "/nonexistent/pi-export-fixture.ts",
+            edits: [{ oldText: "before", newText: "after" }],
+          });
+          const result = exporter.renderResult(
+            id,
+            "edit",
+            [{ type: "text", text: isError ? "edit failed" : "edited" }],
+            isError
+              ? undefined
+              : { diff: "-1 before\n+1 after", firstChangedLine: 1 },
+            isError,
+          );
+          expect(result.expanded).toContain(isError ? "edit failed" : "after");
+          expect(calls.at(-1).previewPending).toBe(false);
+          expect(vi.getTimerCount()).toBe(0);
+        }
+        await Promise.resolve();
+        expect(calls.every((component) => !component.previewPending)).toBe(
+          true,
+        );
+        expect(access).not.toHaveBeenCalled();
+        expect(read).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+        access.mockRestore();
+        read.mockRestore();
+        syncBuiltinESMExports();
+      }
+    });
+
+    it("exports native, local, fallback and self-owned rows without timers or duplicate headers", async () => {
+      const { getPackageDir, SessionManager } =
+        await import("@earendil-works/pi-coding-agent");
+      const { pathToFileURL } = await import("node:url");
+      const { createContext, runInContext } = await import("node:vm");
+      const { parseHTML } = await import("linkedom");
+      const { mkdtemp, readFile, writeFile, rm } =
+        await import("node:fs/promises");
+      const { tmpdir } = await import("node:os");
+      const { join } = await import("node:path");
+      const load = (path: string) =>
+        import(pathToFileURL(`${getPackageDir()}/dist/${path}`).href);
+      const { initTheme, theme } = await load(
+        "modes/interactive/theme/theme.js",
+      );
+      initTheme("dark", false);
+      const { createToolHtmlRenderer } = await load(
+        "core/export-html/tool-renderer.js",
+      );
+      const { exportSessionToHtml } = await load("core/export-html/index.js");
+      const { createAllToolDefinitions } = await load("core/tools/index.js");
+      const { codemodeRenderers } = await load(
+        "extensions/codemode/renderer.js",
+      );
+      const { createBashTool } = await import("../../extensions/bash/index.js");
+      const directory = await mkdtemp(join(tmpdir(), "pi-html-shell-"));
+      try {
+        let reused = 0;
+        let finalCalls = 0;
+        const states = new Set();
+        const themes = new Set();
+        const custom = {
+          renderCall(args: any, currentTheme: any, context: any) {
+            states.add(context.state);
+            themes.add(currentTheme);
+            if (context.lastComponent) reused++;
+            if (!context.isPartial) finalCalls++;
+            return (
+              context.lastComponent ?? new Text(`custom ${args.label}`, 0, 0)
+            );
+          },
+          renderResult(_result: any, options: any, _theme: any, context: any) {
+            states.add(context.state);
+            return new Text(
+              options.expanded ? "expanded detail" : "compact detail",
+              0,
+              0,
+            );
+          },
+        };
+        const native = createAllToolDefinitions(directory);
+        const definitions: Record<string, any> = {
+          ...native,
+          custom,
+          local_bash: createBashTool(),
+          codemode: codemodeRenderers,
+          self: {
+            renderShell: "self",
+            renderCall: () => new Text("OWN HEADER", 0, 0),
+            renderResult: () => new Text("OWN RESULT", 0, 0),
+          },
+          broken: {
+            renderCall() {
+              throw Error("broken");
+            },
+            renderResult() {
+              throw Error("broken");
+            },
+          },
+          controls: {
+            renderCall: () =>
+              new Text(
+                "\x1b]8;;https://example.com\x07linked\x1b]8;;\x07",
+                0,
+                0,
+              ),
+          },
+        };
+        const scenarios: Array<[string, any, boolean?, string?]> = [
+          ["read", { path: "fixture.ts" }],
+          ["bash", { command: "echo fixture" }],
+          ["write", { path: "fixture.ts", content: "const fixture = 1;" }],
+          [
+            "edit",
+            {
+              path: "fixture.ts",
+              edits: [{ oldText: "before", newText: "after" }],
+            },
+          ],
+          ["ls", { path: "." }],
+          ["custom", { label: "success" }],
+          ["custom", { label: "error" }, true],
+          ["unknown", { query: "fallback" }],
+          ["self", {}],
+          ["broken", {}],
+          ["codemode", { code: 'console.log("fixture")' }],
+          ["read", { path: "image.png" }, false, "image"],
+          ["custom", { label: "pending" }, false, "pending"],
+          ["local_bash", { cmd: "echo fixture" }],
+          ["controls", {}],
+          ["read", { path: "missing.ts" }, true],
+          ["bash", { command: "false" }, true],
+          ["write", { path: "missing.ts", content: "fixture" }, true],
+          [
+            "edit",
+            {
+              path: "missing.ts",
+              edits: [{ oldText: "before", newText: "after" }],
+            },
+            true,
+          ],
+          ["ls", { path: "missing" }, true],
+          ["broken", {}, true],
+        ];
+        const entries: any[] = [];
+        let parentId: string | null = null;
+        for (const [
+          index,
+          [name, args, isError = false, mode],
+        ] of scenarios.entries()) {
+          const id = `call-${index}`;
+          const entryId = `assistant-${id}`;
+          entries.push({
+            type: "message",
+            id: entryId,
+            parentId,
+            timestamp: new Date(0).toISOString(),
+            message: {
+              role: "assistant",
+              content: [{ type: "toolCall", id, name, arguments: args }],
+              api: "anthropic-messages",
+              provider: "fixture",
+              model: "fixture",
+              usage: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 0,
+                cost: {
+                  input: 0,
+                  output: 0,
+                  cacheRead: 0,
+                  cacheWrite: 0,
+                  total: 0,
+                },
+              },
+              stopReason: "toolUse",
+              timestamp: 0,
+            },
+          });
+          parentId = entryId;
+          if (mode === "pending") continue;
+          const content =
+            mode === "image"
+              ? [{ type: "image", mimeType: "image/png", data: "aW1hZ2U=" }]
+              : [
+                  {
+                    type: "text",
+                    text: isError ? "fixture failed" : "fixture output",
+                  },
+                ];
+          const resultId = `result-${id}`;
+          entries.push({
+            type: "message",
+            id: resultId,
+            parentId,
+            timestamp: new Date(0).toISOString(),
+            message: {
+              role: "toolResult",
+              toolCallId: id,
+              toolName: name,
+              content,
+              isError,
+              durationMs: 1234,
+              details:
+                name === "edit"
+                  ? { diff: "-1 before\n+1 after", firstChangedLine: 1 }
+                  : name === "codemode"
+                    ? {
+                        calls: [
+                          {
+                            name: "read",
+                            args: "fixture",
+                            status: "ok",
+                            durationMs: 4,
+                          },
+                        ],
+                      }
+                    : undefined,
+              timestamp: 0,
+            },
+          });
+          parentId = resultId;
+        }
+        const sessionFile = join(directory, "session.jsonl");
+        await writeFile(
+          sessionFile,
+          [
+            {
+              type: "session",
+              version: 3,
+              id: "html-shell-fixture",
+              timestamp: new Date(0).toISOString(),
+              cwd: directory,
+            },
+            ...entries,
+          ]
+            .map((entry) => JSON.stringify(entry))
+            .join("\n") + "\n",
+        );
+        const renderer = createToolHtmlRenderer({
+          getToolRenderers: (name: string) => definitions[name],
+          theme,
+          cwd: directory,
+        });
+        const outputPath = join(directory, "export.html");
+        const timeout = vi.spyOn(globalThis, "setTimeout");
+        const interval = vi.spyOn(globalThis, "setInterval");
+        try {
+          await exportSessionToHtml(
+            SessionManager.open(sessionFile),
+            undefined,
+            { outputPath, toolRenderer: renderer, themeName: "dark" },
+          );
+          expect(timeout).not.toHaveBeenCalled();
+          expect(interval).not.toHaveBeenCalled();
+        } finally {
+          timeout.mockRestore();
+          interval.mockRestore();
+        }
+        const { window, document } = parseHTML(
+          await readFile(outputPath, "utf8"),
+        );
+        window.HTMLElement.prototype.scrollIntoView = () => {};
+        window.matchMedia = () =>
+          ({
+            matches: false,
+            addEventListener() {},
+            removeEventListener() {},
+          }) as any;
+        window.location = new URL("https://fixture.invalid/") as any;
+        // Execute only our generated export scripts. This checks DOM composition,
+        // not browser event-handler compilation or layout; clicks need a browser.
+        const context = createContext({
+          window,
+          document,
+          console,
+          TextDecoder,
+          TextEncoder,
+          URL,
+          URLSearchParams,
+          atob,
+          btoa,
+          setTimeout,
+          clearTimeout,
+          localStorage: { getItem: () => null, setItem() {} },
+          getComputedStyle: () => ({ getPropertyValue: () => "" }),
+        });
+        for (const script of document.querySelectorAll("script:not([src])")) {
+          if (script.id !== "session-data")
+            runInContext(script.textContent ?? "", context);
+        }
+        const data = JSON.parse(
+          Buffer.from(
+            document.getElementById("session-data").textContent,
+            "base64",
+          ).toString(),
+        );
+        const plain = (html: string) => {
+          const fragment = document.createElement("div");
+          fragment.innerHTML = html;
+          return fragment.textContent;
+        };
+        for (const [index, [name, , isError, mode]] of scenarios.entries()) {
+          const rendered = data.renderedTools[`call-${index}`];
+          expect(rendered, name).toBeDefined();
+          const text = plain(rendered.resultHtmlExpanded ?? rendered.callHtml);
+          if (name === "self") {
+            expect(text).toContain("OWN HEADER");
+            expect(text).toContain("OWN RESULT");
+            expect(text).not.toMatch(/[✓╰│]/);
+          } else if (mode === "pending") {
+            expect(text).toContain("● custom pending");
+            expect(text).not.toContain("╰────");
+          } else {
+            expect(text, name).toContain(isError ? "✕" : "✓");
+            expect(text.match(/╰────/g), name).toHaveLength(1);
+            expect(rendered.callHtml, name).toBe("");
+            expect(
+              document.querySelector(`#tool-call-call-${index} > .tool-header`),
+              name,
+            ).toBeNull();
+          }
+          expect(text).not.toContain("\x1b");
+          expect(
+            document.getElementById(`tool-call-call-${index}`),
+            name,
+          ).not.toBeNull();
+        }
+        expect(
+          plain(data.renderedTools["call-5"].resultHtmlCollapsed),
+        ).toContain("compact detail");
+        expect(
+          plain(data.renderedTools["call-5"].resultHtmlExpanded),
+        ).toContain("expanded detail");
+        expect(
+          plain(data.renderedTools["call-10"].resultHtmlExpanded),
+        ).toContain("Took 1.2s");
+        expect(
+          plain(data.renderedTools["call-10"].resultHtmlExpanded),
+        ).toContain("✓ read fixture 4ms");
+        const expandable = document.querySelector(
+          "#tool-call-call-5 .tool-output.expandable",
+        );
+        expect(expandable.classList.contains("expanded")).toBe(false);
+        expect(
+          expandable.querySelector(".output-preview").textContent,
+        ).toContain("compact detail");
+        expect(expandable.querySelector(".output-full").textContent).toContain(
+          "expanded detail",
+        );
+        expect(document.querySelectorAll(".tool-image")).toHaveLength(1);
+        expect(document.querySelector(".tool-image").src).toMatch(
+          /^data:image\/png;base64,/,
+        );
+        expect(reused).toBeGreaterThan(0);
+        expect(finalCalls).toBeGreaterThan(0);
+        expect(states.size).toBe(3);
+        expect(themes).toEqual(new Set([theme]));
+        // A resolver overriding a template-native name must replace its native template too.
+        const override = createToolHtmlRenderer({
+          getToolRenderers: () => custom,
+          theme,
+          cwd: directory,
+        });
+        override.renderCall("override", "write", { label: "local override" });
+        const overridden = override.renderResult(
+          "override",
+          "write",
+          [{ type: "text", text: "out" }],
+          undefined,
+          true,
+        );
+        expect(plain(overridden.expanded)).toContain("✕ custom local override");
+        expect(overridden.call).toBe("");
+      } finally {
+        await rm(directory, { recursive: true });
+      }
+    });
+  });
+
   describe("visibleWidth", () => {
     it("counts plain text characters", () => {
       expect(visibleWidth("hello")).toBe(5);
@@ -638,27 +1308,29 @@ if (import.meta.vitest) {
 
     it("truncates and adds ellipsis", () => {
       // "hello world" at width 8: "hello w" (7 visible) + RST + ellipsis
-      const result = truncateToWidth("hello world", 8);
+      const result = truncateToWidth("hello world", 8, "…");
       expect(result).toContain("…");
       expect(visibleWidth(result.replace(/\x1b\[[0-9;]*m/g, ""))).toBe(8);
     });
 
     it("preserves ANSI codes in truncated output", () => {
       const input = "\x1b[31mhello world\x1b[0m";
-      const result = truncateToWidth(input, 8);
+      const result = truncateToWidth(input, 8, "…");
       expect(result).toContain("\x1b[31m");
       expect(result).toContain("\x1b[0m");
       expect(result).toContain("…");
     });
 
     it("handles text shorter than ellipsis", () => {
-      expect(truncateToWidth("hi", 1)).toBe("…");
+      expect(truncateToWidth("hi", 1, "…").replace(/\x1b\[[0-9;]*m/g, "")).toBe(
+        "…",
+      );
     });
   });
 
   describe("chromeWidth", () => {
-    it("returns 2 for no gutter", () => {
-      expect(chromeWidth(0)).toBe(2);
+    it("reserves no outer chrome for unguttered content", () => {
+      expect(chromeWidth(0)).toBe(0);
     });
 
     it("returns gutterWidth + 3 for gutter", () => {
@@ -705,203 +1377,21 @@ if (import.meta.vitest) {
     });
   });
 
-  describe("framedTextRenderer", () => {
-    it("frames fallback rows and closes exactly once", () => {
-      const lines = framedTextRenderer("first\nsecond")
-        .render(80)
-        .map((line) => line.replace(/\x1b\[[0-9;]*m/g, ""));
-
-      expect(lines.slice(0, -1).every((line) => line.startsWith("│"))).toBe(
-        true,
-      );
-      expect(lines.filter((line) => line === "╰────")).toHaveLength(1);
-      expect(lines.at(-1)).toBe("╰────");
-    });
-
-    it("keeps footer chrome within narrow render widths", () => {
-      const component = framedTextRenderer("output");
-
-      for (const width of [0, 1, 2, 3, 4]) {
-        expect(
-          component.render(width).every((line) => visibleWidth(line) <= width),
-        ).toBe(true);
-      }
-    });
-  });
-
-  describe("renderLifecycleCall", () => {
-    const theme = {
-      fg: (_color: string, text: string) => text,
-    };
-
-    it("pulses active calls between muted and accent", () => {
-      vi.useFakeTimers();
-      try {
-        const colors: string[] = [];
-        const pulseTheme = {
-          fg: (color: string, text: string) => {
-            if (text === "●") colors.push(color);
-            return text;
-          },
-        };
-        let component: Component | undefined;
-        const renderActive = (): void => {
-          component = renderLifecycleCall(
-            new Text("Bash echo ok", 0, 0),
-            pulseTheme,
-            {
-              isError: false,
-              isPartial: true,
-              invalidate,
-              lastComponent: component,
-            },
-          );
-        };
-        const invalidate = vi.fn(renderActive);
-
-        renderActive();
-        expect(colors.at(-1)).toBe("muted");
-        vi.advanceTimersByTime(LIFECYCLE_CALL_INTERVAL_MS);
-        expect(colors.at(-1)).toBe("accent");
-        expect(invalidate).toHaveBeenCalledOnce();
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-
-    it("renders terminal success and error outcomes", () => {
-      const success = renderLifecycleCall(new Text("Read file", 0, 0), theme, {
-        isError: false,
-        isPartial: false,
-      });
-      const error = renderLifecycleCall(new Text("Read file", 0, 0), theme, {
-        isError: true,
-        isPartial: true,
-      });
-
-      expect(success.render(80)[0]?.trimEnd()).toBe("✓ Read file");
-      expect(error.render(80)[0]?.trimEnd()).toBe("✕ Read file");
-    });
-
-    it("reuses the last wrapper while replacing its content", () => {
-      const first = renderLifecycleCall(new Text("Read old", 0, 0), theme, {
-        isError: false,
-        isPartial: false,
-      });
-      const next = renderLifecycleCall(new Text("Read new", 0, 0), theme, {
-        isError: false,
-        isPartial: false,
-        lastComponent: first,
-      });
-
-      expect(next).toBe(first);
-      expect(next.render(80)[0]?.trimEnd()).toBe("✓ Read new");
-    });
-
-    it("hangs wrapped content after one marker cell and one gap", () => {
-      const component = renderLifecycleCall(
-        new Text("Delegate verify settlement and abort findings", 0, 0),
-        theme,
-        { isError: false, isPartial: false },
-      );
-
-      expect(component.render(24).map((line) => line.trimEnd())).toEqual([
-        "✓ Delegate verify",
-        "  settlement and abort",
-        "  findings",
-      ]);
-    });
-
-    it("uses compact tree connectors for multi-row calls", () => {
-      const component = renderLifecycleCall(
-        [
-          new Text("$ git diff --stat", 0, 0),
-          new Text("$ git diff --name-status", 0, 0),
-          new Text("$ git status --short", 0, 0),
-        ],
-        theme,
-        { isError: false, isPartial: false },
-      );
-
-      expect(component.render(40).map((line) => line.trimEnd())).toEqual([
-        "✓ $ git diff --stat",
-        "├ $ git diff --name-status",
-        "╰ $ git status --short",
-      ]);
-    });
-
-    it("stays within narrow widths", () => {
-      const component = renderLifecycleCall(
-        new Text("Read file", 0, 0),
-        theme,
-        {
-          isError: false,
-          isPartial: false,
-        },
-      );
-
-      expect(component.render(0)).toEqual([]);
-      expect(component.render(1)).toEqual(["✓"]);
-      expect(component.render(2)).toEqual(["✓ "]);
-      for (const width of [1, 2, 3, 8]) {
-        expect(
-          component.render(width).every((line) => visibleWidth(line) <= width),
-        ).toBe(true);
-      }
-    });
-
-    it("cleans up on settlement and after a detached render", () => {
-      vi.useFakeTimers();
-      try {
-        let component: Component | undefined;
-        const rerender = (): void => {
-          component = renderLifecycleCall(new Text("Bash test", 0, 0), theme, {
-            isError: false,
-            isPartial: true,
-            invalidate: rerender,
-            lastComponent: component,
-          });
-        };
-        rerender();
-        expect(vi.getTimerCount()).toBe(1);
-
-        component = renderLifecycleCall(new Text("Bash test", 0, 0), theme, {
-          isError: false,
-          isPartial: false,
-          invalidate: rerender,
-          lastComponent: component,
-        });
-        expect(vi.getTimerCount()).toBe(0);
-
-        renderLifecycleCall(new Text("Grep query", 0, 0), theme, {
-          isError: false,
-          isPartial: true,
-          invalidate: () => {},
-        });
-        expect(vi.getTimerCount()).toBe(1);
-        vi.advanceTimersByTime(LIFECYCLE_CALL_INTERVAL_MS);
-        expect(vi.getTimerCount()).toBe(0);
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-  });
-
-  describe("formatBoxesWindowed", () => {
+  describe("formatSectionsWindowed", () => {
     it("renders single section with header", () => {
-      const sections: BoxSection[] = [
+      const sections: ContentSection[] = [
         {
           header: "Test",
           blocks: [{ lines: [{ text: "hello" }] }],
         },
       ];
-      const result = formatBoxesWindowed(sections, {}, undefined, 80);
+      const result = formatSectionsWindowed(sections, {}, undefined, 80);
       expect(result).toContain("Test");
       expect(result).toContain("hello");
     });
 
     it("renders gutter with line numbers", () => {
-      const sections: BoxSection[] = [
+      const sections: ContentSection[] = [
         {
           header: "File",
           blocks: [
@@ -914,7 +1404,7 @@ if (import.meta.vitest) {
           ],
         },
       ];
-      const result = formatBoxesWindowed(sections, {}, undefined, 80);
+      const result = formatSectionsWindowed(sections, {}, undefined, 80);
       expect(result).toContain("1");
       expect(result).toContain("2");
       expect(result).toContain("first");
@@ -922,12 +1412,12 @@ if (import.meta.vitest) {
     });
 
     it("respects maxSections option", () => {
-      const sections: BoxSection[] = [
+      const sections: ContentSection[] = [
         { header: "A", blocks: [{ lines: [{ text: "a" }] }] },
         { header: "B", blocks: [{ lines: [{ text: "b" }] }] },
         { header: "C", blocks: [{ lines: [{ text: "c" }] }] },
       ];
-      const result = formatBoxesWindowed(
+      const result = formatSectionsWindowed(
         sections,
         { maxSections: 2 },
         undefined,
@@ -939,11 +1429,56 @@ if (import.meta.vitest) {
       expect(result).toContain("… 1 more");
     });
 
+    it("preserves labels, gutters, links and excerpts without an outer frame", () => {
+      const sections: ContentSection[] = [
+        {
+          header: "file.ts",
+          blocks: [
+            {
+              lines: Array.from({ length: 20 }, (_, index) => ({
+                gutter: String(index + 1),
+                text: osc8Link("https://example.com", `line ${index + 1} 界界`),
+                highlight: true,
+              })),
+            },
+          ],
+        },
+      ];
+      const opts = {
+        excerpts: [
+          { focus: "head" as const, context: 2 },
+          { focus: "tail" as const, context: 2 },
+        ],
+      };
+      const text = formatSectionsWindowed(sections, opts, undefined, 80);
+      expect(text).toContain("file.ts");
+      expect(text).toContain(" 1 ");
+      expect(text).toContain("20 ");
+      expect(text).toContain("more lines");
+      expect(text).toContain("\x1b]8;;https://example.com\x07");
+      expect(text).not.toMatch(/[╭╰]/);
+      expect(
+        formatSectionsWindowed(
+          [textSection(undefined, "abcdefgh")],
+          {},
+          undefined,
+          8,
+        ).replace(/\x1b\[[0-9;]*m/g, ""),
+      ).toBe("abcdefgh");
+      for (const width of [1, 2, 3, 8, 20]) {
+        expect(
+          formatSectionsWindowed(sections, opts, ["notice"], width)
+            .split("\n")
+            .every((line) => nativeVisibleWidth(line) <= width),
+        ).toBe(true);
+      }
+    });
+
     it("appends notices", () => {
-      const sections: BoxSection[] = [
+      const sections: ContentSection[] = [
         { header: "Test", blocks: [{ lines: [{ text: "content" }] }] },
       ];
-      const result = formatBoxesWindowed(
+      const result = formatSectionsWindowed(
         sections,
         {},
         ["Notice 1", "Notice 2"],

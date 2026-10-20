@@ -16,7 +16,7 @@ import type {
   ExtensionAPI,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { Container } from "@earendil-works/pi-tui";
+import { Container, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import {
   getEnabledExtensionConfig,
@@ -36,7 +36,6 @@ import {
   applySessionMeta,
   getFinalOutput,
   renderAgentTree,
-  renderSubAgentCall,
   renderSubAgentFallback,
   readSubAgentResult,
   registerSubAgentErrorNormalization,
@@ -275,7 +274,7 @@ export function createLookAtTool(
       return subAgentResult(text, singleResult, isError);
     },
 
-    renderCall(args: any, theme: any, context: any) {
+    renderCall(args: any, theme: any) {
       const path = args.path || "...";
       const objective = args.objective
         ? args.objective.length > 60
@@ -291,7 +290,7 @@ export function createLookAtTool(
           ` (+${args.referenceFiles.length} ref${args.referenceFiles.length > 1 ? "s" : ""})`,
         );
       }
-      return renderSubAgentCall(text, theme, context);
+      return new Text(text, 0, 0);
     },
 
     renderResult(result: any, { expanded }: { expanded: boolean }, theme: any) {

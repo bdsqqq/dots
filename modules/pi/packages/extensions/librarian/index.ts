@@ -18,7 +18,7 @@ import type {
   ExtensionAPI,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { Container } from "@earendil-works/pi-tui";
+import { Container, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import {
   getEnabledExtensionConfig,
@@ -37,7 +37,6 @@ import {
   applySessionMeta,
   getFinalOutput,
   renderAgentTree,
-  renderSubAgentCall,
   renderSubAgentFallback,
   readSubAgentResult,
   registerSubAgentErrorNormalization,
@@ -233,17 +232,17 @@ export function createLibrarianTool(
       return subAgentResult(text, singleResult, isError);
     },
 
-    renderCall(args: any, theme: any, context: any) {
+    renderCall(args: any, theme: any) {
       const preview = args.query
         ? args.query.length > 80
           ? `${args.query.slice(0, 80)}...`
           : args.query
         : "...";
-      return renderSubAgentCall(
+      return new Text(
         theme.fg("toolTitle", theme.bold("librarian ")) +
           theme.fg("dim", preview),
-        theme,
-        context,
+        0,
+        0,
       );
     },
 

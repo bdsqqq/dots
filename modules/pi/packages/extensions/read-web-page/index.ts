@@ -23,7 +23,6 @@ import { Assert } from "typebox/value";
 import { htmlToMarkdown } from "@bds_pi/html-to-md";
 import { getEnabledExtensionConfig } from "@bds_pi/config";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
-import { framedTextRenderer, renderLifecycleCall } from "@bds_pi/box-format";
 import {
   parallelRequest,
   retrievalIdentity,
@@ -652,27 +651,24 @@ export function createReadWebPageTool(
         { start: p.start_index, length: p.max_length },
       );
     },
-    renderCall(args, theme, context) {
-      return renderLifecycleCall(
-        new Text(
-          theme.fg(
-            "toolTitle",
-            `read_web_page ${args.url ?? args.urls?.join(", ") ?? "continuation"}`,
-          ),
-          0,
-          0,
+    renderCall(args, theme) {
+      return new Text(
+        theme.fg(
+          "toolTitle",
+          `read_web_page ${args.url ?? args.urls?.join(", ") ?? "continuation"}`,
         ),
-        theme,
-        context,
+        0,
+        0,
       );
     },
-    renderResult(result, { expanded }) {
-      return framedTextRenderer(
+    renderResult(result) {
+      return new Text(
         result.content
           .filter((c) => c.type === "text")
           .map((c) => c.text)
           .join("\n"),
-        expanded,
+        0,
+        0,
       );
     },
   };

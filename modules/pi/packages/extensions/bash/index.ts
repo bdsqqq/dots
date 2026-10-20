@@ -26,10 +26,8 @@ import type {
 import { getShellConfig, highlightCode } from "@earendil-works/pi-coding-agent";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
-  renderLifecycleCall,
-  boxRendererWindowed,
-  framedTextRenderer,
-  type BoxSection,
+  sectionRendererWindowed,
+  type ContentSection,
   type Excerpt,
 } from "@bds_pi/box-format";
 import { getText, getTruncateToWidth } from "@bds_pi/tui";
@@ -679,11 +677,7 @@ export function createBashTool(
           const last = highlighted.length - 1;
           highlighted[last] = `${highlighted[last] ?? ""}${timeoutSuffix}`;
         }
-        return renderLifecycleCall(
-          new Text(highlighted.join("\n"), 0, 0),
-          theme,
-          context,
-        );
+        return new Text(highlighted.join("\n"), 0, 0);
       }
 
       const displayRows = splitCommandDisplayRows(cmd);
@@ -712,23 +706,31 @@ export function createBashTool(
       );
       if (timeoutSuffix) rows[rows.length - 1] += timeoutSuffix;
 
-      return renderLifecycleCall(
-        rows.map((row) => ({
-          render(width: number): string[] {
-            const truncateToWidth = getTruncateToWidth();
-            return [truncateToWidth(row, width, "…")];
-          },
-          invalidate() {},
-        })),
-        theme,
-        context,
-      );
+      // These connectors describe compound commands, not tool lifecycle.
+      // The transcript shell supplies the outer status/continuation column.
+      return {
+        render(width: number): string[] {
+          if (width <= 0) return [];
+          const truncateToWidth = getTruncateToWidth();
+          return rows.map((row, index) => {
+            const prefix =
+              index === 0
+                ? ""
+                : theme.fg("muted", index === rows.length - 1 ? "╰ " : "├ ");
+            return truncateToWidth(prefix + row, width, "…");
+          });
+        },
+        invalidate() {},
+      };
     },
 
+    // Native bash keeps only five tail lines; this tool keeps head/tail excerpts
+    // and command/background metadata from its compound execution protocol.
     renderResult(result: any, { expanded }: { expanded: boolean }, theme: any) {
+      const Text = getText();
       const content = result.content?.[0];
       if (!content || content.type !== "text")
-        return framedTextRenderer(theme.fg("dim", "(no output)"), expanded);
+        return new Text(theme.fg("dim", "(no output)"), 0, 0);
 
       // extract command from structured details (preferred) or parse from content
       let text: string = content.text;
@@ -748,11 +750,11 @@ export function createBashTool(
       }
 
       if (!text || text === "(no output)")
-        return framedTextRenderer(theme.fg("dim", "(no output)"), expanded);
+        return new Text(theme.fg("dim", "(no output)"), 0, 0);
 
       const lines = text.split("\n");
 
-      const buildSections = (): BoxSection[] => [
+      const buildSections = (): ContentSection[] => [
         {
           blocks: [
             {
@@ -765,7 +767,7 @@ export function createBashTool(
         },
       ];
 
-      return boxRendererWindowed(
+      return sectionRendererWindowed(
         buildSections,
         {
           collapsed: { excerpts: COLLAPSED_EXCERPTS },
@@ -1365,7 +1367,7 @@ if (import.meta.vitest) {
         );
 
         expect(component.render(120).map((line) => line.trimEnd())).toEqual([
-          "✓ $ node --input-type=module <<'NODE'↵console.log('ok');↵NODE (timeout 30s)",
+          "$ node --input-type=module <<'NODE'↵console.log('ok');↵NODE (timeout 30s)",
         ]);
       });
 
@@ -1391,7 +1393,7 @@ if (import.meta.vitest) {
           { expanded: false, isError: false, isPartial: false } as any,
         );
         expect(component.render(120)).toEqual([
-          "✓ $ cat<<'EOF'\x1b[90m↵↵  indented  ↵↵EOF\x1b[39m",
+          "$ cat<<'EOF'\x1b[90m↵↵  indented  ↵↵EOF\x1b[39m",
         ]);
       });
 
@@ -1405,7 +1407,7 @@ if (import.meta.vitest) {
         );
 
         expect(component.render(80).map((line) => line.trimEnd())).toEqual([
-          "✓ $ cat <<'END MARK'↵not a command↵END MARK ↵",
+          "$ cat <<'END MARK'↵not a command↵END MARK ↵",
           "╰ $ echo legit",
         ]);
       });
@@ -1475,7 +1477,7 @@ if (import.meta.vitest) {
         );
 
         expect(component.render(80).map((line) => line.trimEnd())).toEqual([
-          "✓ $ # intentional no-op (timeout 5s)",
+          "$ # intentional no-op (timeout 5s)",
         ]);
       });
 
@@ -1491,7 +1493,7 @@ if (import.meta.vitest) {
             { expanded: false, isError: false, isPartial: false } as any,
           );
           expect(component.render(80)).toEqual([
-            `✓ $ \x1b[1mtrue\x1b[22m ${separator} # note`,
+            `$ \x1b[1mtrue\x1b[22m ${separator} # note`,
           ]);
         },
       );
@@ -1513,7 +1515,7 @@ if (import.meta.vitest) {
             { expanded: false, isError: false, isPartial: false } as any,
           );
           expect(component.render(80)).toEqual([
-            `✓ $ echo one ${operator}`,
+            `$ echo one ${operator}`,
             "╰ $ echo two",
           ]);
         },
@@ -1558,7 +1560,7 @@ if (import.meta.vitest) {
         const lines = component
           .render(120)
           .map((line) => line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd());
-        expect(lines).toEqual(["✓ $ printf '%s\\n' 'one", "  two'"]);
+        expect(lines).toEqual(["$ printf '%s\\n' 'one", "two'"]);
       });
 
       it("truncates every collapsed row with a one-character ellipsis", () => {
@@ -1575,7 +1577,7 @@ if (import.meta.vitest) {
           line.replace(/\x1b\[[0-9;]*m/g, ""),
         );
         expect(visibleLines).toHaveLength(2);
-        expect(visibleLines[0]).toMatch(/^✓ \$ /);
+        expect(visibleLines[0]).toMatch(/^\$ /);
         expect(visibleLines[1]).toMatch(/^╰ \$ /);
         expect(visibleLines.every((line) => line.length <= 18)).toBe(true);
         expect(visibleLines.every((line) => line.endsWith("…"))).toBe(true);
@@ -1592,7 +1594,44 @@ if (import.meta.vitest) {
           .join("\n")
           .replace(/\x1b\[[0-9;]*m/g, "");
 
-        expect(rendered).toContain('✓ $ echo one && printf "two"');
+        expect(rendered).toContain('$ echo one && printf "two"');
+      });
+    });
+
+    describe("result content", () => {
+      const theme = { fg: (_color: string, text: string) => text };
+      it("keeps head/tail windows, background information and full expansion without framing", () => {
+        const text =
+          Array.from({ length: 30 }, (_, i) => `output-${i}`).join("\n") +
+          "\nstarted background process: pid 123, log /tmp/job.log";
+        const result = {
+          content: [{ type: "text" as const, text: `$ echo test\n\n${text}` }],
+          details: { command: "echo test" },
+        };
+        const render = (expanded: boolean) =>
+          tool.renderResult!(
+            result,
+            { expanded, isPartial: false },
+            theme as any,
+            {} as any,
+          )
+            .render(100)
+            .join("\n");
+        const collapsed = render(false);
+        expect(collapsed).toContain("output-0");
+        expect(collapsed).toContain("output-29");
+        expect(collapsed).toContain("more lines");
+        expect(collapsed).toContain("pid 123, log /tmp/job.log");
+        expect(collapsed).not.toContain("$ echo test");
+        expect(collapsed).not.toMatch(/[╭╰│]/);
+        expect(render(true)).toContain("output-15");
+        const empty = tool.renderResult!(
+          { content: [], details: undefined },
+          { expanded: false, isPartial: false },
+          theme as any,
+          {} as any,
+        );
+        expect(empty.render(80).join("\n")).toContain("(no output)");
       });
     });
 

@@ -19,34 +19,37 @@ diff --git a/dist/core/agent-session.js b/dist/core/agent-session.js
      /**
       * Whether the tool may be active, which declares it to the model. MCP tools the allowlist keeps
 diff --git a/dist/core/export-html/index.js b/dist/core/export-html/index.js
-index 417584fd..b9c30af4 100644
 --- a/dist/core/export-html/index.js
 +++ b/dist/core/export-html/index.js
-@@ -117,6 +117,8 @@ function generateHtml(sessionData, themeName) {
+@@ -115,8 +115,6 @@
+         .replace("{{MARKED_JS}}", markedJs)
+         .replace("{{HIGHLIGHT_JS}}", hljsJs);
  }
- /** Tools rendered directly by the HTML template (not pre-rendered via TUI→ANSI→HTML pipeline) */
- const TEMPLATE_RENDERED_TOOLS = new Set(["bash", "read", "write", "edit", "ls"]);
-+/** Local renderer overrides whose lifecycle markers must replace the static template header. */
-+const TUI_RENDERED_TOOL_OVERRIDES = new Set(["bash", "read", "ls"]);
+-/** Tools rendered directly by the HTML template (not pre-rendered via TUI→ANSI→HTML pipeline) */
+-const TEMPLATE_RENDERED_TOOLS = new Set(["bash", "read", "write", "edit", "ls"]);
  /**
   * Pre-render custom tools to HTML using their TUI renderers.
   */
-@@ -129,7 +131,7 @@ function preRenderCustomTools(entries, toolRenderer) {
+@@ -129,7 +127,7 @@
          // Find tool calls in assistant messages
          if (msg.role === "assistant" && Array.isArray(msg.content)) {
              for (const block of msg.content) {
 -                if (block.type === "toolCall" && !TEMPLATE_RENDERED_TOOLS.has(block.name)) {
-+                if (block.type === "toolCall" && (!TEMPLATE_RENDERED_TOOLS.has(block.name) || TUI_RENDERED_TOOL_OVERRIDES.has(block.name))) {
++                if (block.type === "toolCall") {
                      const callHtml = toolRenderer.renderCall(block.id, block.name, block.arguments);
                      if (callHtml) {
                          renderedTools[block.id] = { callHtml };
-@@ -142,11 +144,12 @@ function preRenderCustomTools(entries, toolRenderer) {
+@@ -140,13 +138,14 @@
+         // Find tool results
+         if (msg.role === "toolResult" && msg.toolCallId) {
              const toolName = msg.toolName || "";
-             // Only render if we have a pre-rendered call OR it's not template-rendered
+-            // Only render if we have a pre-rendered call OR it's not template-rendered
++            // Native definitions, local overrides, and unknown tools share one shell.
              const existing = renderedTools[msg.toolCallId];
 -            if (existing || !TEMPLATE_RENDERED_TOOLS.has(toolName)) {
-+            if (existing || !TEMPLATE_RENDERED_TOOLS.has(toolName) || TUI_RENDERED_TOOL_OVERRIDES.has(toolName)) {
-                 const rendered = toolRenderer.renderResult(msg.toolCallId, toolName, msg.content, msg.details, msg.isError || false);
+-                const rendered = toolRenderer.renderResult(msg.toolCallId, toolName, msg.content, msg.details, msg.isError || false);
++            {
++                const rendered = toolRenderer.renderResult(msg.toolCallId, toolName, msg.content, msg.details, msg.isError || false, msg.durationMs);
                  if (rendered) {
                      renderedTools[msg.toolCallId] = {
                          ...existing,
@@ -55,55 +58,202 @@ index 417584fd..b9c30af4 100644
                          resultHtmlExpanded: rendered.expanded,
                      };
 diff --git a/dist/core/export-html/template.js b/dist/core/export-html/template.js
-index 71f121a6..19c44a10 100644
 --- a/dist/core/export-html/template.js
 +++ b/dist/core/export-html/template.js
-@@ -952,7 +952,7 @@
- 
+@@ -961,7 +961,7 @@
+
          const invalidArg = '<span class="tool-error">[invalid arg]</span>';
- 
+
 -        switch (name) {
 +        switch (renderedTools?.[call.id] ? '__pre_rendered__' : name) {
            case 'bash': {
              const command = str(args.command);
              const cmdDisplay = command === null ? invalidArg : escapeHtml(command || '...');
+@@ -1053,7 +1053,7 @@
+               // Custom tool with pre-rendered HTML from TUI renderer
+               if (rendered.callHtml) {
+                 html += `<div class="tool-header ansi-rendered">${rendered.callHtml}</div>`;
+-              } else {
++              } else if (rendered.callHtml !== '') {
+                 html += `<div class="tool-header"><span class="tool-name">${escapeHtml(name)}</span></div>`;
+               }
+
+@@ -1071,6 +1071,7 @@
+                 const output = getResultText();
+                 if (output) html += formatExpandableOutput(output, 10);
+               }
++              html += renderResultImages();
+             } else {
+               // Fallback to JSON display (existing behavior)
+               html += `<div class="tool-header"><span class="tool-name">${escapeHtml(name)}</span></div>`;
 diff --git a/dist/core/export-html/tool-renderer.d.ts b/dist/core/export-html/tool-renderer.d.ts
-index 8da1d1e0..27c67e20 100644
 --- a/dist/core/export-html/tool-renderer.d.ts
 +++ b/dist/core/export-html/tool-renderer.d.ts
-@@ -26,6 +26,7 @@ export interface ToolHtmlRenderer {
+@@ -17,15 +17,16 @@
+     width?: number;
+ }
+ export interface ToolHtmlRenderer {
+-    /** Render a tool call to HTML. Returns undefined if tool has no custom renderer. */
++    /** Render a complete pending tool shell to HTML. Returns undefined on rendering failure. */
+     renderCall(toolCallId: string, toolName: string, args: unknown): string | undefined;
+-    /** Render a tool result to collapsed/expanded HTML. Returns undefined if tool has no custom renderer. */
++    /** Render complete settled shells; call: "" suppresses the pending call snapshot. */
+     renderResult(toolCallId: string, toolName: string, result: Array<{
+         type: string;
+         text?: string;
          data?: string;
          mimeType?: string;
-     }>, details: unknown, isError: boolean): {
+-    }>, details: unknown, isError: boolean): {
++    }>, details: unknown, isError: boolean, durationMs?: number): {
 +        call?: string;
          collapsed?: string;
          expanded?: string;
      } | undefined;
 diff --git a/dist/core/export-html/tool-renderer.js b/dist/core/export-html/tool-renderer.js
-index 58644ed7..5426ccef 100644
 --- a/dist/core/export-html/tool-renderer.js
 +++ b/dist/core/export-html/tool-renderer.js
-@@ -87,6 +87,12 @@ export function createToolHtmlRenderer(deps) {
-                     details,
-                     isError,
-                 };
-+                let call;
-+                if (toolDef.renderCall) {
-+                    const callComponent = toolDef.renderCall(renderedArgs.get(toolCallId), theme, createRenderContext(toolCallId, renderedCallComponents.get(toolCallId), false, false, isError));
-+                    renderedCallComponents.set(toolCallId, callComponent);
-+                    call = ansiLinesToHtml(callComponent.render(width));
-+                }
-                 // Render collapsed
-                 const collapsedComponent = toolDef.renderResult(agentToolResult, { expanded: false, isPartial: false }, theme, createRenderContext(toolCallId, renderedResultComponents.get(toolCallId), false, false, isError));
-                 renderedResultComponents.set(toolCallId, collapsedComponent);
-@@ -96,6 +102,7 @@ export function createToolHtmlRenderer(deps) {
-                 renderedResultComponents.set(toolCallId, expandedComponent);
-                 const expanded = ansiLinesToHtml(trimRenderedResultLines(expandedComponent.render(width)));
+@@ -1,110 +1,54 @@
+-/**
+- * Tool HTML renderer for custom tools in HTML export.
+- *
+- * Renders custom tool calls and results to HTML by invoking their TUI renderers
+- * and converting the ANSI output to HTML.
+- */
++/** Static HTML snapshots use the same composition and renderer state as the transcript. */
++import { ToolExecutionComponent } from "../../modes/interactive/components/tool-execution.js";
+ import { ansiLinesToHtml } from "./ansi-to-html.js";
+-/**
+- * Create a tool HTML renderer.
+- *
+- * The renderer looks up tool definitions and invokes their renderCall/renderResult
+- * methods, converting the resulting TUI Component output (ANSI) to HTML.
+- */
+-const ANSI_ESCAPE_REGEX = /\x1b\[[\d;]*m/g;
+-function isBlankRenderedLine(line) {
+-    return line.replace(ANSI_ESCAPE_REGEX, "").trim().length === 0;
+-}
+-function trimRenderedResultLines(lines) {
+-    let start = 0;
+-    let end = lines.length;
+-    while (start < end && isBlankRenderedLine(lines[start]))
+-        start++;
+-    while (end > start && isBlankRenderedLine(lines[end - 1]))
+-        end--;
+-    return lines.slice(start, end);
+-}
+ export function createToolHtmlRenderer(deps) {
+     const { getToolRenderers, theme, cwd, width = 100 } = deps;
+-    const renderedCallComponents = new Map();
+-    const renderedResultComponents = new Map();
+-    const renderedStates = new Map();
+-    const renderedArgs = new Map();
+-    const getState = (toolCallId) => {
+-        let state = renderedStates.get(toolCallId);
+-        if (!state) {
+-            state = {};
+-            renderedStates.set(toolCallId, state);
++    const components = new Map();
++    const getComponent = (id, name, args) => {
++        let component = components.get(id);
++        if (!component) {
++            component = new ToolExecutionComponent(name, id, args ?? {},
++                { showImages: false, theme }, getToolRenderers(name), { requestRender() {} }, cwd);
++            components.set(id, component);
+         }
+-        return state;
++        else if (args !== undefined) component.updateArgs(args);
++        return component;
+     };
+-    const createRenderContext = (toolCallId, lastComponent, expanded, isPartial, isError) => {
+-        return {
+-            args: renderedArgs.get(toolCallId),
+-            toolCallId,
+-            invalidate: () => { },
+-            lastComponent,
+-            state: getState(toolCallId),
+-            cwd,
+-            executionStarted: true,
+-            argsComplete: true,
+-            isPartial,
+-            expanded,
+-            showImages: false,
+-            isError,
+-            durationMs: undefined,
+-            outputPad: 1,
+-        };
+-    };
++    // OSC 8 hyperlinks are terminal controls, not HTML. Keep their labels and
++    // ANSI highlighting without leaking terminal control bytes into the document.
++    const render = (component) => ansiLinesToHtml(component.render(width, false)
++        .map((line) => line.replace(/\x1b\]8;[^\x07\x1b]*(?:\x07|\x1b\\)/g, "")));
+     return {
+         renderCall(toolCallId, toolName, args) {
+             try {
+-                renderedArgs.set(toolCallId, args);
+-                const toolDef = getToolRenderers(toolName);
+-                if (!toolDef?.renderCall) {
+-                    return undefined;
+-                }
+-                const component = toolDef.renderCall(args, theme, createRenderContext(toolCallId, renderedCallComponents.get(toolCallId), false, true, false));
+-                renderedCallComponents.set(toolCallId, component);
+-                const lines = component.render(width);
+-                return ansiLinesToHtml(lines);
++                return render(getComponent(toolCallId, toolName, args));
+             }
+             catch {
+-                // On error, return undefined so HTML export can fall back to structured result rendering
+                 return undefined;
+             }
+         },
+-        renderResult(toolCallId, toolName, result, details, isError) {
++        renderResult(toolCallId, toolName, content, details, isError, durationMs) {
+             try {
+-                const toolDef = getToolRenderers(toolName);
+-                if (!toolDef?.renderResult) {
+-                    return undefined;
+-                }
+-                // Build AgentToolResult from content array
+-                // Cast content since session storage uses generic object types
+-                const agentToolResult = {
+-                    content: result,
+-                    details,
+-                    isError,
+-                };
+-                // Render collapsed
+-                const collapsedComponent = toolDef.renderResult(agentToolResult, { expanded: false, isPartial: false }, theme, createRenderContext(toolCallId, renderedResultComponents.get(toolCallId), false, false, isError));
+-                renderedResultComponents.set(toolCallId, collapsedComponent);
+-                const collapsed = ansiLinesToHtml(trimRenderedResultLines(collapsedComponent.render(width)));
+-                // Render expanded
+-                const expandedComponent = toolDef.renderResult(agentToolResult, { expanded: true, isPartial: false }, theme, createRenderContext(toolCallId, renderedResultComponents.get(toolCallId), true, false, isError));
+-                renderedResultComponents.set(toolCallId, expandedComponent);
+-                const expanded = ansiLinesToHtml(trimRenderedResultLines(expandedComponent.render(width)));
++                const component = getComponent(toolCallId, toolName);
++                component.markExecutionStarted();
++                component.setArgsComplete();
++                component.updateResult({ content, details, isError, durationMs });
++                component.setExpanded(false);
++                const collapsed = render(component);
++                component.setExpanded(true);
++                const expanded = render(component);
                  return {
-+                    ...(call ? { call } : {}),
-                     ...(collapsed && collapsed !== expanded ? { collapsed } : {}),
+-                    ...(collapsed && collapsed !== expanded ? { collapsed } : {}),
++                    // The result snapshot includes its settled call and shell. Suppress
++                    // the template header instead of keeping a stale pending call snapshot.
++                    call: "",
++                    ...(collapsed !== expanded ? { collapsed } : {}),
                      expanded,
                  };
+             }
+             catch {
+-                // On error, return undefined so HTML export can fall back to structured result rendering
+                 return undefined;
+             }
+         },
+     };
+ }
+-//# sourceMappingURL=tool-renderer.js.map
+\ No newline at end of file
++//# sourceMappingURL=tool-renderer.js.map
 diff --git a/dist/modes/interactive/components/assistant-message.d.ts b/dist/modes/interactive/components/assistant-message.d.ts
 index ecc378b0..508ae828 100644
 --- a/dist/modes/interactive/components/assistant-message.d.ts
@@ -583,40 +733,259 @@ index 211e4b82..66327549 100644
 -//# sourceMappingURL=custom-message.js.map
 \ No newline at end of file
 +//# sourceMappingURL=custom-message.js.map
+diff --git a/dist/modes/interactive/components/tool-execution.d.ts b/dist/modes/interactive/components/tool-execution.d.ts
+--- a/dist/modes/interactive/components/tool-execution.d.ts
++++ b/dist/modes/interactive/components/tool-execution.d.ts
+@@ -1,16 +1,22 @@
+ import { Container, type TUI, type TuiMouseEvent } from "@earendil-works/pi-tui";
++import type { Theme } from "../theme/theme.ts";
+ import type { ToolDefinition, ToolRenderers } from "../../../core/extensions/types.ts";
+ /** What this component needs from a tool: how to draw it, without executing it. */
+ export type { ToolRenderers };
+ export interface ToolExecutionOptions {
+     showImages?: boolean;
++    /** Theme supplied by static export callers; defaults to the active transcript theme. */
++    theme?: Theme;
+     imageWidthCells?: number;
+     outputPad?: number;
+ }
+ export declare class ToolExecutionComponent extends Container {
+     private contentBox;
+-    private contentText;
+-    private contentTextRegion;
++    private sharedContent;
++    private sharedFrame;
++    private pulseTimer;
++    private pulseFrame;
++    private theme;
+     private selfRenderContainer;
+     private selfRenderHeight;
+     private callRendererComponent?;
+@@ -64,10 +70,10 @@
+     setShowImages(show: boolean): void;
+     setImageWidthCells(width: number): void;
+     invalidate(): void;
+-    render(width: number): string[];
++    /** Static exports disable scheduled lifecycle animation. */
++    render(width: number, animate?: boolean): string[];
+     handleMouse(event: TuiMouseEvent): ReturnType<Container["handleMouse"]>;
+     private updateDisplay;
+     private getTextOutput;
+-    private formatToolExecution;
+ }
+ //# sourceMappingURL=tool-execution.d.ts.map
+\ No newline at end of file
 diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/interactive/components/tool-execution.js
-index d447db5a..1989b804 100644
 --- a/dist/modes/interactive/components/tool-execution.js
 +++ b/dist/modes/interactive/components/tool-execution.js
 @@ -1,4 +1,4 @@
 -import { Box, Container, getCapabilities, Image, MouseRegion, Spacer, Text, } from "@earendil-works/pi-tui";
-+import { Box, Container, getCapabilities, Image, MarkerColumn, MouseRegion, Spacer, Text, } from "@earendil-works/pi-tui";
++import { Box, Container, getCapabilities, Image, MarkerColumn, MouseRegion, Spacer, Text, truncateToWidth, } from "@earendil-works/pi-tui";
  import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.js";
  import { ensurePngTranscoder } from "../../../utils/image-convert.js";
  import { theme } from "../theme/theme.js";
-@@ -98,7 +98,10 @@ export class ToolExecutionComponent extends Container {
+@@ -6,8 +6,11 @@
+ const FALLBACK_PREVIEW_LINES = 10;
+ export class ToolExecutionComponent extends Container {
+     contentBox;
+-    contentText;
+-    contentTextRegion;
++    sharedContent = new Container();
++    sharedFrame;
++    pulseTimer;
++    pulseFrame = 0;
++    theme;
+     selfRenderContainer;
+     selfRenderHeight = 0;
+     callRendererComponent;
+@@ -34,6 +37,7 @@
+     hideComponent = false;
+     constructor(toolName, toolCallId, args, options = {}, toolDefinition, ui, cwd) {
+         super();
++        this.theme = options.theme ?? theme;
+         this.toolName = toolName;
+         this.toolCallId = toolCallId;
+         this.args = args;
+@@ -44,19 +48,17 @@
+         this.ui = ui;
+         this.cwd = cwd;
+         this.addChild(new Spacer(1));
+-        // Always create all shell variants. contentBox is used for default renderer-based composition.
+-        // selfRenderContainer is used when the tool renders its own framing.
+-        // contentText is reserved for generic fallback rendering when no tool definition exists.
+-        this.contentBox = new Box(1, 1, (text) => theme.bg("toolPendingBg", text));
+-        this.contentText = new Text("", 1, 1, (text) => theme.bg("toolPendingBg", text));
+-        this.contentTextRegion = this.createResultRegion(this.contentText);
++        // Ordinary renderers supply content; only self-shell renderers own outer framing.
++        this.contentBox = new Box(this.outputPad, 0);
++        this.sharedFrame = new MarkerColumn("", this.sharedContent, {
++            continuationMarker: this.theme.fg("muted", "│"),
++            onGutterClick: () => {
++                if (this.result) this.setExpanded(!this.expanded);
++            },
++        });
++        this.contentBox.addChild(this.sharedFrame);
+         this.selfRenderContainer = new Container();
+-        if (this.hasRendererDefinition()) {
+-            this.addChild(this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox);
+-        }
+-        else {
+-            this.addChild(this.contentTextRegion);
+-        }
++        this.addChild(this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox);
+         this.updateDisplay();
+     }
+     getCallRenderer() {
+@@ -93,19 +95,19 @@
+         };
+     }
+     createCallFallback() {
+-        return new Text(formatToolCallWithArgs(this.toolName, this.args, theme, this.expanded), 0, 0);
++        return new Text(formatToolCallWithArgs(this.toolName, this.args, this.theme, this.expanded), 0, 0);
+     }
      createResultFallback() {
          const output = this.getTextOutput();
          if (!output) {
 -            return undefined;
-+            return new MarkerColumn(theme.fg("muted", "│"), new Text(theme.fg("muted", "(no output)"), 0, 0), {
-+                continuationMarker: theme.fg("muted", "│"),
-+                footerMarker: theme.fg("muted", "╰────"),
-+            });
++            return new Text(this.theme.fg("muted", "(no output)"), 0, 0);
          }
          const lines = output.split("\n");
          const displayLines = this.expanded ? lines : lines.slice(0, FALLBACK_PREVIEW_LINES);
-@@ -107,7 +110,10 @@ export class ToolExecutionComponent extends Container {
+         const remaining = lines.length - displayLines.length;
+-        let text = displayLines.map((line) => theme.fg("toolOutput", line)).join("\n");
++        let text = displayLines.map((line) => this.theme.fg("toolOutput", line)).join("\n");
          if (remaining > 0) {
-             text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+-            text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
++            text += `${this.theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${this.theme.fg("muted", ")")}`;
          }
--        return new Text(text, 0, 0);
-+        return new MarkerColumn(theme.fg("muted", "│"), new Text(text, 0, 0), {
-+            continuationMarker: theme.fg("muted", "│"),
-+            footerMarker: theme.fg("muted", "╰────"),
-+        });
+         return new Text(text, 0, 0);
      }
-     createResultRegion(component) {
-         return new MouseRegion(component, (event) => {
+@@ -156,8 +158,8 @@
+         super.invalidate();
+         this.updateDisplay();
+     }
+-    render(width) {
+-        if (this.hideComponent) {
++    render(width, animate = true) {
++        if (width <= 0 || this.hideComponent) {
+             return [];
+         }
+         if (this.hasRendererDefinition() && this.getRenderShell() === "self") {
+@@ -183,7 +185,18 @@
+             }
+             return lines;
+         }
+-        return super.render(width);
++        // Schedule from render, not updateDisplay: a detached row gets at most
++        // one unanswered invalidation and cannot keep a pulse timer alive.
++        if (animate && this.isPartial && !this.result?.isError && !this.pulseTimer) {
++            this.pulseTimer = setTimeout(() => {
++                this.pulseTimer = undefined;
++                this.pulseFrame++;
++                this.invalidate();
++                this.ui.requestRender();
++            }, 320);
++            this.pulseTimer.unref?.();
++        }
++        return super.render(width).map((line) => truncateToWidth(line, Math.floor(width), ""));
+     }
+     handleMouse(event) {
+         if (!this.hasRendererDefinition() || this.getRenderShell() !== "self")
+@@ -197,19 +210,24 @@
+         });
+     }
+     updateDisplay() {
+-        const bgFn = this.isPartial
+-            ? (text) => theme.bg("toolPendingBg", text)
+-            : this.result?.isError
+-                ? (text) => theme.bg("toolErrorBg", text)
+-                : (text) => theme.bg("toolSuccessBg", text);
+         let hasContent = false;
+         this.hideComponent = false;
+-        if (this.hasRendererDefinition()) {
+-            const renderContainer = this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox;
+-            if (renderContainer instanceof Box) {
+-                renderContainer.setBgFn(bgFn);
+-                renderContainer.setPaddingX(this.outputPad);
+-            }
++        const self = this.getRenderShell() === "self";
++        if ((!this.isPartial || this.result?.isError) && this.pulseTimer) {
++            clearTimeout(this.pulseTimer);
++            this.pulseTimer = undefined;
++        }
++        if (!self) {
++            this.contentBox.setPaddingX(this.outputPad);
++            this.sharedFrame.setMarker(this.result?.isError
++                ? this.theme.fg("error", "✕")
++                : this.isPartial ? this.theme.fg(this.pulseFrame % 2 ? "accent" : "muted", "●") : this.theme.fg("success", "✓"),
++                this.theme.fg("muted", "│"));
++            this.sharedFrame.setFooterMarker(this.result ? this.theme.fg("muted", "╰────") : undefined);
++        }
++        {
++            // self means whole-shell ownership, not pre-styled content.
++            const renderContainer = self ? this.selfRenderContainer : this.sharedContent;
+             renderContainer.clear();
+             const callRenderer = this.getCallRenderer();
+             if (!callRenderer) {
+@@ -218,7 +236,7 @@
+             }
+             else {
+                 try {
+-                    const component = callRenderer(this.args, theme, this.getRenderContext(this.callRendererComponent));
++                    const component = callRenderer(this.args, this.theme, this.getRenderContext(this.callRendererComponent));
+                     this.callRendererComponent = component;
+                     renderContainer.addChild(this.createResultRegion(component));
+                     hasContent = true;
+@@ -240,7 +258,7 @@
+                 }
+                 else {
+                     try {
+-                        const component = resultRenderer({ content: this.result.content, details: this.result.details }, { expanded: this.expanded, isPartial: this.isPartial }, theme, this.getRenderContext(this.resultRendererComponent));
++                        const component = resultRenderer({ content: this.result.content, details: this.result.details }, { expanded: this.expanded, isPartial: this.isPartial }, this.theme, this.getRenderContext(this.resultRendererComponent));
+                         this.resultRendererComponent = component;
+                         renderContainer.addChild(this.createResultRegion(component));
+                         hasContent = true;
+@@ -255,12 +273,6 @@
+                     }
+                 }
+             }
+-        }
+-        else {
+-            this.contentText.setCustomBgFn(bgFn);
+-            this.contentText.setPaddingX(this.outputPad);
+-            this.contentText.setText(this.formatToolExecution());
+-            hasContent = true;
+         }
+         const previousImages = this.imageComponents;
+         const previousSources = this.imageSources;
+@@ -288,7 +300,7 @@
+                         previous.mimeType === source.mimeType &&
+                         previous.widthCells === source.widthCells
+                         ? previousImages[index]
+-                        : new Image(source.data, source.mimeType, { fallbackColor: (s) => theme.fg("toolOutput", s) }, { maxWidthCells: source.widthCells });
++                        : new Image(source.data, source.mimeType, { fallbackColor: (s) => this.theme.fg("toolOutput", s) }, { maxWidthCells: source.widthCells });
+                     if (source.mimeType !== "image/png") {
+                         ensurePngTranscoder(() => {
+                             this.invalidate();
+@@ -308,17 +320,5 @@
+     getTextOutput() {
+         return getRenderedTextOutput(this.result, this.showImages);
+     }
+-    formatToolExecution() {
+-        let text = theme.fg("toolTitle", theme.bold(this.toolName));
+-        const content = JSON.stringify(this.args, null, 2);
+-        if (content) {
+-            text += `\n\n${content}`;
+-        }
+-        const output = this.getTextOutput();
+-        if (output) {
+-            text += `\n${output}`;
+-        }
+-        return text;
+-    }
+ }
+ //# sourceMappingURL=tool-execution.js.map
+\ No newline at end of file
 diff --git a/dist/modes/interactive/components/user-message.d.ts b/dist/modes/interactive/components/user-message.d.ts
 index 387f2a52..fceb0867 100644
 --- a/dist/modes/interactive/components/user-message.d.ts
@@ -713,3 +1082,54 @@ index cdb88d0c..c6fca425 100644
  	},
  	"main": "./dist/index.js",
  	"types": "./dist/index.d.ts",
+diff --git a/dist/core/tools/edit.js b/dist/core/tools/edit.js
+--- a/dist/core/tools/edit.js
++++ b/dist/core/tools/edit.js
+@@ -87,7 +87,6 @@
+         promptGuidelines: [...editToolSystemPromptContribution.guidelines],
+         parameters: editSchema,
+         constrainedSampling: { type: "json_schema", strict: "prefer" },
+-        renderShell: "self",
+         prepareArguments: prepareEditArguments,
+         async execute(_toolCallId, input, signal, _onUpdate, ctx) {
+             const { path, edits } = validateEditInput(input);
+diff --git a/dist/core/tools/renderers/edit.js b/dist/core/tools/renderers/edit.js
+--- a/dist/core/tools/renderers/edit.js
++++ b/dist/core/tools/renderers/edit.js
+@@ -10,7 +10,7 @@
+ import { computeEditsDiff } from "../edit-diff.js";
+ import { renderToolPath, str } from "../render-utils.js";
+ function createEditCallRenderComponent() {
+-    return Object.assign(new Box(1, 1, (text) => text), {
++    return Object.assign(new Box(0, 0, (text) => text), {
+         preview: undefined,
+         previewArgsKey: undefined,
+         previewPending: false,
+@@ -86,7 +86,7 @@
+ }
+ function buildEditCallComponent(component, args, theme, cwd, outputPad) {
+     component.setBgFn(getEditHeaderBg(component.preview, component.settledError, theme));
+-    component.setPaddingX(outputPad);
++    component.setPaddingX(0);
+     component.clear();
+     component.addChild(new Text(formatEditCall(args, theme, cwd), 0, 0));
+     if (!component.preview) {
+@@ -122,7 +122,8 @@
+             component.previewPending = false;
+             component.settledError = false;
+         }
+-        if (context.argsComplete && previewInput && !component.preview && !component.previewPending) {
++        // Preview only the pre-execution file; settled results own their recorded diff.
++        if (context.argsComplete && !context.executionStarted && previewInput && !component.preview && !component.previewPending) {
+             component.previewPending = true;
+             const requestKey = argsKey;
+             void computeEditsDiff(previewInput.path, previewInput.edits, context.cwd).then((preview) => {
+@@ -161,7 +162,7 @@
+             return component;
+         }
+         component.addChild(new Spacer(1));
+-        component.addChild(new Text(output, context.outputPad, 0));
++        component.addChild(new Text(output, 0, 0));
+         return component;
+     },
+ };
