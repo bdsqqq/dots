@@ -27,7 +27,6 @@ in
     ../../modules/sleepless
     ../../modules/kanata
     ../../modules/dji-mic
-    ../../modules/cmux
     ../../modules/core-cli
     ../../modules/shell
     ../../modules/btop

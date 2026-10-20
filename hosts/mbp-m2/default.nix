@@ -38,7 +38,6 @@ in
     ../../modules/macos-defaults
     ../../modules/sleepless
     ../../modules/kanata
-    ../../modules/cmux
     ../../modules/core-cli
     ../../modules/shell
     ../../modules/btop

@@ -55,8 +55,7 @@ and [Hunk](agents/skills/hunk-review/SKILL.md) entrypoints.
 REA stays with its installed release via [Pi's native skills path](pi/settings.json#L8);
 there is no shared REA owner. Axiom's
 [skill](agents/skills/using-axiom/SKILL.md) focuses on MCP access; CLI coverage
-still needs assessment against actual tasks. cmux is intentionally outside
-the current direction, despite its remaining module.
+still needs assessment against actual tasks.
 
 ## settings still expressed inline
 
