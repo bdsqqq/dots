@@ -426,9 +426,13 @@ export default function commandPaletteExtension(pi: ExtensionAPI): void {
 
 if (import.meta.vitest) {
   const { describe, it, expect, vi } = import.meta.vitest;
-  const { stripVTControlCharacters } = await import("node:util");
-  const { CURSOR_MARKER, visibleWidth, getKeybindings, StdinBuffer } =
-    await import("@earendil-works/pi-tui");
+  const {
+    CURSOR_MARKER,
+    visibleWidth,
+    getKeybindings,
+    StdinBuffer,
+    stripTerminalSequences: stripVTControlCharacters,
+  } = await import("@earendil-works/pi-tui");
   const theme = {
     name: "dark",
     fg: (_color: string, text: string) => text,

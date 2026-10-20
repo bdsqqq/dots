@@ -229,7 +229,11 @@ export default function sessionHistory(pi: ExtensionAPI): void {
     );
   });
   pi.on("before_agent_start", async (event) => {
-    if (!parseMentions(event.prompt).some((m) => m.kind === "session")) return;
+    if (
+      event.messageType !== "user" ||
+      !parseMentions(event.prompt).some((m) => m.kind === "session")
+    )
+      return;
     return {
       systemPrompt:
         event.systemPrompt +
@@ -240,6 +244,26 @@ export default function sessionHistory(pi: ExtensionAPI): void {
 
 if (import.meta.vitest) {
   const { it, expect, vi } = import.meta.vitest;
+  it("adds history guidance only for user prompts, not custom-message runs", async () => {
+    let beforeStart!: (event: unknown) => Promise<unknown>;
+    sessionHistory({
+      registerTool() {},
+      on(name: string, handler: typeof beforeStart) {
+        if (name === "before_agent_start") beforeStart = handler;
+      },
+    } as unknown as ExtensionAPI);
+    expect(await beforeStart({ messageType: "custom" })).toBeUndefined();
+    expect(
+      await beforeStart({ messageType: "user", prompt: "hello" }),
+    ).toBeUndefined();
+    expect(
+      await beforeStart({
+        messageType: "user",
+        prompt: "inspect @session/abcdef1",
+        systemPrompt: "base",
+      }),
+    ).toMatchObject({ systemPrompt: expect.stringContaining("history_read") });
+  });
   it("finds native history for ephemeral managers from settings/env without overriding persistent context", async () => {
     const fs = await import("node:fs/promises");
     const { tmpdir } = await import("node:os");

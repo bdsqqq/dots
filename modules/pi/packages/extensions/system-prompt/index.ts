@@ -278,8 +278,7 @@ if (import.meta.vitest) {
           ],
         };
         const first = await runner.emitBeforeAgentStart(
-          "first",
-          undefined,
+          { messageType: "user", prompt: "first", images: undefined },
           options,
         );
         expect(errors).toEqual([]);
@@ -320,8 +319,16 @@ if (import.meta.vitest) {
         // interpolated body or accumulate another copy of the previous turn.
         manager.newSession();
         const second = await runner.emitBeforeAgentStart(
-          "second",
-          undefined,
+          {
+            messageType: "custom",
+            message: {
+              role: "custom",
+              timestamp: 1,
+              customType: "fixture",
+              content: "second",
+              display: false,
+            },
+          },
           options,
         );
         expect(errors).toEqual([]);
