@@ -1,43 +1,49 @@
 ---
 name: explaining-with-animations
-description: "Explain a concept hyper-intuitively, bottom-up, through simple step-by-step animations and concrete examples. Use when the user asks to really understand how something works through animated explanation, visual intuition, or a tiny interactive walkthrough; not for ordinary short answers, UI motion polish, or decorative animation."
+description: "Explain how something works through concrete examples and causal visual sequences. Use for bottom-up visual explanations, explainer videos, motion graphics explaining architecture or usage, interactive walkthroughs, or static step-by-step diagrams; not for ordinary short answers, UI motion polish, or decorative animation."
 ---
 
 # explaining with animations
 
-make the mechanism feel inevitable, one small visible change at a time. the goal is a mental model the reader can run themselves, not an impressive animation.
+build a mental model the learner can run themselves. the teaching method is shared; the delivery medium follows the request.
 
-## build from the smallest real thing
+## build from the smallest useful model
 
-1. identify the exact question and inspect its source material. for code or systems, trace the actual operation before illustrating it. separate observed behavior, a teaching simplification, and anything unknown.
-2. choose one tiny, concrete example that survives the whole explanation: three items, a single request, two people, a few bytes. show its starting state and what each visible object means. do not open with a wall of architecture, terminology, or a metaphor that needs its own explanation.
-3. write a short sequence of states before animating. each step answers **what changed, what caused it, and what can happen next?** change one idea at a time; split a step if it needs two explanations. introduce an abstraction's name only after the reader has seen the need for it.
-4. end by applying the same mechanism to a slightly different input or a revealing failure. show what stays true. connect the concrete example back to the real system and state where the simplified model stops applying.
+1. identify the learning goal and inspect the supplied sources: documentation, research notes, code, or a lecture. for code or systems, trace the relevant operation before illustrating it. separate observed behavior, teaching simplifications, and unknowns.
+2. choose one small, concrete example that survives the explanation: three items, a single request, two people, a few bytes. show its starting state and what each visible object means. a simple system overview can orient an architecture explanation; omit machinery the example does not need. avoid a terminology dump or a metaphor that needs its own explanation.
+3. sketch a short sequence of states. each step answers **what changed, what caused it, and what can happen next?** introduce one idea at a time and name an abstraction after showing the need for it. choose the visual treatment and production tools to serve that sequence, not the other way around.
+4. apply the same mechanism to a different input or a revealing failure. show what stays true and where the simplified model stops applying. when teaching a tool or system, connect the mechanism to one concrete usage example.
 
-ask a question only when the missing topic or source materially changes the explanation. otherwise start at the concrete foundation; do not make the reader pass a vocabulary quiz first.
+ask only when missing information materially changes the explanation. otherwise use the supplied sources and requested format; do not turn a simple brief into a production questionnaire.
 
 ## make causality visible
 
-- keep objects, labels and positions stable between steps. move the same object rather than replacing it with an unrelated picture. distinguish a copy from a move, a message from its recipient, and a request from its acknowledgment.
-- expose the relevant value before and after a change. use short captions such as “the value is still only in ram; this acknowledgment does not prove it reached disk.”
-- show arrows only when something actually travels or one event enables another. a highlight means attention, not data movement. do not invent serialized timing for concurrent work; label a chosen ordering as one possible trace.
-- prefer a few labeled rectangles, dots and numbers to illustrations, dashboards or ornamental motion. color reinforces a distinction already expressed by text or shape.
-- pause at a consequence. let the reader predict the next state, then reveal it. finish with a compact “now you can explain why…” recap, not more terminology.
+- keep objects, labels and positions stable across states. distinguish a copy from a move, a message from its recipient, and a request from its acknowledgment.
+- expose relevant values before and after a change. use short captions such as “the value is still only in ram; this acknowledgment does not prove it reached disk.”
+- use arrows for actual travel or causal dependency, not decoration. a highlight means attention, not data movement. do not invent serialized timing for concurrent work; label a chosen ordering as one possible trace.
+- prefer simple labeled shapes when they suffice. use supplied assets or illustrations when they clarify the subject; do not make branding or image gathering a prerequisite. color reinforces a distinction already expressed by text or shape.
+- give consequences room to register. where useful, let the learner predict the next state before revealing it. finish with what the example now lets them explain, not more terminology.
 
-**contrast:** “first learn consistency, durability and replication” gives names without a mechanism. instead, show one value entering ram, an early acknowledgment, a crash, and the missing value; then name the distinction the reader just observed. make clear that this trace describes the inspected system or a declared toy model, not every database.
+**contrast:** “first learn consistency, durability and replication” gives names without a mechanism. instead, show one value entering ram, an early acknowledgment, a crash, and the missing value; then name the distinction. make clear that this is the inspected system or a declared toy model, not every database.
 
-## animation and interaction contract
+## match delivery to the medium
 
-- default to reader-paced steps, not autoplay. provide visible **previous**, **next**, **replay step**, and **reset** controls plus a step count. a static initial state must already make sense.
-- separate the sequence's logical states from its motion. selecting a step always produces the same complete state; going backward or resetting cannot accumulate stale objects, timers or values.
-- animate only the transition being explained. make each transition short and legible, then hold its final state indefinitely. do not make the explanation depend on catching a fleeting effect.
-- support keyboard operation, visible focus, readable captions and small screens. reduced-motion mode must retain every state and causal explanation, replacing travel effects with immediate changes or restrained fades.
-- use the simplest supported medium. when an interactive page is appropriate, reuse [html-thingy](../html-thingy/SKILL.md) for a self-contained file rather than adding a framework or external asset dependency. use the host's preview/render tools when available; otherwise report the file path. if animation cannot be produced, say so and offer a numbered storyboard, not prose labeled as an animation.
+keep the causal sequence independent of its presentation. animate only changes that aid understanding; do not make a claim depend on catching a fleeting effect. follow an explicitly requested medium. otherwise choose the simplest supported form that meets the learning goal.
+
+- **interactive walkthrough:** default to reader-paced steps, with previous, next, replay and reset controls plus a step count. each selected step must produce a complete, deterministic state; navigation cannot accumulate stale objects, timers or values. support keyboard use, visible focus, narrow screens and reduced motion without losing causal information. for a self-contained page, reuse [html-thingy](../html-thingy/SKILL.md).
+- **video:** storyboard the causal sequence, then time scenes so labels and consequences remain readable. if narration is requested, align it with the visible event and retain key explanations in captions or on-screen text. render the requested video; an interactive page or storyboard is not a substitute. use the available production tools without imposing a particular framework.
+- **static sequence:** use numbered panels with consistent objects and explicit before/after values. captions and arrows must carry the causal links without relying on motion.
+
+if the requested medium cannot be produced, report the limitation and offer a labeled storyboard or another supported format. do not call prose an animation or an unrendered project a finished video.
 
 ## check the explanation, not just the file
 
-inspect the rendered sequence from start to finish. exercise previous, replay and reset midway and at the end; verify values and object identity against the source or declared toy model. check keyboard access, reduced motion and a narrow viewport. a parsed file or recorded video alone does not establish that these worked.
+inspect the complete rendered sequence and compare values, object identity, causal claims and usage examples against the sources or declared toy model. can a newcomer tell what exists, what changed and why? remove unexplained machinery or split a step rather than adding jargon. retain useful distinctions even when they complicate the story.
 
-read every caption with the animation paused: can a newcomer tell what exists, what just changed and why? remove unexplained machinery or split the step rather than adding a paragraph of jargon. retain a useful distinction even when it complicates the story; do not animate a false mechanism to make the explanation smoother.
+check the relevant delivery path:
 
-report what was actually inspected and any untested interaction or platform. stop once the concrete causal sequence is understandable and the requested artifact is delivered; do not expand into a generic course or publish it externally without authorization.
+- **interactive:** exercise backward navigation, replay and reset midway and at the end; check keyboard access, reduced motion and a narrow viewport.
+- **video:** play the rendered output; inspect scene transitions, text readability and holds, plus narration/caption alignment when present. a successful render alone does not establish these worked.
+- **static:** inspect the rendered panels in reading order and verify that every causal link is understandable without animation.
+
+report what was actually inspected and any untested behavior or platform. stop once the learning goal is met and the requested artifact is delivered; do not expand into a course or publish externally without authorization.

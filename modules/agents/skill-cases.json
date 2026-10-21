@@ -91,6 +91,27 @@
     "expectedBehavior": "Combine the teaching sequence with the self-contained HTML workflow. Label it a toy model unless actual source establishes its behavior. Keep request, stored value and returned copy distinct; show empty, miss, fetch, cache fill and response without inventing a universal ordering. Inspect navigation/reset and deliver the artifact without external publication."
   },
   {
+    "id": "animated-source-backed-video",
+    "prompt": "Using the research notes and SVG logo in this repository, create a motion graphics video explaining this package's architecture and how to use it. Keep the explanation concrete.",
+    "expectedSkills": ["explaining-with-animations"],
+    "forbiddenSkills": ["designing-agent-skills"],
+    "expectedBehavior": "Inspect the notes, ground a causal storyboard in them, and connect one concrete operation to a usage example. A simple architecture overview is allowed. Render and inspect video playback, readability and any audio alignment; do not substitute an interactive page or require navigation controls. If production tools are unavailable, report that limitation rather than claiming a video was delivered. Do not publish externally."
+  },
+  {
+    "id": "animated-static-sequence",
+    "prompt": "Show me how a queue works from the ground up using four static numbered diagrams with three jobs. No animation or interactive page.",
+    "expectedSkills": ["explaining-with-animations"],
+    "forbiddenSkills": ["designing-agent-skills"],
+    "expectedBehavior": "Use stable job identities and explicit before/after queue states in numbered panels. Declare the toy model's ordering and explain why each job leaves next. Inspect the rendered reading order. Do not add playback, navigation controls or a video."
+  },
+  {
+    "id": "animated-not-decorative-video",
+    "prompt": "Create a silent looping motion graphics bumper with our logo and abstract particles. This is branding, not an explanation of how anything works.",
+    "expectedSkills": [],
+    "forbiddenSkills": ["explaining-with-animations"],
+    "expectedBehavior": "Treat this as decorative video production, not a teaching sequence. Do not impose a concrete mechanism, usage example or educational walkthrough."
+  },
+  {
     "id": "animated-not-short-definition",
     "prompt": "What does FIFO stand for? One sentence, no visuals.",
     "expectedSkills": [],
