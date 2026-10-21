@@ -12,18 +12,10 @@ catalog:
   "@earendil-works/pi-ai": 1.3.0
   "@earendil-works/pi-coding-agent": 1.3.0
   "@earendil-works/pi-tui": 1.3.0
-  typebox: ^1.3.36
+  typebox: ^1.4.2
 
 allowBuilds:
   "@google/genai": true
   esbuild: true
   koffi: true
   protobufjs: true
-
-overrides:
-  brace-expansion@>=2.0.0 <2.1.4: 2.1.4
-  brace-expansion@>=5.0.0 <5.0.9: 5.0.9
-  defu@<=6.1.4: 6.1.5
-  undici@>=6.0.0 <6.28.0: 6.28.0
-  undici@>=7.0.0 <7.29.0: 7.29.0
-  undici@>=8.0.0 <8.9.0: 8.9.0

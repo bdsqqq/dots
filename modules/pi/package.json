@@ -1,6 +1,6 @@
 {
   "name": "@bdsqqq/pi",
-  "packageManager": "pnpm@11.9.0",
+  "packageManager": "pnpm@12.9.0",
   "version": "0.0.0",
   "description": "extensions and core utilities for pi-coding-agent",
   "keywords": [
@@ -43,9 +43,9 @@
     "check": "pnpm run format:check && pnpm run lint && pnpm run test"
   },
   "dependencies": {
-    "defuddle": "^0.19.4",
+    "defuddle": "^0.19.5",
     "diff": "^9.0.0",
-    "evlog": "^2.30.1",
+    "evlog": "^2.33.1",
     "jiti": "^2.7.0",
     "linkedom": "^0.18.13"
   },
@@ -53,14 +53,14 @@
     "@earendil-works/pi-ai": "catalog:",
     "@earendil-works/pi-coding-agent": "catalog:",
     "@earendil-works/pi-tui": "catalog:",
-    "@types/node": "^24.0.0",
-    "oxfmt": "^0.72.0",
-    "oxlint": "^1.87.0",
-    "oxlint-tsgolint": "^7.0.2003",
-    "tsdown": "^0.23.0",
+    "@types/node": "^26.6.5",
+    "oxfmt": "^0.73.0",
+    "oxlint": "^1.88.0",
+    "oxlint-tsgolint": "^7.0.2004",
+    "tsdown": "^0.23.1",
     "typebox": "catalog:",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.5"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "catalog:",
