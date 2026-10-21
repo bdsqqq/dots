@@ -835,6 +835,341 @@ if (import.meta.vitest) {
       }
     });
 
+    it("preserves real codemode emission boundaries with bounded previews and raw parity", async () => {
+      const { load, make, rows, visibleWidth } = await sdk();
+      const { executeCodemode } = await load("extensions/codemode/execute.js");
+      const { codemodeRenderers } = await load(
+        "extensions/codemode/renderer.js",
+      );
+      const { getPackageDir } = await import("@earendil-works/pi-coding-agent");
+      const { readFile, writeFile, mkdtemp, mkdir, rm } =
+        await import("node:fs/promises");
+      const { spawnSync } = await import("node:child_process");
+      const { tmpdir } = await import("node:os");
+      const { pathToFileURL } = await import("node:url");
+      const { createRequire } = await import("node:module");
+      const path = `${getPackageDir()}/dist/extensions/codemode/execute.js`;
+      const require = createRequire(path);
+      const source = await readFile(path, "utf8");
+      const temporary = await mkdtemp(`${tmpdir()}/pi-emission-parity-`);
+      // Reverse only this patch's executor hunks in an isolated fixture, never the installed SDK.
+      await mkdir(`${temporary}/dist/extensions/codemode`, { recursive: true });
+      await writeFile(
+        `${temporary}/dist/extensions/codemode/execute.js`,
+        source,
+      );
+      const unpatch = spawnSync(
+        "git",
+        ["apply", "-R", "--include=dist/extensions/codemode/execute.js"],
+        {
+          cwd: temporary,
+          input: await readFile(
+            new URL(
+              "../../../patches/pi-coding-agent-1.3.0.patch",
+              import.meta.url,
+            ),
+            "utf8",
+          ),
+          encoding: "utf8",
+        },
+      );
+      expect(unpatch.status, unpatch.stderr).toBe(0);
+      const codemodePackage = JSON.parse(
+        await readFile(
+          `${getPackageDir()}/../pi-codemode/package.json`,
+          "utf8",
+        ),
+      );
+      const baseline = (
+        await readFile(
+          `${temporary}/dist/extensions/codemode/execute.js`,
+          "utf8",
+        )
+      )
+        .replace(/\/\/# sourceMappingURL=.*$/m, "")
+        .replace(
+          /from "([^"]+)"/g,
+          (_match: string, spec: string) =>
+            `from ${JSON.stringify(pathToFileURL(spec === "@earendil-works/pi-codemode" ? `${getPackageDir()}/../pi-codemode/${codemodePackage.exports["."].import}` : require.resolve(spec)).href)}`,
+        );
+      await writeFile(`${temporary}/baseline.mjs`, baseline);
+      const old = await import(pathToFileURL(`${temporary}/baseline.mjs`).href);
+      const run = (code: string, signal?: AbortSignal) =>
+        executeCodemode("preview-test", { code }, signal);
+      try {
+        const code = `// @options: {"max_output_tokens": 80}\nawait Promise.all([1,2,3,4].map(async n => { text('HEAD_'+n+'\\n'+'x'.repeat(n===1?80000:2000)+'\\nTAIL_'+n); }));`;
+        const result = await run(code);
+        const original = await old.executeCodemode("preview-test", { code });
+        const normalize = (content: unknown) =>
+          JSON.stringify(content)
+            .replace(/Wall time [\d.]+ seconds/g, "Wall time FIXED seconds")
+            .replace(/pi-codemode[^ ]+\.txt/g, "SPILL.txt");
+        expect(normalize(result.content)).toBe(normalize(original.content));
+        expect(await readFile(result.details.fullOutputPath, "utf8")).toBe(
+          await readFile(original.details.fullOutputPath, "utf8"),
+        );
+        const preview = result.details.outputPreview;
+        expect(preview.totalResults).toBe(4);
+        expect(preview.results.map((r: any) => r.ordinal)).toEqual([
+          1, 2, 3, 4,
+        ]);
+        expect(preview.results[0].omittedChars).toBe(80014 - 224);
+        const unicode = await run(
+          `text('a'.repeat(111)+'😀'+'b'.repeat(111)+'😀'+'c'.repeat(111));`,
+        );
+        const clipped = unicode.details.outputPreview.results[0];
+        expect(
+          clipped.head.length + clipped.tail.length + clipped.omittedChars,
+        ).toBe(337);
+        expect(clipped.head.isWellFormed() && clipped.tail.isWellFormed()).toBe(
+          true,
+        );
+        const frozen = JSON.stringify(result);
+        const component = make(codemodeRenderers, "codemode", { code });
+        component.updateResult(result);
+        expect(rows(component).join("\n")).not.toContain("HEAD_2");
+        component.setExpanded(true);
+        for (const width of [0, 1, 8, 20, 80, 140]) {
+          expect(
+            component
+              .render(width)
+              .every((line: string) => visibleWidth(line) <= width),
+          ).toBe(true);
+          if (width >= 20) {
+            const text = rows(component, width).join("\n");
+            for (const n of [1, 2, 3, 4]) {
+              expect(text).toContain(`HEAD_${n}`);
+              expect(text).toContain(`TAIL_${n}`);
+              expect(text).toContain(`result ${n}/4`);
+            }
+          }
+        }
+        expect(JSON.stringify(result)).toBe(frozen);
+        // Negative: the identical real content without emission metadata starves results 2/3.
+        component.updateResult({
+          ...result,
+          details: { ...result.details, outputPreview: undefined },
+        });
+        expect(rows(component).join("\n")).not.toContain("HEAD_2");
+        for (const malformed of [
+          null,
+          {},
+          { ...preview, version: 2 },
+          { ...preview, results: [{ ordinal: 1 }] },
+        ]) {
+          component.updateResult({
+            ...result,
+            details: { outputPreview: malformed },
+          });
+          expect(rows(component).join("\n")).toContain("output");
+        }
+        const values = await run(
+          `text(''); text('a\\nb'); text(3); text(null); text([1,2]); text({x:1}); text('==> text 99/99 <=='); return {done:true};`,
+        );
+        expect(values.details.outputPreview.totalResults).toBe(8);
+        expect(values.details.outputPreview.results[0].head).toBe("");
+        expect(values.details.outputPreview.results.at(-1)).toMatchObject({
+          source: "return",
+          head: '{"done":true}',
+        });
+        expect(values.details.outputPreview.results[6].head).toBe(
+          "==> text 99/99 <==",
+        );
+        for (const code of [
+          `text(''); text('a\\nb'); text(3); text(null); text([1,2]); text({x:1}); return {done:true};`,
+          `return null`,
+          `return [1,2]`,
+          `return false`,
+          `return 'a\\nb'`,
+        ]) {
+          expect(normalize((await run(code)).content)).toBe(
+            normalize(
+              (await old.executeCodemode("baseline", { code })).content,
+            ),
+          );
+        }
+        const png =
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=";
+        const mixed = await run(
+          `text('before'); console.log('log'); image('data:image/png;base64,${png}'); text('after'); throw new Error('AFTER_SUCCESS');`,
+        );
+        expect(mixed.isError).toBe(true);
+        expect(mixed.details.outputPreview).toMatchObject({
+          totalResults: 2,
+          totalConsole: 1,
+          totalImages: 1,
+          console: { head: "log" },
+        });
+        expect(mixed.details.outputPreview.diagnostic.head).toContain(
+          "AFTER_SUCCESS",
+        );
+        expect(mixed.content.some((p: any) => p.type === "image")).toBe(true);
+        component.updateResult(mixed);
+        expect(rows(component).join("\n")).toContain("diagnostic");
+        expect(mixed.details.outputPreview.imageFiles.head).toContain(
+          "pi-codemode",
+        );
+        // Only the filesystem write boundary fails; both executors still run real QuickJS scripts.
+        const boundaryPath = `${temporary}/failed-writes.mjs`;
+        await writeFile(
+          boundaryPath,
+          `export async function writeOutputFile() { throw new Error('WRITE_DENIED_STORAGE'); }`,
+        );
+        const boundaryUrl = pathToFileURL(boundaryPath).href;
+        const outputFilesUrl = pathToFileURL(
+          require.resolve("../../utils/output-files.js"),
+        ).href;
+        const failingSource = source
+          .replace(/\/\/# sourceMappingURL=.*$/m, "")
+          .replace(
+            /from "([^"]+)"/g,
+            (_match: string, spec: string) =>
+              `from ${JSON.stringify(spec === "../../utils/output-files.js" ? boundaryUrl : pathToFileURL(spec === "@earendil-works/pi-codemode" ? `${getPackageDir()}/../pi-codemode/${codemodePackage.exports["."].import}` : require.resolve(spec)).href)}`,
+          );
+        await writeFile(`${temporary}/failing.mjs`, failingSource);
+        await writeFile(
+          `${temporary}/old-failing.mjs`,
+          baseline.replaceAll(outputFilesUrl, boundaryUrl),
+        );
+        const failedWrites = await import(
+          pathToFileURL(`${temporary}/failing.mjs`).href
+        );
+        const oldFailedWrites = await import(
+          pathToFileURL(`${temporary}/old-failing.mjs`).href
+        );
+        const plainTheme = { fg: (_color: string, text: string) => text };
+        const display = (result: any, showImages: boolean, expanded: boolean) =>
+          codemodeRenderers
+            .renderResult(result, { expanded, isPartial: false }, plainTheme, {
+              state: {},
+              showImages,
+              isError: result.isError,
+            })
+            .render(80)
+            .join("\n");
+        for (const [code, imageFailure, spillFailure, scriptFailure] of [
+          [`image('data:image/png;base64,${png}');`, true, false, false],
+          [
+            `// @options: {"max_output_tokens": 20}\ntext('large'.repeat(2000));`,
+            false,
+            true,
+            false,
+          ],
+          [
+            `// @options: {"max_output_tokens": 20}\nimage('data:image/png;base64,${png}'); text('large'.repeat(2000)); console.log('LOG_BEFORE_ERROR'); throw new Error('SCRIPT_AND_STORAGE');`,
+            true,
+            true,
+            true,
+          ],
+        ] as const) {
+          const current = await failedWrites.executeCodemode("storage", {
+            code,
+          });
+          const prior = await oldFailedWrites.executeCodemode("storage", {
+            code,
+          });
+          expect(normalize(current.content)).toBe(normalize(prior.content));
+          expect(current.isError).toBe(prior.isError);
+          expect(current.isError === true).toBe(scriptFailure);
+          expect(current.details.fullOutputPath).toBeUndefined();
+          const raw = JSON.stringify(current.content);
+          expect(raw).toContain("WRITE_DENIED_STORAGE");
+          if (imageFailure) {
+            expect(raw).toContain("could not be saved");
+            expect(current.details.outputPreview.imageSaveFailures.total).toBe(
+              1,
+            );
+          }
+          if (spillFailure) {
+            expect(raw).toContain("Could not save the full output");
+            expect(current.details.outputPreview.spillFailure.head).toContain(
+              "Could not save the full output",
+            );
+          }
+          for (const showImages of [false, true])
+            for (const expanded of [false, true]) {
+              const rendered = display(current, showImages, expanded);
+              expect(rendered).toContain("WRITE_DENIED_STORAGE");
+              if (imageFailure)
+                expect(rendered).toContain("image save failures · 1");
+              if (spillFailure)
+                expect(rendered).toContain("full output unavailable");
+              if (scriptFailure)
+                expect(rendered).toContain("SCRIPT_AND_STORAGE");
+              // Isolated pre-fix metadata hides the same retained raw warning.
+              const preview = { ...current.details.outputPreview };
+              delete preview.spillFailure;
+              delete preview.imageSaveFailures;
+              expect(
+                display(
+                  {
+                    ...current,
+                    details: { ...current.details, outputPreview: preview },
+                  },
+                  showImages,
+                  expanded,
+                ),
+              ).not.toContain("WRITE_DENIED_STORAGE");
+            }
+          expect(
+            Buffer.byteLength(JSON.stringify(current.details.outputPreview)),
+          ).toBeLessThan(20480);
+          expect(
+            [
+              ...current.details.outputPreview.results,
+              current.details.outputPreview.console,
+              current.details.outputPreview.diagnostic,
+              current.details.outputPreview.imageFiles,
+              current.details.outputPreview.spillFailure,
+              current.details.outputPreview.imageSaveFailures?.first,
+            ]
+              .filter(Boolean)
+              .reduce(
+                (n: number, clip: any) =>
+                  n + clip.head.length + clip.tail.length,
+                0,
+              ),
+          ).toBeLessThanOrEqual(2912);
+        }
+        const controller = new AbortController();
+        const abort = setTimeout(() => controller.abort(), 150);
+        const aborted = await run(
+          `text('before abort'); while(true) {}`,
+          controller.signal,
+        );
+        clearTimeout(abort);
+        expect(aborted.isError).toBe(true);
+        expect(aborted.details.outputPreview.diagnostic.head).toContain(
+          "aborted",
+        );
+        const cancelled = await run(
+          `// @options: {"timeout_ms": 100}\ntext('before timeout'); while(true) {}`,
+        );
+        expect(cancelled.isError).toBe(true);
+        expect(cancelled.details.outputPreview.diagnostic).toBeDefined();
+        const many = await run(
+          `for(let n=1;n<=1000;n++) { text(n+':'+ '\\u0001'.repeat(1000)); console.log('\\u0001'.repeat(1000)); } throw new Error('\\u0001'.repeat(1000));`,
+        );
+        expect(many.details.outputPreview.totalResults).toBe(1000);
+        expect(many.details.outputPreview.totalConsole).toBe(1000);
+        expect(
+          many.details.outputPreview.results.map((r: any) => r.ordinal),
+        ).toEqual([1, 143, 286, 429, 571, 714, 857, 1000]);
+        expect(
+          Buffer.byteLength(JSON.stringify(many.details.outputPreview)),
+        ).toBeLessThan(16384);
+        expect(
+          many.details.outputPreview.results.every(
+            (r: any) => r.head.length + r.tail.length <= 224,
+          ),
+        ).toBe(true);
+        component.updateResult(many);
+        expect(rows(component).join("\n")).toContain("141 results omitted");
+      } finally {
+        await rm(temporary, { recursive: true, force: true });
+      }
+    }, 30000);
+
     it("bounds expanded native codemode visual rows without interpreting opaque output", async () => {
       const { load, make, rows, result, visibleWidth } = await sdk();
       const { codemodeRenderers } = await load(

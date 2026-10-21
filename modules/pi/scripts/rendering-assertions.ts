@@ -91,7 +91,10 @@ export function assertBoundedCodemode(
   const result = evidence.resultLines.map(stripVTControlCharacters);
   assert.equal(call[1]?.trim(), "script", "missing labelled script section");
   assert.ok(call.length <= 3 + (expanded ? 12 : 6), "unbounded script view");
-  const output = result.findIndex((line) => line.trim() === "output");
+  const sectioned = result.some((line) => line.trim().startsWith("output ·"));
+  const output = result.findIndex(
+    (line) => line.trim() === "output" || line.trim().startsWith("output ·"),
+  );
   assert.ok(output >= 0, "missing labelled output section");
   const end = result.findIndex(
     (line, i) => i > output && /^(Full output:|Took )/.test(line),
@@ -99,7 +102,8 @@ export function assertBoundedCodemode(
   const outputRows = result.slice(output + 1, end < 0 ? undefined : end);
   while (outputRows.at(-1)?.trim() === "") outputRows.pop();
   assert.ok(
-    outputRows.length <= 1 + (expanded ? 20 : 5),
+    outputRows.length <=
+      (sectioned ? (expanded ? 90 : 30) : 1 + (expanded ? 20 : 5)),
     "unbounded output view",
   );
   const calls = result.findIndex((line) => line.trim() === "calls");

@@ -1292,9 +1292,10 @@ index dcf5bf9b84394f2d151e6862733b239d8d6fbe84..3461fea40046f4a26bb4dd9189ec4ee3
      },
      renderResult(result, _options, theme, context) {
 diff --git a/dist/extensions/codemode/renderer.js b/dist/extensions/codemode/renderer.js
+index d97b1df..8c05ec9 100644
 --- a/dist/extensions/codemode/renderer.js
 +++ b/dist/extensions/codemode/renderer.js
-@@ -1,65 +1,60 @@
+@@ -1,65 +1,108 @@
 -/**
 - * Presentation for the codemode tool.
 - *
@@ -1387,6 +1388,54 @@ diff --git a/dist/extensions/codemode/renderer.js b/dist/extensions/codemode/ren
 +    }
 +    return calls.filter((call) => selected.has(call));
 +}
++/** Persisted metadata is optional; unknown versions or malformed bounds use the legacy window. */
++function validPreview(value) {
++    const count = (n) => Number.isSafeInteger(n) && n >= 0;
++    const clip = (v) => v && typeof v.head === "string" && typeof v.tail === "string" && v.head.length + v.tail.length <= 224 && count(v.omittedChars) && (v.omittedChars > 0 || v.tail === "");
++    if (!value || value.version !== 1 || !count(value.totalResults) || !count(value.totalConsole) || !count(value.totalImages) || !Array.isArray(value.results) || value.results.length !== Math.min(8, value.totalResults)) return false;
++    let previous = 0;
++    for (const item of value.results) {
++        if (!clip(item) || !count(item.ordinal) || item.ordinal <= previous || item.ordinal > value.totalResults || !["text", "return"].includes(item.source)) return false;
++        previous = item.ordinal;
++    }
++    return (value.totalConsole > 0 ? clip(value.console) : value.console === undefined) && (value.diagnostic === undefined || clip(value.diagnostic)) && (value.imageFiles === undefined || clip(value.imageFiles)) && (value.spillFailure === undefined || clip(value.spillFailure)) && (value.imageSaveFailures === undefined || (count(value.imageSaveFailures?.total) && value.imageSaveFailures.total > 0 && clip(value.imageSaveFailures.first)));
++}
++function renderOutputPreview(component, preview, expanded, theme) {
++    const shown = expanded || preview.results.length < 3 ? preview.results : [preview.results[0], preview.results.at(-1)];
++    component.addChild(new Spacer(1));
++    component.addChild(new Text(theme.fg("muted", `output · ${preview.totalResults} results · ${preview.totalConsole} console · ${preview.totalImages} images`), 0, 0));
++    const sections = shown.length + Number(!!preview.console) + Number(!!preview.diagnostic) + Number(!!preview.imageFiles) + Number(!!preview.spillFailure) + Number(!!preview.imageSaveFailures);
++    const budget = expanded ? Math.min(8, Math.floor(40 / Math.max(1, sections))) : 2;
++    const add = (title, item, color = "toolOutput") => {
++        component.addChild(new Text(theme.fg("muted", title), 0, 0));
++        const body = (text, rows, keep = "middle") => component.addChild(new VisualLinePreview({
++            text: replaceTabs(text).split("\n").map((line) => theme.fg(color, line)).join("\n"),
++            maxVisualLines: rows, keep,
++            formatHint: (hidden) => omissionHint(theme, hidden, "visual rows"),
++        }));
++        if (item.omittedChars) {
++            body(item.head, Math.ceil(budget / 2), "start");
++            component.addChild(new Text(theme.fg("muted", `/tool-output for raw · ${item.omittedChars} UTF-16 characters omitted`), 0, 0));
++            body(item.tail, Math.floor(budget / 2), "end");
++        } else body(item.head === "" ? "(empty text)" : item.head, budget);
++    };
++    // Storage failures are operational facts, independent of script success and image visibility.
++    if (preview.spillFailure) {
++        component.addChild(new Text(theme.fg("error", "full output unavailable · /tool-output contains retained raw only"), 0, 0));
++        add("storage warning", preview.spillFailure, "error");
++    }
++    if (preview.imageSaveFailures) add(`image save failures · ${preview.imageSaveFailures.total}`, preview.imageSaveFailures.first, "error");
++    let previous = 0;
++    for (const item of shown) {
++        if (item.ordinal > previous + 1) component.addChild(new Text(theme.fg("muted", `/tool-output for raw · ${item.ordinal - previous - 1} results omitted (${previous + 1}–${item.ordinal - 1})`), 0, 0));
++        add(`result ${item.ordinal}/${preview.totalResults} · ${item.source}`, item);
++        previous = item.ordinal;
++    }
++    if (previous < preview.totalResults) component.addChild(new Text(theme.fg("muted", `/tool-output for raw · ${preview.totalResults - previous} results omitted`), 0, 0));
++    if (preview.imageFiles) add("image files", preview.imageFiles);
++    if (preview.console) add("console", preview.console);
++    if (preview.diagnostic) add("diagnostic", preview.diagnostic, "error");
++}
  export const codemodeRenderers = {
      renderCall(args, theme, context) {
          startToolTimer(context);
@@ -1394,7 +1443,7 @@ diff --git a/dist/extensions/codemode/renderer.js b/dist/extensions/codemode/ren
          const code = str(args?.code);
          const title = theme.fg("toolTitle", theme.bold("codemode"));
          const component = context.lastComponent ?? new Container();
-@@ -70,15 +65,13 @@
+@@ -70,15 +113,13 @@ export const codemodeRenderers = {
          }
          component.addChild(new Text(title, 0, 0));
          if (code) {
@@ -1416,7 +1465,7 @@ diff --git a/dist/extensions/codemode/renderer.js b/dist/extensions/codemode/ren
          }
          return component;
      },
-@@ -88,51 +81,52 @@
+@@ -88,51 +129,55 @@ export const codemodeRenderers = {
          component.clear();
          const calls = result.details?.calls ?? [];
          if (calls.length > 0) {
@@ -1467,8 +1516,12 @@ diff --git a/dist/extensions/codemode/renderer.js b/dist/extensions/codemode/ren
 -        const output = options.isPartial
 -            ? ""
 -            : getTextOutput({ ...result, content: hasHeader ? rest : result.content }, context.showImages).trim();
+-        if (output) {
 +        const output = options.isPartial ? "" : getTextOutput({ ...result, content: hasHeader ? rest : result.content }, context.showImages).trim();
-         if (output) {
++        const preview = result.details?.outputPreview;
++        if (!options.isPartial && validPreview(preview)) {
++            renderOutputPreview(component, preview, options.expanded, theme);
++        } else if (output) {
              const color = context.isError ? "error" : "toolOutput";
 -            const styled = replaceTabs(output)
 -                .split("\n")
@@ -1505,7 +1558,7 @@ diff --git a/dist/extensions/codemode/renderer.js b/dist/extensions/codemode/ren
          if (timerText) {
              component.addChild(new Spacer(1));
              component.addChild(new Text(theme.fg("muted", timerText), 0, 0));
-@@ -140,4 +134,4 @@
+@@ -140,4 +185,4 @@ export const codemodeRenderers = {
          return component;
      },
  };
@@ -1684,3 +1737,207 @@ index c5212e7f073d96dd64716f91fd4893e269aa9757..732427084cedac8e59e7bacd207c150d
              }
              else {
                  this.cachedLines = lines;
+diff --git a/dist/extensions/codemode/execute.js b/dist/extensions/codemode/execute.js
+index a193424..751bd63 100644
+--- a/dist/extensions/codemode/execute.js
++++ b/dist/extensions/codemode/execute.js
+@@ -207,6 +207,57 @@ function valueText(value) {
+         return value;
+     return JSON.stringify(value) ?? String(value);
+ }
++// Detach bounded slices from V8's potentially large backing strings; preserve lone UTF-16 units.
++function copyPreviewText(text) {
++    return Buffer.from(text, "utf16le").toString("utf16le");
++}
++function clipPreview(text) {
++    if (text.length <= 224) return { head: copyPreviewText(text), tail: "", omittedChars: 0 };
++    let start = 112, end = text.length - 112;
++    if (/^[\uDC00-\uDFFF]$/.test(text[start])) start--;
++    if (/^[\uDC00-\uDFFF]$/.test(text[end])) end++;
++    return { head: copyPreviewText(text.slice(0, start)), tail: copyPreviewText(text.slice(end)), omittedChars: end - start };
++}
++/** Fixed-size display duplication, before formatting merges or truncates emissions. */
++function outputPreview(output, returned, diagnostic) {
++    let totalResults = returned ? 1 : 0, totalConsole = 0, totalImages = 0;
++    for (const item of output) {
++        if (item.type === "image") totalImages++;
++        else if (item.console) totalConsole++;
++        else totalResults++;
++    }
++    const count = Math.min(8, totalResults);
++    const ordinals = new Set(Array.from({ length: count }, (_, i) => count === 1 ? 1 : 1 + Math.floor(i * (totalResults - 1) / (count - 1))));
++    const results = [];
++    let ordinal = 0;
++    // Retain bounded console edges, not a second all-console copy.
++    let consoleHead = "", consoleTail = "", consoleChars = 0, consoleSeen = 0;
++    for (const item of output) {
++        if (item.type !== "text") continue;
++        if (item.console) {
++            const part = (consoleSeen++ ? "\n" : "") + item.text;
++            consoleChars += part.length;
++            if (consoleHead.length < 224) consoleHead += part.slice(0, 224 - consoleHead.length);
++            consoleTail = (consoleTail + part.slice(-224)).slice(-224);
++        } else if (ordinals.has(++ordinal)) {
++            results.push({ ordinal, source: "text", ...clipPreview(item.text) });
++        }
++    }
++    if (returned && ordinals.has(++ordinal)) results.push({ ordinal, source: "return", ...clipPreview(returned.text) });
++    let consolePreview;
++    if (totalConsole) {
++        if (consoleChars <= 224) consolePreview = { head: copyPreviewText(consoleHead), tail: "", omittedChars: 0 };
++        else {
++            let head = consoleHead.slice(0, 112), tail = consoleTail.slice(-112);
++            if (/[\uD800-\uDBFF]$/.test(head)) head = head.slice(0, -1);
++            if (/^[\uDC00-\uDFFF]/.test(tail)) tail = tail.slice(1);
++            consolePreview = { head: copyPreviewText(head), tail: copyPreviewText(tail), omittedChars: consoleChars - head.length - tail.length };
++        }
++    }
++    return { version: 1, totalResults, totalConsole, totalImages, results,
++        ...(consolePreview ? { console: consolePreview } : {}),
++        ...(diagnostic ? { diagnostic: clipPreview(diagnostic) } : {}) };
++}
+ /**
+  * Lay out the script's output so the model can tell items apart: providers join adjacent text
+  * blocks with a newline or with nothing. With more than one text item (`text()` or the returned
+@@ -284,12 +335,14 @@ function formatError(result, calls) {
+     return `${head}\n\n${formatCallSummary(calls)}`;
+ }
+ /** Write the full text output to a temp file, like bash does for truncated output. */
+-async function spillOutput(text) {
++async function spillOutput(text, preview) {
+     try {
+         return { path: await writeOutputFile("pi-codemode", ".txt", text) };
+     }
+     catch (error) {
+-        return { error: error instanceof Error ? error.message : String(error) };
++        const message = error instanceof Error ? error.message : String(error);
++        preview.spillFailure = clipPreview(`Could not save the full output: ${message}`);
++        return { error: message };
+     }
+ }
+ /** File extensions of the image types `image()` accepts. Must list every type the sandbox's `image()` detects. */
+@@ -304,8 +357,18 @@ const IMAGE_EXTENSIONS = {
+  * image but has no other way to reach its bytes: scripts cannot write files, and `write` only takes
+  * text. Images shown more than once are saved once.
+  */
+-async function saveImages(items) {
++async function saveImages(items, preview) {
+     const labels = new Map();
++    // Paths remain visible without copying image bytes or retaining an unbounded path list.
++    let pathHead = "", pathTail = "", pathChars = 0;
++    const rememberPath = (path) => {
++        const part = (pathChars ? "\n" : "") + path;
++        pathChars += part.length;
++        pathHead = (pathHead + part.slice(0, 224)).slice(0, 224);
++        pathTail = (pathTail + part.slice(-224)).slice(-224);
++        const clipped = clipPreview(pathChars <= 224 ? pathHead : pathHead + pathTail);
++        preview.imageFiles = { ...clipped, omittedChars: pathChars - clipped.head.length - clipped.tail.length };
++    };
+     const label = async ({ data, mimeType }) => {
+         const bytes = Buffer.from(data, "base64");
+         const kind = `${mimeType}, ${formatSize(bytes.length)}`;
+@@ -316,10 +379,14 @@ async function saveImages(items) {
+         // tool calls already ran, so it becomes part of the label.
+         try {
+             const path = await writeOutputFile("pi-codemode", extension, bytes);
++            rememberPath(path);
+             return `[Image saved to ${path} (${kind})]`;
+         }
+         catch (error) {
+-            return `[Image (${kind}) could not be saved: ${error instanceof Error ? error.message : String(error)}]`;
++            const message = `[Image (${kind}) could not be saved: ${error instanceof Error ? error.message : String(error)}]`;
++            const failures = preview.imageSaveFailures ??= { total: 0, first: clipPreview(message) };
++            failures.total++;
++            return message;
+         }
+     };
+     const result = await Promise.all(items.map(async (item) => {
+@@ -339,7 +406,7 @@ async function saveImages(items) {
+  * item that keeps the start and end of the text, and images follow it. The full text is written to
+  * a temp file.
+  */
+-async function truncateOutput(items, maxTokens) {
++async function truncateOutput(items, maxTokens, preview) {
+     const texts = items.filter((item) => item.type === "text").map((item) => item.text);
+     const combined = texts.join("\n");
+     const budget = maxTokens * CHARS_PER_TOKEN;
+@@ -351,7 +418,7 @@ async function truncateOutput(items, maxTokens) {
+     const head = combined.slice(0, headChars);
+     const tail = tailChars > 0 ? combined.slice(-tailChars) : "";
+     let text = `Warning: truncated output (original token count: ${Math.ceil(combined.length / CHARS_PER_TOKEN)})\nTotal output lines: ${combined.split("\n").length}\n\n${head}…${Math.ceil(removed / CHARS_PER_TOKEN)} tokens truncated…${tail}`;
+-    const spilled = await spillOutput(combined);
++    const spilled = await spillOutput(combined, preview);
+     text +=
+         "path" in spilled
+             ? `\n\n[Full output: ${spilled.path} (read with offset/limit)]`
+@@ -468,14 +535,18 @@ export async function executeCodemode(toolCallId, input, signal, onUpdate, ctx,
+             call.status = "cancelled";
+     }
+     const scriptOutput = [...result.output];
++    const returned = result.ok && result.value !== undefined ? { type: "text", text: valueText(result.value) } : undefined;
++    const diagnostic = !result.ok ? formatError(result, calls) : generatedImages > 0 && !scriptOutput.some((item) => item.type === "image")
++        ? `Note: models.generateImages() returned ${generatedImages} image${generatedImages === 1 ? "" : "s"} that the script did not show. Show each image block of result.output with image(block).` : undefined;
++    const preview = outputPreview(result.output, returned, diagnostic);
+     if (result.ok) {
+         const { set, delete: deleted } = result.storeWrites;
+         if (Object.keys(set).length > 0 || deleted.length > 0) {
+             options.appendEntry?.(CODEMODE_STORE_ENTRY_TYPE, { set, delete: deleted });
+         }
+         // pi extension: a returned value is appended like text().
+-        if (result.value !== undefined)
+-            scriptOutput.push({ type: "text", text: valueText(result.value) });
++        if (returned)
++            scriptOutput.push(returned);
+     }
+     const items = formatOutput(scriptOutput);
+     if (!result.ok)
+@@ -486,13 +557,13 @@ export async function executeCodemode(toolCallId, input, signal, onUpdate, ctx,
+             text: `Note: models.generateImages() returned ${generatedImages} image${generatedImages === 1 ? "" : "s"} that the script did not show. Show each image block of result.output with image(block).`,
+         });
+     }
+-    const truncated = await truncateOutput(joinAdjacentText(items), sourceOptions.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS);
++    const truncated = await truncateOutput(joinAdjacentText(items), sourceOptions.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS, preview);
+     // After truncation, which joins the text items and moves images after them, so each path stays
+     // next to its image and is never cut.
+-    const output = joinAdjacentText(await saveImages(truncated.items));
++    const output = joinAdjacentText(await saveImages(truncated.items, preview));
+     const wallTime = ((performance.now() - startedAt) / 1000).toFixed(1);
+     const header = `${result.ok ? "Script completed" : "Script failed"}\nWall time ${wallTime} seconds\nOutput:\n`;
+-    const details = snapshot();
++    const details = { ...snapshot(), outputPreview: preview };
+     if (truncated.fullOutputPath)
+         details.fullOutputPath = truncated.fullOutputPath;
+     return {
+diff --git a/dist/extensions/codemode/tool.d.ts b/dist/extensions/codemode/tool.d.ts
+index 342278a..7a3310c 100644
+--- a/dist/extensions/codemode/tool.d.ts
++++ b/dist/extensions/codemode/tool.d.ts
+@@ -73,7 +73,28 @@ export interface CodemodeNestedCall {
+     /** Cost in USD of a `models.*` call that reported usage. */
+     cost?: number;
+ }
++/** Bounded display copy only; omittedChars counts UTF-16 code units, not visual rows. */
++export interface CodemodeOutputClip {
++    head: string;
++    tail: string;
++    omittedChars: number;
++}
++export interface CodemodeOutputPreview {
++    version: 1;
++    totalResults: number;
++    totalConsole: number;
++    totalImages: number;
++    /** At most eight evenly spaced emissions, including first and last. Each clip holds <=224 code units. */
++    results: (CodemodeOutputClip & { ordinal: number; source: "text" | "return" })[];
++    /** Captured at the write boundary; script status and model-facing text are unchanged. */
++    spillFailure?: CodemodeOutputClip;
++    imageSaveFailures?: { total: number; first: CodemodeOutputClip };
++    imageFiles?: CodemodeOutputClip;
++    console?: CodemodeOutputClip;
++    diagnostic?: CodemodeOutputClip;
++}
+ export interface CodemodeToolDetails {
++    outputPreview?: CodemodeOutputPreview;
+     calls: CodemodeNestedCall[];
+     /** Temp file with the full text output, when the output was truncated. */
+     fullOutputPath?: string;
