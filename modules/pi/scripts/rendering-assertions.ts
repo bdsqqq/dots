@@ -76,7 +76,7 @@ export function assertToolGrid(
     `latest tool frame missing actual content: ${content}`,
   );
   assert.ok(
-    lines.slice(last.index + 1, end).some((line) => /^ │ .+\S/.test(line)),
+    lines.slice(last.index + 1, end).some((line) => /^ │ .*\S/.test(line)),
     "empty tool result",
   );
   return frame;
@@ -89,35 +89,25 @@ export function assertBoundedCodemode(
 ): void {
   const call = evidence.callLines.map(stripVTControlCharacters);
   const result = evidence.resultLines.map(stripVTControlCharacters);
-  assert.equal(call[1]?.trim(), "script", "missing labelled script section");
-  assert.ok(call.length <= 3 + (expanded ? 12 : 6), "unbounded script view");
-  const sectioned = result.some((line) => line.trim().startsWith("output ·"));
-  const output = result.findIndex(
-    (line) => line.trim() === "output" || line.trim().startsWith("output ·"),
-  );
-  assert.ok(output >= 0, "missing labelled output section");
-  const end = result.findIndex(
-    (line, i) => i > output && /^(Full output:|Took )/.test(line),
-  );
-  const outputRows = result.slice(output + 1, end < 0 ? undefined : end);
-  while (outputRows.at(-1)?.trim() === "") outputRows.pop();
+  assert.ok(call.length <= (expanded ? 14 : 1), "unbounded script view");
+  // These fixture programs never emit these strings. Inspect observed result rows,
+  // not echoed source, and reject shipped bookkeeping even when it is bounded.
+  assert.ok(result.length <= (expanded ? 88 : 58), "unbounded output view");
   assert.ok(
-    outputRows.length <=
-      // Includes wrapped headings/gaps at the sampler's 20-column minimum; inline native tests count body rows separately.
-      (sectioned ? (expanded ? 130 : 100) : 1 + (expanded ? 20 : 5)),
-    "unbounded output view",
+    ![...call, ...result].some((line) =>
+      /^(output · \d+ results? · \d+ console · \d+ images?|result \d+\/\d+ · (text|return))$/.test(
+        line.trim(),
+      ),
+    ),
+    "bookkeeping chrome",
   );
-  const calls = result.findIndex((line) => line.trim() === "calls");
-  if (calls >= 0) {
-    const end = result.findIndex((line, i) => i > calls && !line.trim());
-    const rows = result.slice(calls + 1, end < 0 ? undefined : end);
-    assert.ok(
-      rows.filter((line) => /^[✓✗⊘…] /.test(line)).length <=
-        (expanded ? 12 : 8),
-      "unbounded activity view",
-    );
-    assert.ok(rows.length <= (expanded ? 14 : 10), "wrapped activity rows");
-  }
+  assert.ok(
+    result.filter((line) =>
+      /^[✓✗⊘…] (?!shortened\b)[a-zA-Z_]/.test(line),
+    ).length <=
+      (expanded ? 12 : 8),
+    "unbounded activity view",
+  );
 }
 
 export function assertRawExport(
@@ -162,8 +152,8 @@ if (import.meta.vitest) {
   });
   it("rejects the old unbounded expanded renderer and missing raw data", () => {
     const bounded = {
-      callLines: ["codemode", "script", "text(1)"],
-      resultLines: ["", "output", "answer", "", "Took 1ms"],
+      callLines: ["codemode", "text(1)"],
+      resultLines: ["", "answer"],
     };
     expect(() => assertBoundedCodemode(bounded, true)).not.toThrow();
     expect(() =>
@@ -181,6 +171,19 @@ if (import.meta.vitest) {
         true,
       ),
     ).toThrow(/unbounded output/);
+    expect(() =>
+      assertBoundedCodemode(
+        {
+          callLines: ["codemode"],
+          resultLines: [
+            "output · 4 results · 0 console · 0 images",
+            "result 1/4 · text",
+            "answer",
+          ],
+        },
+        false,
+      ),
+    ).toThrow(/bookkeeping/);
     const raw = {
       resultEntry: {
         message: { content: [{ type: "text", text: "RAW_SENTINEL" }] },
@@ -193,6 +196,29 @@ if (import.meta.vitest) {
     expect(() => assertRawExport({}, raw, "RAW_SENTINEL")).toThrow(
       /original persisted/,
     );
+  });
+  it("counts activity independently of result and call omission rows", () => {
+    const activity = Array(8).fill("✗ read ENOENT");
+    const evidence = {
+      callLines: ["codemode"],
+      resultLines: [
+        ...activity,
+        "… 2 more calls (2 failed)",
+        "… 2 more cal...",
+        "",
+        "result head",
+        "… shortened · partial line edges …",
+        "… shortened ·...",
+        "result tail",
+      ],
+    };
+    expect(() => assertBoundedCodemode(evidence, false)).not.toThrow();
+    expect(() =>
+      assertBoundedCodemode(
+        { ...evidence, resultLines: ["✗ read ENOENT", ...evidence.resultLines] },
+        false,
+      ),
+    ).toThrow(/unbounded activity/);
   });
   const evidence = {
     callLines: ["Delegate fixture"],
@@ -219,6 +245,14 @@ if (import.meta.vitest) {
     });
   const valid =
     " ✓ Delegate fixture\n │ ├ child\n │ SUBAGENT_FIXTURE\n ╰────\n╰────────╯";
+  it("accepts a single-character result without borrowing source", () => {
+    expect(() =>
+      assertToolGrid(" ✓ codemode\n │ A\n ╰────", 1, "codemode", "A", {
+        callLines: ["codemode"],
+        resultLines: ["A"],
+      }),
+    ).not.toThrow();
+  });
   it("accepts root chrome without counting child connectors or editor borders", () => {
     expect(
       assertToolGrid(valid, 1, "Delegate", "SUBAGENT_FIXTURE", evidence),

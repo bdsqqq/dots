@@ -541,20 +541,20 @@ if (import.meta.vitest) {
       const lines = container.render(80);
       const output = lines.join("\n");
 
-      // Child connectors remain content; the parent shell adds its own frame.
-      expect(output).toContain("╰ ✓ Grep");
+      expect(output).not.toContain("╰ ✓ Grep");
       expect(output).toContain("Found it in src/tools/grep.ts");
       expect(output).not.toContain("╰────");
 
-      // success icon
-      expect(output).toContain("✓");
+      renderAgentTree(singleResult, container, true, mockTheme, {
+        header: "none",
+      });
+      expect(container.render(80).join("\n")).toContain("╰ ✓ Grep");
 
       // final output no longer needs a redundant summary label
       expect(output).not.toContain("Summary:");
 
-      // usage stats
-      expect(output).toContain("2 turns");
-      expect(output).toContain("gemini");
+      expect(output).not.toContain("2 turns");
+      expect(output).not.toContain("gemini");
     });
 
     it("renders error metadata and message", () => {
