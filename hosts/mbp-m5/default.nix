@@ -60,6 +60,7 @@ in
     ../../modules/pi
     ../../modules/e-ink-glass
     ../../modules/ghostty
+    ../../modules/rex
     ../../modules/open-display
     ../../modules/vscodium
     ../../modules/obsidian
