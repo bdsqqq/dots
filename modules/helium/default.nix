@@ -4,14 +4,14 @@ if !(lib.hasInfix "linux" hostSystem) || headMode != "graphical" then
   { }
 else
   let
-    version = "0.11.5.1";
+    version = "0.19.4.1";
     asset =
       if pkgs.stdenv.hostPlatform.isx86_64 then {
         suffix = "x86_64.AppImage";
-        hash = "sha256-Ni7IZ9UBafr+ss0BcQaRKqmlmJI4IV1jRAJ8jhcodlg=";
+        hash = "sha256-Wy2zkrPth/JKqESTYFnWisqYvCBUjqqg3s+jwoCioKc=";
       } else if pkgs.stdenv.hostPlatform.isAarch64 then {
         suffix = "arm64.AppImage";
-        hash = "sha256-f3nTqFVlgOIObtvtA41w17zcguaxjc54I59anCPoM38=";
+        hash = "sha256-/aD54IM9fxsmKXxkiovhTqnkZgS+V6R9TZTheICcGss=";
       } else
         throw "helium: unsupported Linux architecture ${pkgs.stdenv.hostPlatform.system}";
 
