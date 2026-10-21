@@ -392,8 +392,11 @@ async function runSampler({
     "flags: --live",
   );
   const socket = `pi-render-${process.pid}`;
+  const tmuxConfig = join(temporary, "tmux.conf");
+  // history-limit is copied when a pane is created, not when it is later set globally.
+  writeFileSync(tmuxConfig, "set -g history-limit 50000\n");
   const tmux = (...args: string[]) =>
-    execFileSync("tmux", ["-f", "/dev/null", "-L", socket, ...args], {
+    execFileSync("tmux", ["-f", tmuxConfig, "-L", socket, ...args], {
       encoding: "utf8",
       timeout: 10000,
       env,
@@ -560,6 +563,15 @@ async function runSampler({
       }),
     ],
     "PREVIEW_FINAL_ERROR",
+  );
+  state(
+    "codemode-four-emissions",
+    [
+      call("codemode", {
+        code: `// @options: {"max_output_tokens": 80}\nawait Promise.all([1,2,3,4].map(async n => text('EMISSION_HEAD_'+n+'\\n'+'x'.repeat(n===1?80000:2000)+'\\nEMISSION_TAIL_'+n)));`,
+      }),
+    ],
+    "EMISSION_HEAD_1",
   );
   state(
     "codemode-clipped-failure",
@@ -854,7 +866,6 @@ async function runSampler({
       temporary,
       command,
     );
-    tmux("set-option", "-g", "history-limit", "50000");
     await wait(
       () => readEvents().some((e) => e.type === "gate" && e.index === 0),
       "startup",
@@ -982,7 +993,7 @@ async function runSampler({
                 );
                 assert.match(
                   result,
-                  /\d+ more lines/,
+                  /\d+ results omitted/,
                   "truthful omission count absent",
                 );
                 assert.ok(
@@ -1013,8 +1024,46 @@ async function runSampler({
                 "expansion did not add useful script context",
               );
               assert.ok(
-                output.includes("PREVIEW_ROW_3"),
+                output.includes("PREVIEW_ROW_2"),
                 "expansion did not add useful result context",
+              );
+            }
+            if (s.id === "codemode-four-emissions") {
+              for (const n of [1, 2, 3, 4]) {
+                assert.ok(
+                  output.includes(`result ${n}/4`),
+                  `missing native result ${n}`,
+                );
+                assert.ok(
+                  output.includes(`EMISSION_HEAD_${n}`),
+                  `starved emission head ${n}`,
+                );
+                assert.ok(
+                  output.includes(`EMISSION_TAIL_${n}`),
+                  `starved emission tail ${n}`,
+                );
+                const head = output.indexOf(`EMISSION_HEAD_${n}`);
+                const tail = output.indexOf(`EMISSION_TAIL_${n}`);
+                assert.ok(
+                  output.indexOf("/tool-output", head) > head &&
+                    output.indexOf("/tool-output", head) < tail,
+                  `missing raw hint within emission ${n}`,
+                );
+              }
+              const compact = toolResultRegion(
+                assertToolGrid(
+                  collapsed,
+                  index + 1,
+                  "codemode",
+                  "EMISSION_HEAD_1",
+                  collapsedEvidence!,
+                ),
+                collapsedEvidence!,
+              );
+              assert.ok(
+                !compact.includes("EMISSION_HEAD_2") &&
+                  !compact.includes("EMISSION_HEAD_3"),
+                "collapsed leaked middle emissions",
               );
             }
             if (s.id === "codemode-clipped-failure") {
@@ -1189,6 +1238,8 @@ async function runSampler({
             "re-collapse lost distinction",
           );
         }
+        // Narrow windows may clip an opaque child's answer; require its executed status here.
+        // Wide views above still require SUBAGENT_FIXTURE in the actual result region.
         if (width === 20 && s.calls)
           assertToolGrid(
             expanded,
@@ -1201,8 +1252,10 @@ async function runSampler({
                   ? "using"
                   : s.calls[0].name.slice(0, 6),
             s.id === "codemode-directories-discovery"
-              ? "Warning:"
-              : s.expectedText.slice(0, 8),
+              ? "DISCOVERY_"
+              : s.id === "codemode-agents-web"
+                ? "✓ delegate"
+                : s.expectedText.slice(0, 8),
             evidenceFor(index, width),
           );
         records.push({
