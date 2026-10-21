@@ -23,31 +23,31 @@ in
   config.home-manager.users.bdsqqq = { pkgs, ... }:
     let
       # The pinned nixpkgs lacks goplaces; use hashed upstream releases, not a global install.
-      # Checksums: https://github.com/openclaw/goplaces/releases/tag/v0.4.12
+      # Checksums: https://github.com/openclaw/goplaces/releases/tag/v0.4.14
       assets = {
         aarch64-darwin = {
-          name = "goplaces_0.4.12_darwin_arm64.tar.gz";
-          hash = "sha256-27oy6mnNmq0mgdS+5NJA8SV6tgHIxyNfwG2wArDh4uQ=";
+          name = "goplaces_0.4.14_darwin_arm64.tar.gz";
+          hash = "sha256-cyZpbdwjv3lW7xoojf2M/P2TtVlBFzTWRS7m9AKRUE0=";
         };
         x86_64-darwin = {
-          name = "goplaces_0.4.12_darwin_amd64.tar.gz";
-          hash = "sha256-KQV7MFTe8bwf64kTMFNK4nICY4IOCSisBvLRoYC2XuM=";
+          name = "goplaces_0.4.14_darwin_amd64.tar.gz";
+          hash = "sha256-OY7pYv0ef4Nd5jWumbJjB95v121LPzjY1f8ltqAArXc=";
         };
         aarch64-linux = {
-          name = "goplaces_0.4.12_linux_arm64.tar.gz";
-          hash = "sha256-BTwRtQv8DOAKagerMX8HegYx0GyjT2dGJZ6VOng5g+8=";
+          name = "goplaces_0.4.14_linux_arm64.tar.gz";
+          hash = "sha256-o3fp32dJUXfhNYCQ8K0nebBgQHHRZi9pQ/1SS1WgiZU=";
         };
         x86_64-linux = {
-          name = "goplaces_0.4.12_linux_amd64.tar.gz";
-          hash = "sha256-6X3CJh0BHcFVhtRoSADqmYBXhgc2aG6N/CeJZHkQzA4=";
+          name = "goplaces_0.4.14_linux_amd64.tar.gz";
+          hash = "sha256-40Iw2W6YiPjPv0PQ2BZBX2y4L0PDYifRK67H2ZJ5a38=";
         };
       };
       asset = assets.${pkgs.stdenv.hostPlatform.system};
       package = pkgs.stdenvNoCC.mkDerivation {
         pname = "goplaces";
-        version = "0.4.12";
+        version = "0.4.14";
         src = pkgs.fetchurl {
-          url = "https://github.com/openclaw/goplaces/releases/download/v0.4.12/${asset.name}";
+          url = "https://github.com/openclaw/goplaces/releases/download/v0.4.14/${asset.name}";
           inherit (asset) hash;
         };
         sourceRoot = ".";

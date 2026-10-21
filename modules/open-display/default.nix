@@ -6,10 +6,10 @@ let
 
   openDisplayApp = pkgs.stdenvNoCC.mkDerivation {
     pname = "open-display";
-    version = "1.17.0";
+    version = "1.25.0";
     src = pkgs.fetchurl {
-      url = "https://github.com/peetzweg/opendisplay/releases/download/v1.17.0/OpenDisplay.dmg";
-      hash = "sha256-CtTEr0FJXv8XjIEh70XGbMRc+8YmXoJ6NACNBUYqb0Q=";
+      url = "https://github.com/peetzweg/opendisplay/releases/download/v1.25.0/OpenDisplay.dmg";
+      hash = "sha256-G5+Gt3vOoHXkSOnprn4FrTiggBJmj9RMgDZNbBs8Z7o=";
     };
     nativeBuildInputs = [ pkgs._7zz ];
     sourceRoot = ".";
