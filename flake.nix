@@ -76,9 +76,6 @@
       flake = false;
     };
 
-    esp-dev.url = "github:mirrexagon/nixpkgs-esp-dev/5287d6e1ca9e15ebd5113c41b9590c468e1e001b";
-    qemu-espressif.url = "github:SFrijters/nix-qemu-espressif/5bc8896e7604682383a876e62c6501929775589c";
-
   };
 
   outputs = inputs@{ self, flake-parts, stylix, ... }:
@@ -291,13 +288,6 @@
                 "axiom/personal_org_id"
                 "axiom/personal_token"
                 "axiom/personal_url"
-                "fleet-mesh/authority-private-key"
-                "fleet-mesh/bridge-identity"
-                "fleet-mesh/esp32-sim-1-identity"
-                "fleet-mesh/esp32-sim-2-identity"
-                "fleet-mesh/esp32-sim-3-identity"
-                "fleet-mesh/relay-identity"
-                "fleet-mesh/virtual-esp32-identity"
                 "gh_token"
                 "hf_token"
                 "restic_ssd_01_password"

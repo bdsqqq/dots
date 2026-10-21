@@ -4,7 +4,7 @@
 
 build the reusable capability under `modules/company-money/`. keep Amp orchestration in `modules/agents/skills/company-money/SKILL.md` as instructions only. mailbox access and credentials remain in the existing read-only Amp Google Workspace skill; this package receives only bounded private transient envelopes.
 
-organize implementation by behavioral verticals. each vertical owns its exact ArkType schemas, inferred types, behavior, capability interfaces, and colocated tests. retain the mechanics already proven by `modules/fleet-mesh/`—versioned observational schemas, handler-free oRPC, plain use cases, `implement(contract)`, a local client, and browser/Node package boundaries—but do not copy its package-wide schema/contract/operations file split.
+organize implementation by behavioral verticals. each vertical owns its exact ArkType schemas, inferred types, behavior, capability interfaces, and colocated tests. retain versioned observational schemas, handler-free oRPC, plain use cases, `implement(contract)`, a local client, and browser/Node package boundaries without a package-wide schema/contract/operations file split.
 
 the remaining horizontal files are thin composition seams rather than domain layers:
 
@@ -401,7 +401,7 @@ credentials and tokens continue to follow `SECRETS.md`. Gmail access remains ent
 
 ### phase 1 — portable local-ledger vertical
 
-- create package metadata using the exact ArkType/oRPC versions already proven by fleet-mesh;
+- create package metadata with compatible, explicitly pinned ArkType/oRPC versions;
 - make `node --test` the package test command so colocated nested tests are discovered;
 - implement `money.ts` and the canonical models in `ledger/state.ts`;
 - implement transfer reconciliation in `ledger/link-transfers.ts`;
@@ -441,7 +441,7 @@ credentials and tokens continue to follow `SECRETS.md`. Gmail access remains ent
 
 ### phase 5 — Nix packaging and host selection
 
-- add `package.nix` using the fleet-mesh pnpm/TypeScript pattern;
+- add `package.nix` with frozen pnpm dependencies and a TypeScript build;
 - add `default.nix` installing the manually invoked CLI through Home Manager;
 - import the CLI only on `mbp-m2`;
 - do not add a daemon, schedule, HTTP service, tailnet declaration, secret, OAuth implementation, or activation-created ledger;
