@@ -574,6 +574,29 @@ async function runSampler({
     "EMISSION_HEAD_1",
   );
   state(
+    "codemode-small-results",
+    [call("codemode", { code: `text('A');text('B');text('C');` })],
+    "result 2/3",
+  );
+  state(
+    "codemode-eight-lines",
+    [
+      call("codemode", {
+        code: `text(Array.from({length:8},(_,n)=>'FULL_ROW_'+n).join('\\n'));`,
+      }),
+    ],
+    "FULL_ROW_7",
+  );
+  state(
+    "codemode-line-edges",
+    [
+      call("codemode", {
+        code: `text(Array.from({length:300},(_,n)=>(n+1)+' line of output').join('\\n'));`,
+      }),
+    ],
+    "1 line of output",
+  );
+  state(
     "codemode-clipped-failure",
     [
       call("codemode", {
@@ -998,10 +1021,8 @@ async function runSampler({
                 );
                 assert.ok(
                   result.indexOf("/tool-output") >
-                    result.indexOf("PREVIEW_TOP") &&
-                    result.indexOf("/tool-output") <
-                      result.indexOf("PREVIEW_FINAL_ERROR"),
-                  "omission hint not between result excerpts",
+                    result.indexOf("PREVIEW_FINAL_ERROR"),
+                  "shared omission hint missing after output group",
                 );
                 assert.ok(
                   compact.includes("SCRIPT_TOP") &&
@@ -1045,9 +1066,9 @@ async function runSampler({
                 const head = output.indexOf(`EMISSION_HEAD_${n}`);
                 const tail = output.indexOf(`EMISSION_TAIL_${n}`);
                 assert.ok(
-                  output.indexOf("/tool-output", head) > head &&
-                    output.indexOf("/tool-output", head) < tail,
-                  `missing raw hint within emission ${n}`,
+                  output.indexOf("shortened", head) > head &&
+                    output.indexOf("shortened", head) < tail,
+                  `missing local marker within emission ${n}`,
                 );
               }
               const compact = toolResultRegion(
@@ -1061,10 +1082,72 @@ async function runSampler({
                 collapsedEvidence!,
               );
               assert.ok(
-                !compact.includes("EMISSION_HEAD_2") &&
-                  !compact.includes("EMISSION_HEAD_3"),
-                "collapsed leaked middle emissions",
+                compact.includes("EMISSION_HEAD_2") &&
+                  compact.includes("EMISSION_HEAD_3"),
+                "collapsed hid retained short previews that fit",
               );
+            }
+            if (s.id === "codemode-four-emissions")
+              assert.equal(
+                (output.match(/\/tool-output/g) || []).length,
+                1,
+                "raw hint is shared by the output group",
+              );
+            if (
+              s.id === "codemode-small-results" ||
+              s.id === "codemode-eight-lines"
+            ) {
+              const actual = toolResultRegion(
+                assertToolGrid(
+                  collapsed,
+                  index + 1,
+                  "codemode",
+                  s.expectedText,
+                  collapsedEvidence!,
+                ),
+                collapsedEvidence!,
+              );
+              assert.ok(
+                !actual.includes("/tool-output"),
+                "fully retained fitting output has a false omission hint",
+              );
+              if (s.id === "codemode-small-results")
+                assert.ok(
+                  actual
+                    .split("\n")
+                    .some((line) => line.replace(/[│\s]/g, "") === "B"),
+                  "B missing from actual collapsed result",
+                );
+              else
+                for (let n = 0; n < 8; n++)
+                  assert.ok(
+                    actual.includes("FULL_ROW_" + n),
+                    "fitting eight-line body clipped",
+                  );
+            }
+            if (s.id === "codemode-line-edges") {
+              const actual = toolResultRegion(
+                assertToolGrid(
+                  collapsed,
+                  index + 1,
+                  "codemode",
+                  "1 line of output",
+                  collapsedEvidence!,
+                ),
+                collapsedEvidence!,
+              );
+              for (const view of [actual, output]) {
+                assert.equal((view.match(/\/tool-output/g) || []).length, 1);
+                assert.equal((view.match(/shortened/g) || []).length, 1);
+                assert.ok(
+                  !view
+                    .split("\n")
+                    .some((line) =>
+                      ["l", "put"].includes(line.replace(/[│\s]/g, "")),
+                    ),
+                  "fixed-unit line fragment leaked",
+                );
+              }
             }
             if (s.id === "codemode-clipped-failure") {
               assert.equal(
