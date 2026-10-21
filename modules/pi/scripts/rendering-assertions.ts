@@ -103,7 +103,8 @@ export function assertBoundedCodemode(
   while (outputRows.at(-1)?.trim() === "") outputRows.pop();
   assert.ok(
     outputRows.length <=
-      (sectioned ? (expanded ? 90 : 30) : 1 + (expanded ? 20 : 5)),
+      // Includes wrapped headings/gaps at the sampler's 20-column minimum; inline native tests count body rows separately.
+      (sectioned ? (expanded ? 130 : 100) : 1 + (expanded ? 20 : 5)),
     "unbounded output view",
   );
   const calls = result.findIndex((line) => line.trim() === "calls");

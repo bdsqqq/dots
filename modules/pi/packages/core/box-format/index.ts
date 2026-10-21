@@ -913,7 +913,11 @@ if (import.meta.vitest) {
         expect(preview.results.map((r: any) => r.ordinal)).toEqual([
           1, 2, 3, 4,
         ]);
-        expect(preview.results[0].omittedChars).toBe(80014 - 224);
+        expect(preview.results[0].omittedChars).toBe(
+          80014 -
+            preview.results[0].head.length -
+            preview.results[0].tail.length,
+        );
         const unicode = await run(
           `text('a'.repeat(111)+'😀'+'b'.repeat(111)+'😀'+'c'.repeat(111));`,
         );
@@ -927,7 +931,7 @@ if (import.meta.vitest) {
         const frozen = JSON.stringify(result);
         const component = make(codemodeRenderers, "codemode", { code });
         component.updateResult(result);
-        expect(rows(component).join("\n")).not.toContain("HEAD_2");
+        expect(rows(component).join("\n")).toContain("HEAD_2");
         component.setExpanded(true);
         for (const width of [0, 1, 8, 20, 80, 140]) {
           expect(
@@ -1047,6 +1051,211 @@ if (import.meta.vitest) {
             })
             .render(80)
             .join("\n");
+        const nativeView = (
+          result: any,
+          width: number,
+          expanded = false,
+        ): string =>
+          codemodeRenderers
+            .renderResult(result, { expanded, isPartial: false }, plainTheme, {
+              state: {},
+              showImages: false,
+              isError: result.isError,
+            })
+            .render(width)
+            .join("\n");
+        const logs = Array.from(
+          { length: 300 },
+          (_, n) => `${n + 1} line of output`,
+        ).join("\n");
+        const logResult = await run(`text(${JSON.stringify(logs)});`);
+        const logClip = logResult.details.outputPreview.results[0];
+        const complete = new Set(logs.split("\n"));
+        expect(logClip.head.endsWith("\n")).toBe(true);
+        expect(logClip.partialHead || logClip.partialTail).toBeFalsy();
+        expect(
+          [...logClip.head.split("\n"), ...logClip.tail.split("\n")]
+            .filter(Boolean)
+            .every((line) => complete.has(line)),
+        ).toBe(true);
+        expect(
+          logClip.head.length + logClip.tail.length + logClip.omittedChars,
+        ).toBe(logs.length);
+        // The shipped fixed-unit slices fail this same complete-line criterion.
+        expect(
+          (logs.slice(0, 112) + "\n" + logs.slice(-112))
+            .split("\n")
+            .filter(Boolean)
+            .every((line) => complete.has(line)),
+        ).toBe(false);
+        for (const value of [
+          "a".repeat(111) + "\n" + "b".repeat(300) + "\n" + "終😀",
+          "😀".repeat(300),
+          "\n" + logs + "\n",
+          "x".repeat(300),
+          "",
+        ]) {
+          const p = (await run(`text(${JSON.stringify(value)});`)).details
+            .outputPreview.results[0];
+          expect(p.head.length + p.tail.length + p.omittedChars).toBe(
+            value.length,
+          );
+          expect(p.head.length + p.tail.length).toBeLessThanOrEqual(224);
+          expect(p.head.isWellFormed() && p.tail.isWellFormed()).toBe(true);
+          expect(value.startsWith(p.head) && value.endsWith(p.tail)).toBe(true);
+        }
+        const rendererPath = `${getPackageDir()}/dist/extensions/codemode/renderer.js`;
+        await writeFile(
+          `${temporary}/dist/extensions/codemode/renderer.js`,
+          await readFile(rendererPath, "utf8"),
+        );
+        const currentPatch = await readFile(
+          new URL(
+            "../../../patches/pi-coding-agent-1.3.0.patch",
+            import.meta.url,
+          ),
+          "utf8",
+        );
+        expect(
+          spawnSync(
+            "git",
+            ["apply", "-R", "--include=dist/extensions/codemode/renderer.js"],
+            { cwd: temporary, input: currentPatch },
+          ).status,
+        ).toBe(0);
+        const shippedPatch = spawnSync(
+          "git",
+          ["show", "d92475f6:modules/pi/patches/pi-coding-agent-1.3.0.patch"],
+          { encoding: "utf8" },
+        );
+        expect(shippedPatch.status).toBe(0);
+        expect(
+          spawnSync(
+            "git",
+            ["apply", "--include=dist/extensions/codemode/renderer.js"],
+            { cwd: temporary, input: shippedPatch.stdout },
+          ).status,
+        ).toBe(0);
+        const oldRendererSource = (
+          await readFile(
+            `${temporary}/dist/extensions/codemode/renderer.js`,
+            "utf8",
+          )
+        )
+          .replace(/\/\/# sourceMappingURL=.*$/m, "")
+          .replace(
+            /from "([^"]+)"/g,
+            (_m: string, spec: string) =>
+              `from ${JSON.stringify(pathToFileURL(require.resolve(spec)).href)}`,
+          );
+        await writeFile(`${temporary}/old-renderer.mjs`, oldRendererSource);
+        const oldRenderer = (
+          await import(pathToFileURL(`${temporary}/old-renderer.mjs`).href)
+        ).codemodeRenderers;
+        const oldView = (result: any) =>
+          oldRenderer
+            .renderResult(
+              result,
+              { expanded: false, isPartial: false },
+              plainTheme,
+              { state: {}, showImages: false },
+            )
+            .render(100)
+            .join("\n");
+        const abc = await run(`text('A');text('B');text('C');`);
+        expect(
+          oldView(abc)
+            .split("\n")
+            .some((line: string) => line.trim() === "B"),
+        ).toBe(false);
+        const eight = await run(
+          `text(Array.from({length:8},(_,n)=>'ROW_'+n).join('\\n'));`,
+        );
+        expect(oldView(eight)).not.toContain("ROW_3");
+        expect(
+          (oldView(logResult).match(/\/tool-output/g) || []).length,
+        ).toBeGreaterThan(1);
+        const dense = await run(
+          `for(let n=0;n<8;n++)text(Array.from({length:8},(_,m)=>'R'+n+'L'+m).join('\\n'));`,
+        );
+        const mixedSize = await run(
+          `for(let n=0;n<7;n++)text('T_'+n);text(Array.from({length:8},(_,n)=>'BIG_'+n).join('\\n'));`,
+        );
+        for (const width of [20, 80, 100, 140]) {
+          const compact = nativeView(abc, width);
+          expect(compact).toContain("result 2/3");
+          expect(compact.split("\n").some((line) => line.trim() === "B")).toBe(
+            true,
+          );
+          expect(compact).not.toContain("/tool-output");
+          const full = nativeView(eight, width);
+          for (let n = 0; n < 8; n++) expect(full).toContain("ROW_" + n);
+          expect(full).not.toContain("/tool-output");
+          for (const expanded of [false, true]) {
+            const grid = nativeView(dense, width, expanded);
+            expect(
+              grid.split("\n").filter((line) => /^R\dL\d/.test(line)).length,
+            ).toBeLessThanOrEqual(expanded ? 40 : 10);
+            expect((grid.match(/\/tool-output/g) || []).length).toBe(1);
+          }
+          const mixedGrid = nativeView(mixedSize, width);
+          for (let n = 0; n < 7; n++) expect(mixedGrid).toContain("T_" + n);
+          expect(mixedGrid).toContain("result 8/8");
+          expect(
+            mixedGrid.split("\n").filter((line) => /^(T_|BIG_)/.test(line))
+              .length,
+          ).toBeLessThanOrEqual(10);
+          const logGrid = nativeView(logResult, width);
+          expect((logGrid.match(/shortened/g) || []).length).toBe(1);
+          expect((logGrid.match(/\/tool-output/g) || []).length).toBe(1);
+          expect(logGrid).not.toContain("UTF-16");
+          expect(
+            logGrid
+              .split("\n")
+              .some((line) => ["l", "put"].includes(line.trim())),
+          ).toBe(false);
+        }
+        const surrounded = (
+          await run(`text('header\\n'+'x'.repeat(3000)+'\\nfooter');`)
+        ).details.outputPreview.results[0];
+        expect(surrounded.head).toContain("x");
+        expect(surrounded.tail).toContain("x");
+        expect(surrounded).toMatchObject({
+          partialHead: true,
+          partialTail: true,
+        });
+        const singleLine = await run(`text('x'.repeat(3000));`);
+        expect(singleLine.details.outputPreview.results[0]).toMatchObject({
+          partialHead: true,
+          partialTail: true,
+        });
+        expect(nativeView(singleLine, 100, true)).toContain(
+          "partial line edges",
+        );
+        const eleven = await run(
+          `text(Array.from({length:11},(_,n)=>'ROW_'+n).join('\\n'));`,
+        );
+        expect(nativeView(eleven, 100)).toContain("1 row omitted");
+        expect(nativeView(eleven, 100, true)).not.toContain("/tool-output");
+        expect(
+          nativeView(logResult, 100, true)
+            .split("\n")
+            .filter((line) => /^\d+ line of output/.test(line)).length,
+        ).toBeGreaterThan(
+          nativeView(logResult, 100)
+            .split("\n")
+            .filter((line) => /^\d+ line of output/.test(line)).length,
+        );
+        const six = await run(
+          `for(let n=0;n<6;n++)text(Array.from({length:8},(_,m)=>'S'+n+'L'+m).join('\\n'));`,
+        );
+        expect(nativeView(six, 100)).toContain("1 result omitted");
+        const newlineAtCut = (
+          await run(`text('a'.repeat(112)+'\\n'+'b'.repeat(300));`)
+        ).details.outputPreview.results[0];
+        expect(newlineAtCut.partialHead).toBeUndefined();
+        expect(nativeView(abc, 100)).toContain("0 images");
+        expect(nativeView(eight, 100)).toContain("1 result");
         for (const [code, imageFailure, spillFailure, scriptFailure] of [
           [`image('data:image/png;base64,${png}');`, true, false, false],
           [
@@ -1091,7 +1300,7 @@ if (import.meta.vitest) {
               const rendered = display(current, showImages, expanded);
               expect(rendered).toContain("WRITE_DENIED_STORAGE");
               if (imageFailure)
-                expect(rendered).toContain("image save failures · 1");
+                expect(rendered).toContain("image save 1 failure");
               if (spillFailure)
                 expect(rendered).toContain("full output unavailable");
               if (scriptFailure)
