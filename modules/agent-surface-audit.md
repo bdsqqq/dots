@@ -92,7 +92,7 @@ wiring. mise and QMD still need their path/version dependencies traced; this
 survey does not migrate the remaining preferences.
 
 SSH, Nix, Bluetooth, Tailscale policy, launchd/systemd units, Cloudflare ingress,
-fleet mesh, and tailnet registry also contain inline or generated configuration.
+and tailnet registry also contain inline or generated configuration.
 these occurrences need consumer-specific classification: service wiring remains
 declarative; ordinary native preferences follow the all-module editable-file
 contract. an infrastructure label alone does not exempt editable preferences.
