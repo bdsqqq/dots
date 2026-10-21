@@ -1,16 +1,16 @@
 final: prev:
 let
-  version = "0.16.0";
+  version = "0.20.0";
   platform =
     if final.stdenv.hostPlatform.isDarwin && final.stdenv.hostPlatform.isAarch64 then
       {
         name = "darwin_arm64";
-        hash = "sha256-Jx+0uV2lbJeZaEoThsBxtqe6WGccJ8tN4PIjdHTJ9KA=";
+        hash = "sha256-ByGUyh0Dp0qFfrh8UNk9T/UBkAnTPTsiq7V08n7ZDXM=";
       }
     else if final.stdenv.hostPlatform.isDarwin && final.stdenv.hostPlatform.isx86_64 then
       {
         name = "darwin_amd64";
-        hash = "sha256-uMMJy+C9cXaOiU5V+dFMG7xbOvFtdvimADNIBHbv0BI=";
+        hash = "sha256-K9Sb2DltKs8aH6cqwXUvYZeVrlMMw2rKzhU9IrLqb8U=";
       }
     else
       throw "unsupported platform for axiom-cli: ${final.stdenv.hostPlatform.system}";

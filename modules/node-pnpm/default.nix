@@ -3,18 +3,15 @@ let
   commonplace = config.my.paths.commonplace;
   toolsDir = "${commonplace}/01_files/nix/modules/node-pnpm";
   toolsBin = "${toolsDir}/node_modules/.bin";
-  vpVersion = "0.2.2";
+  vpVersion = "1.3.0";
 in
 {
   nixpkgs.overlays = [
     (
-      final: prev:
-      prev.lib.optionalAttrs prev.stdenv.hostPlatform.isDarwin {
-        pnpm = final.pnpm_11;
-        # pnpm 11's frozen fetch aborts on Darwin with Node 24.16 (unmanaged
-        # file descriptors, then SIGABRT). The same fetch passes on Node 22.
-        # Only pnpm's interpreter changes; applications keep their chosen Node.
-        pnpm_11 = prev.pnpm_11.override { nodejs-slim = prev.nodejs_22; };
+      final: prev: {
+        # Follow nixpkgs' current Node release, rather than its default LTS.
+        nodejs = prev.nodejs_latest;
+        pnpm = final.pnpm_12;
       }
     )
   ];
@@ -28,8 +25,8 @@ in
     let
       vpHome = "${config.home.homeDirectory}/.vite-plus";
       vpInstaller = pkgs.fetchurl {
-        url = "https://raw.githubusercontent.com/voidzero-dev/vite-plus/4f7fd0b66ebb5433acdb06f8660cf0f08c5a0d4b/packages/cli/install.sh";
-        hash = "sha256-iwqYNdhxxOZ67hyNW35ALRZctVoyInQ1Z6RDAoszSS4=";
+        url = "https://raw.githubusercontent.com/voidzero-dev/vite-plus/afbe4a285b4ac6ffac498eae71b10ff63069a029/packages/cli/install.sh";
+        hash = "sha256-bq8TnhbUWEm+vEp94NvCmS/Ts6hqPze/eSK2hfOmDZ4=";
       };
       activationPath = lib.makeBinPath (
         [
@@ -41,7 +38,7 @@ in
           pkgs.gnutar
           pkgs.unzip
         ]
-        ++ lib.optionals pkgs.stdenv.isLinux [
+        ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [
           pkgs.gcc
         ]
       );

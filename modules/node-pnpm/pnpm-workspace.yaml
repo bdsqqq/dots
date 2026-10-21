@@ -2,30 +2,22 @@ packages:
   - pi-cli
 
 overrides:
-  "@hono/node-server@<1.19.15": 1.19.15
-  "@tootallnate/once@<2.0.1": 2.0.1
+  "@modelcontextprotocol/server@>=2.0.0 <2.3.1": 2.3.1
   "@vercel/static-config>ajv": 8.20.0
-  brace-expansion@<1.1.18: 1.1.18
-  brace-expansion@>=5.0.0 <5.0.9: 5.0.9
-  fast-uri@>=3.0.0 <3.1.5: 3.1.5
   form-data@<2.5.6: 2.5.6
-  hono@>=4.0.0 <4.12.34: 4.12.34
-  ip-address@<=10.3.0: 10.3.1
-  js-yaml@>=4.0.0 <4.3.1: 4.3.1
+  js-yaml@>=4.0.0 <4.3.2: 4.3.2
   lodash@<=4.17.23: 4.18.1
   minimatch@>=10.0.0 <10.2.3: 10.2.3
-  node-pty: npm:@homebridge/node-pty-prebuilt-multiarch@0.14.1
+  # node-llama-cpp uses named simpleGit imports and full option names (v4 API).
+  node-llama-cpp>simple-git: 4.0.2
   path-to-regexp@>=4.0.0 <6.3.0: 6.3.0
   path-to-regexp@>=8.0.0 <8.4.0: 8.4.0
-  qs@>=6.0.0 <6.15.3: 6.15.3
-  smol-toml@>=1.0.0 <1.6.1: 1.6.1
+  qs@>=6.0.0 <6.16.0: 6.16.0
+  smol-toml@>=1.0.0 <1.9.1: 1.9.1
   tar@>=7.0.0 <=7.5.20: 7.5.21
-  undici@<6.28.0: 6.28.0
-  undici@>=7.0.0 <7.29.0: 7.29.0
-  undici@>=8.0.0 <8.9.0: 8.9.0
+  undici@<6.29.1: 6.29.1
 
 allowBuilds:
-  "@homebridge/node-pty-prebuilt-multiarch": true
   "@google/genai": true
   "@sentry/cli": true
   agent-browser: true
@@ -35,6 +27,7 @@ allowBuilds:
   cpu-features: true
   edgedriver: true
   esbuild: true
+  frida: true
   geckodriver: true
   koffi: true
   msgpackr-extract: true

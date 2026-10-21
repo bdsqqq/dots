@@ -2,7 +2,7 @@
   home-manager.users.bdsqqq =
     { lib, pkgs, ... }:
     let
-      nodeVersion = "24.18.0";
+      nodeVersion = pkgs.nodejs.version;
     in
     {
       home.packages = [ pkgs.mise ];

@@ -108,7 +108,6 @@
                 (import ./overlays/unstable.nix inputs)
                 (import ./modules/zmx).overlay
                 (import ./overlays/axiom-cli.nix)
-                (import ./overlays/libplist-darwin.nix)
               ];
             };
         };
@@ -124,7 +123,6 @@
                 (import ./overlays/unstable.nix inputs)
                 (import ./modules/zmx).overlay
                 (import ./overlays/axiom-cli.nix)
-                (import ./overlays/libplist-darwin.nix)
               ];
             };
             system.configurationRevision = flakeRevision;

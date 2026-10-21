@@ -41,9 +41,9 @@ small Nix exec wiring calls the live absolute
 `${my.paths.commonplace}/01_files/nix/modules/goplaces/auth.ts`; native code and
 `../tool-auth/process.ts` are not copied into the store. both must exist in the
 live checkout. the version/flags and `results` JSON shape are pinned to
-[goplaces v0.4.12](https://github.com/openclaw/goplaces/tree/v0.4.12),
-[search command](https://github.com/openclaw/goplaces/blob/v0.4.12/internal/cli/search.go)
-and [response types](https://github.com/openclaw/goplaces/blob/v0.4.12/internal/places/types.go).
+[goplaces v0.4.14](https://github.com/openclaw/goplaces/tree/v0.4.14),
+[search command](https://github.com/openclaw/goplaces/blob/v0.4.14/internal/cli/search.go)
+and [response types](https://github.com/openclaw/goplaces/blob/v0.4.14/internal/places/types.go).
 
 local verification: `node --test modules/goplaces/auth.test.ts`. tests use
 private temporary fixture files and mocked subprocesses; no billable probe.
