@@ -3,6 +3,8 @@
 import assert from "node:assert/strict";
 import {
   assertToolGrid,
+  assertBoundedCodemode,
+  assertRawExport,
   assertLifecycle,
   assertOfflineRenderingArgs,
   toolResultRegion,
@@ -21,13 +23,15 @@ import {
   writeFileSync,
   existsSync,
   realpathSync,
+  statSync,
+  readdirSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { crc32, deflateSync } from "node:zlib";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { visibleWidth, stripTerminalSequences } from "@earendil-works/pi-tui";
 
 assertOfflineRenderingArgs(process.argv.slice(2));
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -545,9 +549,10 @@ async function runSampler({
         code: [
           "// SCRIPT_TOP",
           "text('PREVIEW_' + 'TOP');",
-          ...Array.from(
-            { length: 24 },
-            (_, n) => `text('PREVIEW_ROW_' + ${n}); // SCRIPT_MIDDLE_${n}`,
+          ...Array.from({ length: 24 }, (_, n) =>
+            n === 12
+              ? "text('RAW_ONLY_' + 'SENTINEL'); // SCRIPT_MIDDLE_12"
+              : `text('PREVIEW_ROW_' + ${n}); // SCRIPT_MIDDLE_${n}`,
           ),
           "text('PREVIEW_' + 'FINAL_ERROR');",
           "// SCRIPT_TAIL",
@@ -557,13 +562,40 @@ async function runSampler({
     "PREVIEW_FINAL_ERROR",
   );
   state(
+    "codemode-clipped-failure",
+    [
+      call("codemode", {
+        code: "try {await tools.read({path:'detail'.repeat(25)+'RAW_ERROR_SUFFIX'})} catch {} text('CAUGHT');",
+      }),
+    ],
+    "CAUGHT",
+  );
+  state(
+    "codemode-opaque-json",
+    [
+      call("codemode", {
+        code: `text(JSON.stringify({first:'OPAQUE_FIRST',body:'x'.repeat(5000)+'OPAQUE_RAW_SENTINEL'+'y'.repeat(5000),last:'OPAQUE_LAST'}));`,
+      }),
+    ],
+    "OPAQUE_FIRST",
+  );
+  state(
+    "codemode-mixed-failures",
+    [
+      call("codemode", {
+        code: `text(await Promise.allSettled(Array.from({length:20},(_,i)=>tools.read({path:i<10?${JSON.stringify(join(temporary, "absent"))}+i:${JSON.stringify(join(temporary, "fixture.txt"))}})))); text('MIXED_'+'RESULT');`,
+      }),
+    ],
+    "MIXED_RESULT",
+  );
+  state(
     "codemode-directories-discovery",
     [
       call("codemode", {
-        code: `// @options: {"timeout_ms": 15000, "max_output_tokens": 3000}\ntext(await Promise.allSettled([tools.read({path:${JSON.stringify(temporary)}}),tools.read({path:${JSON.stringify(join(temporary, "absent"))}})])); text(await searchTools('read')); text(await describeTool('read')); text(ALL_TOOLS); text('STRUCTURED_LONG_' + 'x'.repeat(1500));`,
+        code: `// @options: {"timeout_ms": 15000, "max_output_tokens": 3000}\ntext(await Promise.allSettled([tools.read({path:${JSON.stringify(temporary)}}),tools.read({path:${JSON.stringify(join(temporary, "absent"))}})])); text(await searchTools('read')); text(await describeTool('read')); text(ALL_TOOLS); text('STRUCTURED_LONG_' + 'x'.repeat(1500)); text('DISCOVERY_'+'DONE');`,
       }),
     ],
-    "STRUCTURED_LONG_",
+    "DISCOVERY_DONE",
   );
   state(
     "codemode-agents-web",
@@ -948,10 +980,15 @@ async function runSampler({
                   !result.includes("PREVIEW_ROW_12"),
                   "collapsed result exposed middle",
                 );
+                assert.match(
+                  result,
+                  /\d+ more lines/,
+                  "truthful omission count absent",
+                );
                 assert.ok(
-                  result.indexOf("47 more lines") >
+                  result.indexOf("/tool-output") >
                     result.indexOf("PREVIEW_TOP") &&
-                    result.indexOf("47 more lines") <
+                    result.indexOf("/tool-output") <
                       result.indexOf("PREVIEW_FINAL_ERROR"),
                   "omission hint not between result excerpts",
                 );
@@ -964,12 +1001,75 @@ async function runSampler({
                 assert.ok(result.includes("Took"), "preview lost timing");
               }
               assert.ok(
-                output.includes("PREVIEW_ROW_12"),
-                "expansion lost result middle",
+                !output.includes("RAW_ONLY_SENTINEL"),
+                "expanded result leaked omitted raw middle",
               );
               assert.ok(
-                frame.includes("SCRIPT_MIDDLE_12"),
-                "expansion lost code middle",
+                !frame.includes("SCRIPT_MIDDLE_12"),
+                "expanded script is unbounded",
+              );
+              assert.ok(
+                frame.includes("SCRIPT_MIDDLE_3"),
+                "expansion did not add useful script context",
+              );
+              assert.ok(
+                output.includes("PREVIEW_ROW_3"),
+                "expansion did not add useful result context",
+              );
+            }
+            if (s.id === "codemode-clipped-failure") {
+              assert.equal(
+                (output.match(/\/tool-output/g) ?? []).length,
+                1,
+                "clipped lone failure needs exactly one raw hint",
+              );
+              assert.ok(
+                !output.includes("RAW_ERROR_SUFFIX"),
+                "failure suffix unexpectedly fits fixture width",
+              );
+              assert.ok(
+                output.includes("ENOENT"),
+                "clipped failure lost its reason prefix",
+              );
+            }
+            if (s.id === "codemode-opaque-json") {
+              assert.ok(
+                output.includes('{"first":"OPAQUE_FIRST","body":"'),
+                "opaque JSON was heuristically reformatted",
+              );
+              assert.ok(
+                output.replace(/[\s│]/g, "").includes('"last":"OPAQUE_LAST"}'),
+                "opaque tail missing",
+              );
+              assert.ok(
+                !output.includes("OPAQUE_RAW_SENTINEL"),
+                "opaque raw middle escaped budget",
+              );
+            }
+            if (s.id === "codemode-mixed-failures") {
+              assert.equal(
+                (output.match(/✗ read/g) ?? []).length,
+                10,
+                "expanded failures not prioritized",
+              );
+              assert.match(
+                output,
+                /8 more calls/,
+                "activity omission count incorrect",
+              );
+              assert.ok(output.includes("ENOENT"), "failure reason missing");
+              const compactCalls = collapsedEvidence!.resultLines
+                .map(stripTerminalSequences)
+                .join("\n");
+              assert.equal(
+                (compactCalls.match(/✗ read/g) ?? []).length,
+                8,
+                "collapsed activity lost prioritized failures",
+              );
+              assert.match(
+                compactCalls,
+                /12 more calls \(2 failed\)/,
+                "omitted failure counter is not truthful",
               );
             }
             if (s.id === "bash-long") {
@@ -1006,7 +1106,7 @@ async function runSampler({
                 frame.includes(`${usage.turns} turns`) &&
                   frame.includes(`$${usage.cost.toFixed(4)}`) &&
                   frame.toLowerCase().includes("read") &&
-                  frame.includes("│ ├"),
+                  /│ [├╰] ✓ Read/.test(frame),
                 "subagent tree/usage differs from executed child",
               );
             }
@@ -1062,6 +1162,33 @@ async function runSampler({
           maxColumns <= width,
           `${s.id}: terminal grid exceeds ${width} columns (${maxColumns})`,
         );
+        if (s.calls?.[0].name === "codemode") {
+          assertBoundedCodemode(evidenceFor(index, width), true);
+          assertBoundedCodemode(collapsedEvidence!, false);
+        }
+        if (
+          s.id.startsWith("direct-") &&
+          agentTools.includes(s.calls?.[0].name)
+        ) {
+          const resultRows = evidenceFor(index, width).resultLines;
+          assert.ok(
+            resultRows.length <= 49,
+            "unbounded direct child presentation",
+          );
+          assert.equal(
+            resultRows.join("\n").split("SUBAGENT_FIXTURE").length - 1,
+            1,
+            "child answer duplicated or absent",
+          );
+          assert.ok(
+            !resultRows.join("\n").includes("CHILD_RAW_SENTINEL"),
+            "expanded child leaked raw middle",
+          );
+          assert.ok(
+            collapsedEvidence!.resultLines.length < resultRows.length,
+            "re-collapse lost distinction",
+          );
+        }
         if (width === 20 && s.calls)
           assertToolGrid(
             expanded,
@@ -1073,7 +1200,9 @@ async function runSampler({
                 : s.calls[0].name === "skill"
                   ? "using"
                   : s.calls[0].name.slice(0, 6),
-            s.expectedText.slice(0, 8),
+            s.id === "codemode-directories-discovery"
+              ? "Warning:"
+              : s.expectedText.slice(0, 8),
             evidenceFor(index, width),
           );
         records.push({
@@ -1090,6 +1219,138 @@ async function runSampler({
       }
       console.log(`captured ${index}: ${s.id}`);
     }
+    // Commands run only after the final assistant turn settles; no model invocation.
+    await wait(
+      () => readEvents().some((e) => e.type === "settled"),
+      "agent settled for commands",
+    );
+    tmux("resize-window", "-t", "sampler", "-x", "140", "-y", "160");
+    const sendCommand = async (text: string) => {
+      tmux("send-keys", "-t", "sampler", "-l", text);
+      tmux("send-keys", "-t", "sampler", "Enter");
+      await delay(350);
+    };
+    const exports = () =>
+      readdirSync(temporary).filter((name) =>
+        name.startsWith("pi-tool-output-"),
+      );
+    await sendCommand("/fixture-snapshot before");
+    await sendCommand("/tool-output");
+    const picker = capture("raw-picker");
+    assert.match(picker, /Persisted tool results/);
+    const exportCount = exports().length;
+    tmux("send-keys", "-t", "sampler", "Escape");
+    await delay(150);
+    assert.equal(exports().length, exportCount, "picker cancel wrote a file");
+    const rawIndex = states.findIndex((s) => s.id === "codemode-head-tail");
+    const id = `sampler-${rawIndex}-0`;
+    await sendCommand(`/tool-output ${id}`);
+    const rawStatus = capture("raw-explicit-status");
+    assert.match(rawStatus, /PERSISTED RAW RESULT:/);
+    assert.match(rawStatus, /not a full child transcript/);
+    assert.match(rawStatus, /Execution spill file unavailable/);
+    const directory = exports().find((name) =>
+      existsSync(join(temporary, name, "persisted-result.json")),
+    )!;
+    assert.ok(directory, "raw export missing");
+    const path = join(temporary, directory, "persisted-result.json");
+    const branchBefore = JSON.parse(
+      readFileSync(join(temporary, "branch-before.json"), "utf8"),
+    );
+    const resultEntry = branchBefore.find(
+      (e: any) =>
+        e.type === "message" &&
+        e.message.role === "toolResult" &&
+        e.message.toolCallId === id,
+    );
+    const callEntry = branchBefore.find(
+      (e: any) =>
+        e.type === "message" &&
+        e.message.role === "assistant" &&
+        e.message.content.some(
+          (p: any) => p.type === "toolCall" && p.id === id,
+        ),
+    );
+    const original = {
+      call: callEntry.message.content.find(
+        (p: any) => p.type === "toolCall" && p.id === id,
+      ),
+      callEntry,
+      resultEntry,
+    };
+    assertRawExport(
+      JSON.parse(readFileSync(path, "utf8")),
+      original,
+      "RAW_ONLY_SENTINEL",
+    );
+    assert.equal(statSync(path).mode & 0o777, 0o600);
+    assert.equal(statSync(join(temporary, directory)).mode & 0o777, 0o700);
+    const opaqueIndex = states.findIndex(
+      (s) => s.id === "codemode-opaque-json",
+    );
+    await sendCommand(`/tool-output sampler-${opaqueIndex}-0`);
+    const availableStatus = capture("raw-available-spill-status");
+    assert.match(availableStatus, /Execution spill file available:/);
+    assert.ok(
+      existsSync(join(temporary, "available-spill.txt")),
+      "advertised available file absent",
+    );
+    await sendCommand("/tool-output");
+    tmux("send-keys", "-t", "sampler", "Enter");
+    await delay(250);
+    assert.equal(
+      exports().length,
+      exportCount + 3,
+      "native picker choice did not export",
+    );
+    capture("raw-picker-choice-status");
+    const failureIndex = states.findIndex(
+      (s) => s.id === "codemode-clipped-failure",
+    );
+    const failureId = `sampler-${failureIndex}-0`;
+    const priorExports = new Set(exports());
+    await sendCommand(`/tool-output ${failureId}`);
+    capture("raw-clipped-failure-status");
+    const failureDirectory = exports().find((name) => !priorExports.has(name))!;
+    const failureExport = JSON.parse(
+      readFileSync(
+        join(temporary, failureDirectory, "persisted-result.json"),
+        "utf8",
+      ),
+    );
+    const failureResultEntry = branchBefore.find(
+      (e: any) =>
+        e.type === "message" &&
+        e.message.role === "toolResult" &&
+        e.message.toolCallId === failureId,
+    );
+    const failureCallEntry = branchBefore.find(
+      (e: any) =>
+        e.type === "message" &&
+        e.message.role === "assistant" &&
+        e.message.content.some(
+          (p: any) => p.type === "toolCall" && p.id === failureId,
+        ),
+    );
+    assert.deepEqual(failureExport, {
+      call: failureCallEntry.message.content.find(
+        (p: any) => p.id === failureId,
+      ),
+      callEntry: failureCallEntry,
+      resultEntry: failureResultEntry,
+    });
+    assert.ok(
+      failureExport.resultEntry.message.details.calls[0].error.includes(
+        "RAW_ERROR_SUFFIX",
+      ),
+      "raw export lost clipped diagnostic suffix",
+    );
+    await sendCommand("/fixture-snapshot after");
+    assert.deepEqual(
+      JSON.parse(readFileSync(join(temporary, "branch-after.json"), "utf8")),
+      branchBefore,
+      "render/commands mutated persisted model-facing fields",
+    );
     const lifecycle = readEvents();
     const ids = states.flatMap((s, i) =>
       (s.calls ?? []).map((_: unknown, n: number) => `sampler-${i}-${n}`),
@@ -1112,6 +1373,56 @@ async function runSampler({
     }
     const control = join(temporary, "negative-control");
     mkdirSync(control);
+    // Isolated old expansion behavior: native Text renders all script/output rows.
+    // Feed those actual visual rows to the SAME verifier, not echoed PTY source.
+    const { Text } = await import("@earendil-works/pi-tui");
+    for (const width of [20, 80, 140]) {
+      const unbounded = {
+        callLines: [
+          "codemode",
+          "script",
+          ...new Text(states[rawIndex].calls[0].args.code, 0, 0).render(
+            width - 4,
+          ),
+        ],
+        resultLines: evidenceFor(rawIndex, width).resultLines,
+      };
+      json(join(control, `old-unbounded-${width}.json`), unbounded);
+      assert.throws(
+        () => assertBoundedCodemode(unbounded, true),
+        /unbounded script/,
+      );
+      const unboundedOutput = {
+        ...evidenceFor(rawIndex, width),
+        resultLines: [
+          "output",
+          ...new Text(
+            resultEntry.message.content
+              .map((p: any) => p.text ?? "")
+              .join("\n"),
+            0,
+            0,
+          ).render(width - 4),
+        ],
+      };
+      assert.throws(
+        () => assertBoundedCodemode(unboundedOutput, true),
+        /unbounded output/,
+      );
+    }
+    const noSentinel = JSON.parse(JSON.stringify(original));
+    noSentinel.resultEntry.message.content = [
+      { type: "text", text: "preview only" },
+    ];
+    json(join(control, "raw-preview-only.json"), noSentinel);
+    assert.throws(
+      () => assertRawExport(noSentinel, original, "RAW_ONLY_SENTINEL"),
+      /original persisted/,
+    );
+    assert.throws(
+      () => assertRawExport(noSentinel, noSentinel, "RAW_ONLY_SENTINEL"),
+      /missing raw sentinel/,
+    );
     for (const id of [
       "bash-compound",
       "codemode-directories-discovery",

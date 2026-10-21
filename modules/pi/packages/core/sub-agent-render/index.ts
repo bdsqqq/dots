@@ -673,26 +673,8 @@ function renderToolLine(
 
 // --- tree rendering ---
 
-const COLLAPSED_ITEM_COUNT = 10;
-
-class SingleLineText implements Component {
-  constructor(private readonly text: string) {}
-
-  render(width: number): string[] {
-    const safeWidth = Math.max(0, Math.floor(width));
-    return safeWidth === 0
-      ? []
-      : [
-          truncateToWidth(
-            this.text.split(/\r\n|\r|\n/, 1)[0] ?? "",
-            safeWidth,
-            "…",
-          ),
-        ];
-  }
-
-  invalidate(): void {}
-}
+const COLLAPSED_ITEM_COUNT = 3;
+const EXPANDED_ITEM_COUNT = 12;
 
 function trimBlankLines(text: string): string {
   const lines = text.split(/\r\n|\r|\n/);
@@ -743,131 +725,131 @@ export function renderAgentTree(
           header: labelOrOpts?.header ?? ("full" as const),
           summary: labelOrOpts?.summary ?? ("plain" as const),
         };
-  const MID = fg("muted", "├");
-  const END = fg("muted", "╰");
-  const CONT = fg("muted", "│");
   const mdTheme = getMarkdownTheme();
-
+  const output = trimBlankLines(getResultOutput(r)) || "(no output)";
+  const markdown = new Markdown(output, 0, 0, mdTheme);
+  const answer =
+    opts.summary === "tree"
+      ? new MarkerColumn(fg("muted", "├"), markdown, {
+          continuationMarker: fg("muted", "│"),
+        })
+      : markdown;
+  const task = new Text(fg("dim", `Task: ${r.task}`), 0, 0);
   const isError =
     r.lifecycle?.status === "failed" ||
     r.lifecycle?.status === "cancelled" ||
     r.lifecycle?.status === "timed_out" ||
-    r.exitCode !== 0 ||
+    (r.exitCode !== 0 && r.exitCode !== -1) ||
     r.stopReason === "error" ||
     r.stopReason === "aborted";
-  const errorLabel = r.lifecycle?.errorKind ?? r.stopReason;
-  if (opts.header === "full") {
-    let header = fg("toolTitle", theme.bold(opts.label ?? r.agent));
-    if (isError && errorLabel) header += ` ${fg("error", `[${errorLabel}]`)}`;
-    container.addChild(new Text(header, 0, 0));
-  }
-
-  if (isError && (errorLabel || r.errorMessage)) {
-    const error = [
-      errorLabel && fg("error", `[${errorLabel}]`),
-      r.errorMessage && fg("error", `Error: ${r.errorMessage}`),
-    ]
-      .filter(Boolean)
-      .join(" ");
-    container.addChild(
-      new MarkerColumn(MID, new Text(error, 0, 0), {
-        continuationMarker: CONT,
-      }),
-    );
-  }
-
+  const errorLabel =
+    r.lifecycle?.errorKind ??
+    r.lifecycle?.status ??
+    r.stopReason ??
+    `exit ${r.exitCode}`;
+  const error = new Text(
+    fg(
+      "error",
+      [
+        `[${errorLabel}]`,
+        r.errorMessage && trimBlankLines(r.errorMessage) !== output
+          ? r.errorMessage
+          : undefined,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    ),
+    0,
+    0,
+  );
   const toolCalls = r.toolCalls ?? getToolDisplayItems(r.messages ?? []);
-  const finalOutput = getResultOutput(r);
-  const plainSummary =
-    opts.summary === "plain"
-      ? trimBlankLines(finalOutput) || "(no output)"
-      : undefined;
+  const limit = showExpanded ? EXPANDED_ITEM_COUNT : COLLAPSED_ITEM_COUNT;
+  // Keep failures before filling remaining slots with recent activity, then
+  // restore chronology. Selection never rewrites the persisted call history.
+  const selected = new Set<number>();
+  for (let i = toolCalls.length - 1; i >= 0 && selected.size < limit; i--) {
+    if (toolCalls[i]!.isError) selected.add(i);
+  }
+  for (let i = toolCalls.length - 1; i >= 0 && selected.size < limit; i--)
+    selected.add(i);
+  const visibleTools = [...selected]
+    .sort((a, b) => a - b)
+    .map((i) => toolCalls[i]!);
+  const skippedTools = toolCalls.length - visibleTools.length;
+  const skippedErrors = toolCalls.filter(
+    (item, i) => item.isError && !selected.has(i),
+  ).length;
+  const usage = formatUsageStats(r.usage, r.model);
 
-  type TreeChild =
-    | { kind: "text"; content: string }
-    | { kind: "tool"; item: ToolDisplayItem }
-    | { kind: "summary"; output: string };
-  const children: TreeChild[] = [];
-
-  if (showExpanded) children.push({ kind: "text", content: r.task });
-
-  const visibleTools = showExpanded
-    ? toolCalls
-    : toolCalls.slice(-COLLAPSED_ITEM_COUNT);
-  const skippedTools = showExpanded
-    ? 0
-    : toolCalls.length - visibleTools.length;
-  if (skippedTools > 0)
-    children.push({
-      kind: "text",
-      content: `…${skippedTools} earlier calls`,
-    });
-  for (const tc of visibleTools) children.push({ kind: "tool", item: tc });
-  if (finalOutput && opts.summary === "tree")
-    children.push({ kind: "summary", output: finalOutput.trim() });
-
-  if (children.length === 0 && !plainSummary) {
-    container.addChild(
-      new MarkerColumn(END, new Text(fg("muted", "(no output)"), 0, 0)),
-    );
-  } else {
-    for (let i = 0; i < children.length; i++) {
-      const child = children[i]!;
-      const isLast = i === children.length - 1 && !plainSummary;
-      const connector = isLast ? END : MID;
-      const continuation = isLast ? "" : CONT;
-
-      if (child.kind === "text") {
-        container.addChild(
-          new MarkerColumn(
-            connector,
-            new Text(fg("dim", child.content), 0, 0),
-            { continuationMarker: continuation },
+  container.addChild({
+    render(width: number): string[] {
+      if (width <= 0) return [];
+      const rows: string[] = [];
+      let omitted = skippedTools > 0;
+      const line = (text: string) => {
+        const flat = text.replace(/\s+/g, " ").trim();
+        if (visibleWidth(flat) > width) omitted = true;
+        rows.push(truncateToWidth(flat, width, "…"));
+      };
+      // Bound visual rows AFTER native Markdown wrapping/highlighting. Keeping
+      // both ends preserves conclusions without flattening styled markdown.
+      const section = (component: Component, maxRows: number) => {
+        const rendered = component.render(width);
+        if (rendered.length <= maxRows) {
+          rows.push(...rendered);
+          return;
+        }
+        omitted = true;
+        const head = Math.ceil((maxRows - 1) / 2);
+        const tail = maxRows - head - 1;
+        rows.push(...rendered.slice(0, head));
+        rows.push(
+          truncateToWidth(
+            fg("muted", `… ${rendered.length - maxRows + 1} rows omitted …`),
+            width,
           ),
         );
-      } else if (child.kind === "tool") {
-        container.addChild(
-          new MarkerColumn(
-            connector,
-            new SingleLineText(renderToolLine(child.item, fg)),
-            { continuationMarker: continuation },
+        rows.push(...rendered.slice(-tail));
+      };
+      if (opts.header === "full")
+        line(fg("toolTitle", theme.bold(opts.label ?? r.agent)));
+      section(answer, showExpanded ? 26 : 8);
+      // Diagnostics stay ahead of activity even when a failed child has output.
+      if (isError) section(error, 3);
+      if (showExpanded && r.task) section(task, 4);
+      visibleTools.forEach((item, index) => {
+        const connector = index === visibleTools.length - 1 ? "╰" : "├";
+        line(`${fg("muted", connector)} ${renderToolLine(item, fg)}`);
+      });
+      if (skippedTools)
+        line(
+          fg(
+            "muted",
+            `… ${skippedTools} calls omitted${skippedErrors ? ` (${skippedErrors} failed)` : ""}`,
           ),
         );
-      } else if (child.kind === "summary") {
-        const summary = new Container();
-        summary.addChild(new Text(fg("muted", "Summary:"), 0, 0));
-        summary.addChild(new Markdown(child.output, 0, 0, mdTheme));
-        container.addChild(
-          new MarkerColumn(connector, summary, {
-            continuationMarker: continuation,
-          }),
-        );
-      }
-    }
-  }
-
-  if (!showExpanded && toolCalls.length > COLLAPSED_ITEM_COUNT) {
-    const hint = new Text(fg("muted", "(Ctrl+O to expand)"), 0, 0);
-    container.addChild(
-      plainSummary
-        ? new MarkerColumn(CONT, hint, { continuationMarker: CONT })
-        : hint,
-    );
-  }
-
-  if (plainSummary) {
-    // The parent tool shell owns continuation markers and its single footer.
-    container.addChild(new Markdown(plainSummary, 0, 0, mdTheme));
-  }
-
-  const usageStr = formatUsageStats(r.usage, r.model);
-  if (usageStr) container.addChild(new Text(fg("dim", usageStr), 0, 0));
+      if (usage) line(fg("dim", usage));
+      if (showExpanded && r.continueId)
+        line(fg("dim", `continue: ${r.continueId}`));
+      if (omitted) line(fg("muted", "/tool-output for full raw result"));
+      return rows;
+    },
+    invalidate() {
+      answer.invalidate();
+      task.invalidate();
+      error.invalidate();
+    },
+  });
 }
 
 // --- inline tests ---
 
 if (import.meta.vitest) {
-  const { describe, it, expect } = import.meta.vitest;
+  const { describe, it, expect, beforeAll } = import.meta.vitest;
+  beforeAll(async () => {
+    const { initTheme } = await import("@earendil-works/pi-coding-agent");
+    initTheme("dark", false);
+  });
   const mockTheme = {
     fg: (_color: string, text: string) => text,
     bold: (text: string) => text,
@@ -944,7 +926,7 @@ if (import.meta.vitest) {
       ]);
     });
 
-    it("keeps wrapped tree content inside the connector column", () => {
+    it("keeps summary connectors and bounds task context separately", () => {
       const result: SingleResult = {
         agent: "delegate",
         task: "verify settlement and abort findings",
@@ -981,13 +963,16 @@ if (import.meta.vitest) {
           .render(20)
           .map((line) => stripTerminalSequences(line).trimEnd()),
       ).toEqual([
-        "├ verify settlement",
-        "│ and abort findings",
+        "├ (no output)",
+        "Task: verify",
+        "settlement and abort",
+        "findings",
         "╰ ⋯ Grep /failure/ …",
+        "/tool-output for fu…",
       ]);
     });
 
-    it("renders collapsed call counts in the shared tree column", () => {
+    it("renders truthful collapsed activity omissions after the answer", () => {
       const result: SingleResult = {
         agent: "delegate",
         task: "verify settlement",
@@ -1018,9 +1003,15 @@ if (import.meta.vitest) {
         header: "none",
       });
 
-      expect(
-        stripTerminalSequences(container.render(80)[0] ?? "").trimEnd(),
-      ).toBe("├ …1 earlier calls");
+      const rows = container
+        .render(80)
+        .map((line) => stripTerminalSequences(line).trimEnd());
+      expect(rows[0]).toBe("(no output)");
+      expect(rows).toContain("… 8 calls omitted");
+      expect(rows.filter((line) => line.includes("Read file-"))).toHaveLength(
+        3,
+      );
+      expect(rows).toContain("/tool-output for full raw result");
     });
 
     it("keeps failure metadata when the call owns the status", () => {
@@ -1047,9 +1038,242 @@ if (import.meta.vitest) {
       });
 
       expect(container.render(80).map((line) => line.trimEnd())).toEqual([
-        "├ [aborted]",
         "(no output)",
+        "[aborted]",
       ]);
+    });
+  });
+
+  describe("bounded semantic presentation", () => {
+    const fixture = (): SingleResult => ({
+      agent: "delegate",
+      task: "context ".repeat(1000),
+      exitCode: 0,
+      output: [
+        "**answer first**",
+        ...Array.from({ length: 100 }, (_, i) =>
+          i === 50
+            ? "RAW_ONLY_SENTINEL"
+            : `- markdown detail ${i}: ${"wide 界 ".repeat(8)}`,
+        ),
+        "final conclusion",
+      ].join("\n"),
+      toolCalls: Array.from({ length: 40 }, (_, i) => ({
+        id: `call-${i}`,
+        name: "read",
+        summary: `file-${i}.ts\nextra context`,
+        isError: i < 2,
+      })),
+      model: "fixture/model",
+      usage: {
+        input: 10,
+        output: 20,
+        cacheRead: 30,
+        cacheWrite: 40,
+        cost: 0.01,
+        contextTokens: 100,
+        turns: 2,
+        costBreakdown: {
+          input: 0.001,
+          output: 0.009,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0.01,
+        },
+      },
+      lifecycle: {
+        status: "succeeded",
+        errorKind: null,
+        startedAt: "2026-10-20T00:00:00Z",
+        endedAt: "2026-10-20T00:00:01Z",
+        pid: 42,
+        processGroupId: 42,
+        exitCode: 0,
+        signal: null,
+        cancellationRequestedAt: null,
+        timedOutAt: null,
+        timeoutMs: 1000,
+        owner: {
+          sessionId: "parent",
+          toolCallId: "parent-call",
+          toolName: "delegate",
+        },
+      },
+      continueId: "continuation-reference",
+      sessionId: "session",
+      sessionFile: "/session.jsonl",
+      leafId: "leaf",
+    });
+    const view = (source: SingleResult, expanded: boolean) => {
+      const container = new Container();
+      renderAgentTree(source, container, expanded, mockTheme, {
+        header: "none",
+      });
+      return container;
+    };
+
+    it("bounds rendered markdown rows, context and single-line activity at every width", () => {
+      const source = fixture();
+      const collapsed = view(source, false);
+      const expanded = view(source, true);
+      for (const width of [1, 2, 8, 20, 40, 80, 160]) {
+        const small = collapsed.render(width);
+        const large = expanded.render(width);
+        expect(small.length).toBeLessThanOrEqual(15);
+        expect(large.length).toBeLessThanOrEqual(46);
+        expect(large.length).toBeGreaterThan(small.length);
+        expect(
+          [...small, ...large].every((row) => visibleWidth(row) <= width),
+        ).toBe(true);
+      }
+      const small = collapsed.render(80).map(stripTerminalSequences).join("\n");
+      const large = expanded.render(80).map(stripTerminalSequences).join("\n");
+      expect(small.indexOf("answer first")).toBeLessThan(small.indexOf("Read"));
+      expect(large).toContain("final conclusion");
+      expect(small).toContain("final conclusion");
+      expect(large).not.toContain("RAW_ONLY_SENTINEL");
+      expect(large).toMatch(/rows omitted/);
+      expect(large).toContain("… 28 calls omitted");
+      expect(small).toContain("… 37 calls omitted");
+      expect(small).toContain("✕ Read file-0.ts extra context");
+      expect(small).toContain("✕ Read file-1.ts extra context");
+      expect(large.match(/Read file-/g)).toHaveLength(12);
+      expect(small).not.toContain("Task:");
+      expect(large).toContain("Task:");
+      expect(large).toContain("continue: continuation-reference");
+      expect(large.match(/fixture\/model/g)).toHaveLength(1);
+      expect(large.match(/\/tool-output/g)).toHaveLength(1);
+    });
+
+    it("already hints when only a single child activity row is horizontally clipped", () => {
+      const source = {
+        ...fixture(),
+        output: "answer",
+        task: "",
+        toolCalls: [
+          {
+            id: "one",
+            name: "read",
+            summary: "detail ".repeat(25) + "RAW_ERROR_SUFFIX",
+            isError: true,
+          },
+        ],
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          cost: 0,
+          contextTokens: 0,
+          turns: 0,
+        },
+        model: undefined,
+        continueId: undefined,
+      };
+      for (const expanded of [false, true]) {
+        for (const width of [20, 80]) {
+          const text = view(source, expanded)
+            .render(width)
+            .map(stripTerminalSequences)
+            .join("\n");
+          expect(text.match(/\/tool-output/g)).toHaveLength(1);
+          expect(text).not.toContain("RAW_ERROR_SUFFIX");
+        }
+        const wide = view(source, expanded)
+          .render(500)
+          .map(stripTerminalSequences)
+          .join("\n");
+        expect(wide).toContain("RAW_ERROR_SUFFIX");
+        expect(wide).not.toContain("/tool-output");
+      }
+    });
+
+    it("leaves the full durable envelope and all routing/usage metadata untouched", () => {
+      const result = subAgentResult(
+        "model-facing answer\ncontinue: routing-trailer",
+        fixture(),
+      );
+      const original = result.details;
+      const pi = original.pi;
+      const calls = pi.toolCalls;
+      const usage = pi.usage;
+      const record = original.results[0];
+      const lifecycle = pi.lifecycle;
+      const costBreakdown = pi.usage.costBreakdown;
+      const before = JSON.stringify(result);
+      Object.freeze(original);
+      Object.freeze(pi);
+      Object.freeze(calls);
+      Object.freeze(usage);
+      const parsed = readSubAgentResult(original)!;
+      for (const expanded of [false, true]) {
+        const rows = view(parsed, expanded)
+          .render(80)
+          .map(stripTerminalSequences)
+          .join("\n");
+        expect(rows).not.toContain("RAW_ONLY_SENTINEL");
+        expect(rows).not.toContain("routing-trailer");
+        expect(rows.match(/answer first/g)).toHaveLength(1);
+      }
+      expect(JSON.stringify(result)).toBe(before);
+      expect(result.details).toBe(original);
+      expect(result.details.pi).toBe(pi);
+      expect(pi.toolCalls).toBe(calls);
+      expect(pi.usage).toBe(usage);
+      expect(original.results[0]).toBe(record);
+      expect(pi.lifecycle).toBe(lifecycle);
+      expect(pi.usage.costBreakdown).toBe(costBreakdown);
+      expect(parsed.lifecycle?.owner?.toolCallId).toBe("parent-call");
+      expect(parsed.output).toContain("RAW_ONLY_SENTINEL");
+      expect(parsed.sessionId).toBe("session");
+      expect(parsed.sessionFile).toBe("/session.jsonl");
+      expect(parsed.leafId).toBe("leaf");
+    });
+
+    it("shows bounded failure reasons before activity and counts omitted failures", () => {
+      const source = fixture();
+      source.exitCode = 1;
+      source.lifecycle = undefined;
+      source.stopReason = "aborted";
+      source.errorMessage =
+        "cancelled by user\n" +
+        "failure detail\n".repeat(100) +
+        "timeout exhausted";
+      source.toolCalls!.forEach((item) => {
+        item.isError = true;
+      });
+      const rows = view(source, true).render(80).map(stripTerminalSequences);
+      const text = rows.join("\n");
+      expect(text).toContain("[aborted] cancelled by user");
+      expect(text).toContain("timeout exhausted");
+      expect(text.indexOf("cancelled by user")).toBeLessThan(
+        text.indexOf("Read"),
+      );
+      expect(text).toContain("28 calls omitted (28 failed)");
+      expect(rows.length).toBeLessThanOrEqual(49);
+    });
+
+    it("keeps native markdown styling and avoids a raw hint without omissions", () => {
+      const source = {
+        ...fixture(),
+        task: "short",
+        output: "**styled answer**",
+        toolCalls: [],
+        continueId: undefined,
+      };
+      const native = new Markdown(
+        source.output,
+        0,
+        0,
+        getMarkdownTheme(),
+      ).render(80);
+      const rows = view(source, true).render(80);
+      expect(rows.slice(0, native.length)).toEqual(native);
+      expect(rows.join("\n")).not.toContain("/tool-output");
+      source.exitCode = -1;
+      expect(view(source, false).render(80).join("\n")).not.toContain(
+        "[exit -1]",
+      );
     });
   });
 
@@ -1136,7 +1360,7 @@ if (import.meta.vitest) {
           rows().filter((line: string) => line.includes("╰────")),
         ).toHaveLength(1);
         expect(text).toContain("│ ├ ✕ Read child-1.ts");
-        expect(text).toContain("…1 earlier calls");
+        expect(text).toContain("… 8 calls omitted");
         expect(text).not.toContain("child-0.ts");
         expect(text).not.toContain("expanded task details");
         expect(text).toContain("markdown summary");

@@ -696,7 +696,9 @@ if (import.meta.vitest) {
             expect(collapsed).toContain("Took 1.2s");
           }
           component.setExpanded(true);
-          expect(rows(component, width).join("\n")).toContain("OUT_015");
+          expect(rows(component, width).join("\n")).toContain(
+            definition === codemodeRenderers ? "OUT_006" : "OUT_015",
+          );
           component.setExpanded(false);
           expect(rows(component, width).join("\n")).toBe(collapsed);
         }
@@ -724,6 +726,48 @@ if (import.meta.vitest) {
       expect(rows(shell).join("\n")).not.toContain("OUT_015");
       shell.setExpanded(true);
       expect(rows(shell).join("\n")).toContain("OUT_015");
+    });
+
+    it("offers raw recovery for a lone horizontally clipped nested failure without spurious wide hints", async () => {
+      const { load, make, rows, result } = await sdk();
+      const { codemodeRenderers } = await load(
+        "extensions/codemode/renderer.js",
+      );
+      const component = make(codemodeRenderers, "codemode", {
+        code: "text(1)",
+      });
+      const failure = {
+        ...result("caught"),
+        details: {
+          calls: [
+            {
+              name: "read",
+              args: "fixture",
+              status: "error",
+              error: "failure " + "detail ".repeat(25) + "RAW_ERROR_SUFFIX",
+            },
+          ],
+        },
+      };
+      const original = JSON.stringify(failure);
+      component.updateResult(failure);
+      for (const expanded of [false, true]) {
+        component.setExpanded(expanded);
+        for (const width of [20, 80]) {
+          const text = rows(component, width).join("\n");
+          expect(text.match(/\/tool-output/g)).toHaveLength(1);
+          expect(text).not.toContain("RAW_ERROR_SUFFIX");
+          expect(
+            rows(component, width).filter((row: string) =>
+              row.includes("✗ read"),
+            ),
+          ).toHaveLength(1);
+        }
+        const wide = rows(component, 500).join("\n");
+        expect(wide).toContain("RAW_ERROR_SUFFIX");
+        expect(wide).not.toContain("/tool-output");
+      }
+      expect(JSON.stringify(failure)).toBe(original);
     });
 
     it("retains native codemode scripts, nested statuses, output, timing and reuse", async () => {
@@ -773,7 +817,7 @@ if (import.meta.vitest) {
         ),
       ).toBe(true);
       expect(text).toContain("✓ read fixture 23ms");
-      expect(text).toContain("✗ probe bad 4ms");
+      expect(text).toContain("✗ probe nested failure bad 4ms");
       expect(text).toContain("⊘ cancelled");
       expect(text).toContain("script output");
       expect(text).toContain("Took 1.2s");
@@ -789,6 +833,150 @@ if (import.meta.vitest) {
             .every((line: string) => visibleWidth(line) <= width),
         ).toBe(true);
       }
+    });
+
+    it("bounds expanded native codemode visual rows without interpreting opaque output", async () => {
+      const { load, make, rows, result, visibleWidth } = await sdk();
+      const { codemodeRenderers } = await load(
+        "extensions/codemode/renderer.js",
+      );
+      const code = Array.from(
+        { length: 80 },
+        (_, n) => `// SCRIPT_${n} ${"日本語 😀 ".repeat(40)}`,
+      ).join("\n");
+      const opaque = JSON.stringify({
+        demo: {
+          result: {
+            allSettled: [{ status: "rejected", reason: "OPAQUE_NOT_A_CALL" }],
+          },
+        },
+        payload: "x".repeat(20000),
+        tail: "OPAQUE_JSON_TAIL",
+      });
+      const calls = Array.from({ length: 40 }, (_, n) => ({
+        name: `child_${n}`,
+        args: `arg_${n}\n${"input ".repeat(100)}`,
+        status: "ok",
+        durationMs: 23,
+        cost: 0.01,
+        error: undefined as string | undefined,
+      }));
+      calls[17] = {
+        ...calls[17]!,
+        status: "error",
+        error: "FAIL_REASON\nmore detail",
+      };
+      calls[18] = { ...calls[18]!, status: "running" };
+      calls[19] = { ...calls[19]!, status: "cancelled" };
+      const value = {
+        ...result("unused", true),
+        content: [
+          {
+            type: "text",
+            text: "Script failed\nWall time 1.234 seconds\nOutput:\n",
+          },
+          {
+            type: "text",
+            text: `OUTPUT_HEAD\n${opaque}\nScript error: FINAL_ERROR`,
+          },
+        ],
+        details: { calls, fullOutputPath: "/tmp/codemode-full-output" },
+      };
+      const before = structuredClone(value);
+      const component = make(codemodeRenderers, "codemode", { code });
+      component.markExecutionStarted();
+      component.updateResult(value);
+      const callComponent = component.callRendererComponent;
+      const resultComponent = component.resultRendererComponent;
+      for (const width of [20, 40, 80, 140]) {
+        component.setExpanded(false);
+        const collapsedRows = rows(component, width);
+        component.setExpanded(true);
+        const expandedRows = rows(component, width);
+        const expanded = expandedRows.join("\n");
+        expect(expandedRows.length).toBeGreaterThan(collapsedRows.length);
+        // 12 script + 12 call + 20 output rows, plus labels, hints, path, timer and shell.
+        expect(expandedRows.length).toBeLessThanOrEqual(65);
+        expect(expanded).toContain("OUTPUT_HEAD");
+        expect(expanded.replace(/[\s│]/g, "")).toContain("OPAQUE_JSON_TAIL");
+        expect(expanded).toContain("FINAL_ERROR");
+        expect(expanded).toContain("script");
+        expect(expanded).toContain("calls");
+        expect(expanded).toContain("output");
+        expect(expanded).not.toContain("Script failed");
+        expect(
+          expandedRows.filter((line) => /│ [✓✗…⊘] child_/.test(line)),
+        ).toHaveLength(12);
+        if (width >= 80) {
+          expect(expanded).toContain("✗ child_17 FAIL_REASON more detail");
+          expect(expanded).toContain("… child_18");
+          expect(expanded).toContain("⊘ child_19");
+          expect(expanded).toContain("28 more calls");
+          expect(expanded).toContain("Model calls: $0.40");
+          expect(expanded).toContain("/tool-output for raw");
+          expect(expanded).toContain("/tmp/codemode-full-output");
+          expect(expanded).toContain("Took 1.2s");
+          expect(expanded).toContain('"demo":{"result":{"allSettled"');
+          expect(expanded).not.toContain("✗ OPAQUE_NOT_A_CALL");
+        }
+        expect(
+          component
+            .render(width)
+            .every((line: string) => visibleWidth(line) <= width),
+        ).toBe(true);
+        component.setExpanded(false);
+        expect(rows(component, width)).toEqual(collapsedRows);
+      }
+      for (const width of [0, 1, 2, 3, 4, 8]) {
+        component.setExpanded(true);
+        expect(
+          component
+            .render(width)
+            .every((line: string) => visibleWidth(line) <= width),
+        ).toBe(true);
+      }
+      expect(component.callRendererComponent).toBe(callComponent);
+      expect(component.resultRendererComponent).toBe(resultComponent);
+      expect(value).toEqual(before);
+    });
+
+    it("reports omitted codemode failures honestly and keeps partial calls bounded", async () => {
+      const { load, make, rows, result } = await sdk();
+      const { codemodeRenderers } = await load(
+        "extensions/codemode/renderer.js",
+      );
+      const calls = Array.from({ length: 30 }, (_, n) => ({
+        name: `fail_${n}`,
+        status: "error",
+        error: `REASON_${n}\n${"more ".repeat(100)}`,
+        args: "argument ".repeat(200),
+      }));
+      const partial = {
+        ...result("PARTIAL_OUTPUT_MUST_WAIT"),
+        details: { calls },
+      };
+      const before = structuredClone(partial);
+      const component = make(codemodeRenderers, "codemode", {
+        code: "await tools.read({});",
+      });
+      component.markExecutionStarted();
+      component.updateResult(partial, true);
+      component.setExpanded(true);
+      const expandedRows = rows(component, 100);
+      const expanded = expandedRows.join("\n");
+      expect(expanded).toContain("18 more calls (18 failed)");
+      expect(expanded).toContain("✗ fail_0 REASON_0");
+      expect(expanded).toContain("✗ fail_11 REASON_11");
+      expect(expanded).not.toContain("fail_12");
+      expect(expanded).not.toContain("PARTIAL_OUTPUT_MUST_WAIT");
+      expect(expanded).toContain("Elapsed");
+      expect(expandedRows.length).toBeLessThan(30);
+      component.setExpanded(false);
+      expect(rows(component, 100).join("\n")).toContain(
+        "22 more calls (22 failed)",
+      );
+      expect(partial).toEqual(before);
+      component.updateResult(partial); // settle the native redraw timer
     });
 
     it("keeps genuine self-shell ownership explicit while sharing native edit chrome", async () => {

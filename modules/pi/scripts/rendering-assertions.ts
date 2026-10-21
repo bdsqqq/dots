@@ -82,6 +82,56 @@ export function assertToolGrid(
   return frame;
 }
 
+/** Native codemode budgets count visual content rows plus one omission row. */
+export function assertBoundedCodemode(
+  evidence: RenderEvidence,
+  expanded: boolean,
+): void {
+  const call = evidence.callLines.map(stripVTControlCharacters);
+  const result = evidence.resultLines.map(stripVTControlCharacters);
+  assert.equal(call[1]?.trim(), "script", "missing labelled script section");
+  assert.ok(call.length <= 3 + (expanded ? 12 : 6), "unbounded script view");
+  const output = result.findIndex((line) => line.trim() === "output");
+  assert.ok(output >= 0, "missing labelled output section");
+  const end = result.findIndex(
+    (line, i) => i > output && /^(Full output:|Took )/.test(line),
+  );
+  const outputRows = result.slice(output + 1, end < 0 ? undefined : end);
+  while (outputRows.at(-1)?.trim() === "") outputRows.pop();
+  assert.ok(
+    outputRows.length <= 1 + (expanded ? 20 : 5),
+    "unbounded output view",
+  );
+  const calls = result.findIndex((line) => line.trim() === "calls");
+  if (calls >= 0) {
+    const end = result.findIndex((line, i) => i > calls && !line.trim());
+    const rows = result.slice(calls + 1, end < 0 ? undefined : end);
+    assert.ok(
+      rows.filter((line) => /^[✓✗⊘…] /.test(line)).length <=
+        (expanded ? 12 : 8),
+      "unbounded activity view",
+    );
+    assert.ok(rows.length <= (expanded ? 14 : 10), "wrapped activity rows");
+  }
+}
+
+export function assertRawExport(
+  value: any,
+  expected: unknown,
+  sentinel: string,
+): void {
+  const content = value?.resultEntry?.message?.content;
+  assert.deepEqual(
+    value,
+    expected,
+    "export changed original persisted call/result",
+  );
+  assert.ok(
+    JSON.stringify(content)?.includes(sentinel),
+    "export missing raw sentinel",
+  );
+}
+
 export function assertLifecycle(events: any[], ids: string[]): void {
   for (const id of ids)
     for (const type of ["tool_execution_start", "tool_execution_end"])
@@ -104,6 +154,40 @@ if (import.meta.vitest) {
     expect(() => assertLifecycle(events, ["root"])).not.toThrow();
     expect(() => assertLifecycle(events.slice(1), ["root"])).toThrow();
     expect(() => assertLifecycle([...events, events[1]], ["root"])).toThrow();
+  });
+  it("rejects the old unbounded expanded renderer and missing raw data", () => {
+    const bounded = {
+      callLines: ["codemode", "script", "text(1)"],
+      resultLines: ["", "output", "answer", "", "Took 1ms"],
+    };
+    expect(() => assertBoundedCodemode(bounded, true)).not.toThrow();
+    expect(() =>
+      assertBoundedCodemode(
+        {
+          ...bounded,
+          callLines: ["codemode", "script", ...Array(100).fill("code")],
+        },
+        true,
+      ),
+    ).toThrow(/unbounded script/);
+    expect(() =>
+      assertBoundedCodemode(
+        { ...bounded, resultLines: ["", "output", ...Array(100).fill("data")] },
+        true,
+      ),
+    ).toThrow(/unbounded output/);
+    const raw = {
+      resultEntry: {
+        message: { content: [{ type: "text", text: "RAW_SENTINEL" }] },
+      },
+    };
+    expect(() => assertRawExport(raw, raw, "RAW_SENTINEL")).not.toThrow();
+    expect(() => assertRawExport(raw, raw, "MISSING_SENTINEL")).toThrow(
+      /sentinel/,
+    );
+    expect(() => assertRawExport({}, raw, "RAW_SENTINEL")).toThrow(
+      /original persisted/,
+    );
   });
   const evidence = {
     callLines: ["Delegate fixture"],

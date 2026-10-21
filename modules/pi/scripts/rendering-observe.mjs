@@ -22,7 +22,9 @@ registerHooks({
       const owner=this;
       component=new Proxy(component,{get(target,key,receiver){
         if(key==='render') return width=>{
+          const before=JSON.stringify({args:owner.args,result:owner.result});
           const lines=original(width);
+          if(JSON.stringify({args:owner.args,result:owner.result})!==before) throw new Error('render mutated original tool input/content/details/usage');
           globalThis.__piRenderingObservation?.({toolCallId:owner.toolCallId,phase,width,expanded:owner.expanded,isPartial:owner.isPartial,lines});
           return phase==='result'&&process.env.PI_RENDER_DROP_RESULTS==='1'?[]:lines;
         };

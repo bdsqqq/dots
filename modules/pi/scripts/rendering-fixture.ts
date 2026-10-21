@@ -29,9 +29,42 @@ export default async function renderingFixture(pi: ExtensionAPI) {
       return boundary.fixtureFetch(...args);
     };
   });
+  // Synthetic spill metadata exercises stale-file reporting; real result content is unchanged.
+  pi.on("tool_result", (event) => {
+    const state = plan.states.findIndex(
+      (s: any) => s.id === "codemode-head-tail",
+    );
+    const opaque = plan.states.findIndex(
+      (s: any) => s.id === "codemode-opaque-json",
+    );
+    if (
+      event.toolCallId === `sampler-${state}-0` ||
+      event.toolCallId === `sampler-${opaque}-0`
+    ) {
+      const available = event.toolCallId === `sampler-${opaque}-0`;
+      const path = `${plan.gates}/../${available ? "available" : "missing"}-spill.txt`;
+      if (available)
+        writeFileSync(path, "SYNTHETIC_SPILL_CONTENT_NOT_AUTO_COPIED");
+      return {
+        details: { ...(event.details as object), fullOutputPath: path },
+      };
+    }
+  });
   pi.on("tool_execution_start", log);
   pi.on("tool_execution_update", log);
   pi.on("tool_execution_end", log);
+  pi.registerCommand("fixture-snapshot", {
+    description: "Persist the fixture branch for read-only comparison",
+    handler: async (name, ctx) => {
+      if (!["before", "after"].includes(name))
+        throw new Error("unknown snapshot");
+      writeFileSync(
+        `${plan.gates}/../branch-${name}.json`,
+        JSON.stringify(ctx.sessionManager.getBranch()),
+      );
+    },
+  });
+  pi.on("agent_end", () => log({ type: "settled" }));
   pi.on("session_start", () => {
     const tools = pi.getAllTools();
     writeFileSync(plan.inventory, JSON.stringify(tools, null, 2));

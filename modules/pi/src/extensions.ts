@@ -20,4 +20,5 @@ export { default as sessionRecap } from "../packages/extensions/session-recap/in
 export { default as sessionSettlement } from "../packages/extensions/session-settlement/index";
 export { default as skill } from "../packages/extensions/skill/index";
 export { default as systemPrompt } from "../packages/extensions/system-prompt/index";
+export { default as toolOutput } from "../packages/extensions/tool-output/index";
 export { default as webSearch } from "../packages/extensions/web-search/index";

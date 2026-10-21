@@ -1292,47 +1292,226 @@ index dcf5bf9b84394f2d151e6862733b239d8d6fbe84..3461fea40046f4a26bb4dd9189ec4ee3
      },
      renderResult(result, _options, theme, context) {
 diff --git a/dist/extensions/codemode/renderer.js b/dist/extensions/codemode/renderer.js
-index d97b1dff66f1171964618c08d778923f49adb8a9..86e99c1656d6b15b39b2b91eee040ac29387a88c 100644
 --- a/dist/extensions/codemode/renderer.js
 +++ b/dist/extensions/codemode/renderer.js
-@@ -76,7 +76,6 @@ export const codemodeRenderers = {
-                 : new VisualLinePreview({
-                     text: highlighted,
-                     maxVisualLines: CODE_PREVIEW_LINES,
--                    keep: "start",
-                     formatHint: (hidden) => expandHint(theme, hidden, "lines"),
-                 }));
+@@ -1,65 +1,60 @@
+-/**
+- * Presentation for the codemode tool.
+- *
+- * The call shows the script; the result lists the nested tool calls with their status as they
+- * run and the cost of its model calls, followed by the script output without the "Script completed"
+- * header, and the time the script has been running (`Elapsed`) or took (`Took`), like bash rows.
+- * Nested calls are not separate tool rows because they never reach the model as tool calls.
+- */
+-import { Container, Spacer, Text } from "@earendil-works/pi-tui";
++/** Presentation only: expansion is a larger window, not raw output. */
++import { Container, Spacer, Text, stripTerminalSequences, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+ import { getTextOutput, replaceTabs, startToolTimer, str, toolTimerText } from "../../core/tools/render-utils.js";
+-import { keyHint } from "../../modes/interactive/components/keybinding-hints.js";
+ import { VisualLinePreview } from "../../modes/interactive/components/visual-truncate.js";
+ import { highlightCode } from "../../modes/interactive/theme/theme.js";
+-const CODE_PREVIEW_LINES = 10;
++const CODE_PREVIEW_LINES = 6;
++const EXPANDED_CODE_LINES = 12;
+ const CALL_PREVIEW_COUNT = 8;
++const EXPANDED_CALL_COUNT = 12;
+ const OUTPUT_PREVIEW_LINES = 5;
+-const COLLAPSED_ARGS_CHARS = 80;
++const EXPANDED_OUTPUT_LINES = 20;
+ const SCRIPT_HEADER = /^Script (completed|failed)\nWall time [\d.]+ seconds\nOutput:\n$/;
+-function expandHint(theme, hidden, noun) {
+-    return `${theme.fg("muted", `... (${hidden} more ${noun},`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
++function omissionHint(theme, hidden, noun) {
++    return theme.fg("muted", `/tool-output for raw · ${hidden} more ${noun}`);
+ }
+ function formatDuration(ms) {
+-    if (ms === undefined)
+-        return "";
++    if (ms === undefined) return "";
+     return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
+ }
+-/** Cents for larger amounts, two significant digits for the fractions of a cent classifier calls cost. */
+ function formatCost(cost) {
+     return `$${cost >= 0.01 ? cost.toFixed(2) : cost.toPrecision(2)}`;
+ }
+ function statusIcon(call, theme) {
+     switch (call.status) {
+-        case "running":
+-            return theme.fg("warning", "…");
+-        case "ok":
+-            return theme.fg("success", "✓");
+-        case "error":
+-            return theme.fg("error", "✗");
+-        case "cancelled":
+-            return theme.fg("muted", "⊘");
++        case "running": return theme.fg("warning", "…");
++        case "ok": return theme.fg("success", "✓");
++        case "error": return theme.fg("error", "✗");
++        case "cancelled": return theme.fg("muted", "⊘");
+     }
+ }
+-function formatCall(call, theme, expanded) {
+-    const args = !expanded && call.args.length > COLLAPSED_ARGS_CHARS
+-        ? `${call.args.slice(0, COLLAPSED_ARGS_CHARS - 3)}...`
+-        : call.args;
++function singleLine(text) {
++    return stripTerminalSequences(text ?? "").replace(/\s+/g, " ").trim();
++}
++function formatCall(call, theme) {
++    let line = `${statusIcon(call, theme)} ${theme.fg("toolTitle", singleLine(call.name))}`;
++    // Failure reasons precede input so narrow rows do not spend their width on arguments first.
++    if (call.error) line += ` ${theme.fg("error", singleLine(call.error))}`;
++    const args = singleLine(call.args);
++    if (args) line += ` ${theme.fg("muted", args)}`;
+     const duration = formatDuration(call.durationMs);
+-    let line = `${statusIcon(call, theme)} ${theme.fg("toolTitle", call.name)}`;
+-    if (args)
+-        line += ` ${theme.fg("muted", args)}`;
+-    if (duration)
+-        line += ` ${theme.fg("dim", duration)}`;
+-    if (call.cost)
+-        line += ` ${theme.fg("dim", formatCost(call.cost))}`;
+-    if (expanded && call.error)
+-        line += `\n    ${theme.fg("error", call.error.split("\n").join("\n    "))}`;
++    if (duration) line += ` ${theme.fg("dim", duration)}`;
++    if (call.cost) line += ` ${theme.fg("dim", formatCost(call.cost))}`;
+     return line;
+ }
++function selectCalls(calls, budget) {
++    if (calls.length <= budget) return calls;
++    // Pending/failed/cancelled calls take precedence over successful head/tail context.
++    const selected = new Set(calls.filter((call) => call.status !== "ok").slice(0, budget));
++    for (let i = 0; selected.size < budget && i < calls.length; i++) {
++        selected.add(calls[i]);
++        if (selected.size < budget) selected.add(calls[calls.length - 1 - i]);
++    }
++    return calls.filter((call) => selected.has(call));
++}
+ export const codemodeRenderers = {
+     renderCall(args, theme, context) {
+         startToolTimer(context);
+-        // The code includes the `// @options:` line, so options show as part of the script.
+         const code = str(args?.code);
+         const title = theme.fg("toolTitle", theme.bold("codemode"));
+         const component = context.lastComponent ?? new Container();
+@@ -70,15 +65,13 @@
          }
-@@ -88,12 +87,14 @@ export const codemodeRenderers = {
+         component.addChild(new Text(title, 0, 0));
+         if (code) {
++            component.addChild(new Text(theme.fg("muted", "script"), 0, 0));
+             const highlighted = highlightCode(replaceTabs(code.replace(/\r/g, "").trimEnd()), "javascript").join("\n");
+-            component.addChild(context.expanded
+-                ? new Text(highlighted, 0, 0)
+-                : new VisualLinePreview({
+-                    text: highlighted,
+-                    maxVisualLines: CODE_PREVIEW_LINES,
+-                    keep: "start",
+-                    formatHint: (hidden) => expandHint(theme, hidden, "lines"),
+-                }));
++            component.addChild(new VisualLinePreview({
++                text: highlighted,
++                maxVisualLines: context.expanded ? EXPANDED_CODE_LINES : CODE_PREVIEW_LINES,
++                formatHint: (hidden) => omissionHint(theme, hidden, "lines"),
++            }));
+         }
+         return component;
+     },
+@@ -88,51 +81,52 @@
          component.clear();
          const calls = result.details?.calls ?? [];
          if (calls.length > 0) {
 -            const shown = options.expanded ? calls : calls.slice(-CALL_PREVIEW_COUNT);
-+            const hidden = Math.max(0, calls.length - CALL_PREVIEW_COUNT);
-+            const head = Math.floor(CALL_PREVIEW_COUNT / 2);
-+            const shown = options.expanded || !hidden ? calls : [...calls.slice(0, head), ...calls.slice(-(CALL_PREVIEW_COUNT - head))];
-             const lines = shown.map((call) => formatCall(call, theme, options.expanded));
-             if (shown.length < calls.length) {
+-            const lines = shown.map((call) => formatCall(call, theme, options.expanded));
+-            if (shown.length < calls.length) {
 -                lines.unshift(`${theme.fg("muted", `... (${calls.length - shown.length} earlier calls,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`);
-+                lines.splice(head, 0, expandHint(theme, hidden, "calls"));
++            const shown = selectCalls(calls, options.expanded ? EXPANDED_CALL_COUNT : CALL_PREVIEW_COUNT);
++            component.addChild(new Spacer(1));
++            component.addChild(new Text(theme.fg("muted", "calls"), 0, 0));
++            const lines = shown.map((call) => formatCall(call, theme));
++            const hidden = calls.length - shown.length;
++            if (hidden) {
++                const shownSet = new Set(shown);
++                const omitted = calls.filter((call) => !shownSet.has(call));
++                const failures = omitted.filter((call) => call.status === "error").length;
++                const running = omitted.filter((call) => call.status === "running").length;
++                const cancelled = omitted.filter((call) => call.status === "cancelled").length;
++                const counts = [failures && `${failures} failed`, running && `${running} running`, cancelled && `${cancelled} cancelled`].filter(Boolean);
++                lines.push(omissionHint(theme, hidden, `calls${counts.length ? ` (${counts.join(", ")})` : ""}`));
              }
 -            // Collapsed rows hide earlier calls, so the total covers every call.
-+            // Cost totals cover hidden calls too.
              const priced = calls.filter((call) => call.cost);
-             if (priced.length > 1) {
-                 const total = priced.reduce((sum, call) => sum + (call.cost ?? 0), 0);
-@@ -124,10 +125,9 @@ export const codemodeRenderers = {
-                 component.addChild(new VisualLinePreview({
-                     text: styled,
-                     maxVisualLines: OUTPUT_PREVIEW_LINES,
+-            if (priced.length > 1) {
+-                const total = priced.reduce((sum, call) => sum + (call.cost ?? 0), 0);
+-                lines.push(theme.fg("muted", `Model calls: ${formatCost(total)}`));
+-            }
+-            component.addChild(new Spacer(1));
+-            component.addChild(new Text(lines.join("\n"), 0, 0));
++            if (priced.length > 1)
++                lines.push(theme.fg("muted", `Model calls: ${formatCost(priced.reduce((sum, call) => sum + (call.cost ?? 0), 0))}`));
++            // Clip once at actual render width: every call occupies exactly one visual row.
++            component.addChild({
++                render: (width) => {
++                    const clipped = lines.map((line) => truncateToWidth(line, width, width < 3 ? "…" : "..."));
++                    // A short call list can still hide a diagnostic suffix horizontally.
++                    if (!hidden && lines.some((line) => visibleWidth(line) > width))
++                        clipped.push(truncateToWidth(theme.fg("muted", "/tool-output for full raw result"), width));
++                    return clipped;
++                },
++                invalidate() {},
++            });
+         }
+-        // Drop the "Script completed\nWall time ...\nOutput:\n" header. Rejected input (invalid options)
+-        // has no header.
+         const [first, ...rest] = result.content;
+         const hasHeader = first?.type === "text" && SCRIPT_HEADER.test(first.text);
+-        const output = options.isPartial
+-            ? ""
+-            : getTextOutput({ ...result, content: hasHeader ? rest : result.content }, context.showImages).trim();
++        const output = options.isPartial ? "" : getTextOutput({ ...result, content: hasHeader ? rest : result.content }, context.showImages).trim();
+         if (output) {
+             const color = context.isError ? "error" : "toolOutput";
+-            const styled = replaceTabs(output)
+-                .split("\n")
+-                .map((line) => theme.fg(color, line))
+-                .join("\n");
++            const styled = replaceTabs(output).split("\n").map((line) => theme.fg(color, line)).join("\n");
+             component.addChild(new Spacer(1));
+-            if (options.expanded) {
+-                component.addChild(new Text(styled, 0, 0));
+-            }
+-            else {
+-                // Limit wrapped lines, not logical ones: script output is often one long JSON line.
+-                component.addChild(new VisualLinePreview({
+-                    text: styled,
+-                    maxVisualLines: OUTPUT_PREVIEW_LINES,
 -                    keep: "start",
-                     formatHint: (hidden) => expandHint(theme, hidden, "lines"),
-                 }));
+-                    formatHint: (hidden) => expandHint(theme, hidden, "lines"),
+-                }));
 -                // The collapsed preview hides the truncation notice at the end, so name the file here.
-+                // Keep the full-output path accessible even when the notice wraps beyond the preview.
-                 const fullOutputPath = result.details?.fullOutputPath;
-                 if (fullOutputPath)
-                     component.addChild(new Text(theme.fg("muted", `Full output: ${fullOutputPath}`), 0, 0));
+-                const fullOutputPath = result.details?.fullOutputPath;
+-                if (fullOutputPath)
+-                    component.addChild(new Text(theme.fg("muted", `Full output: ${fullOutputPath}`), 0, 0));
+-            }
++            component.addChild(new Text(theme.fg("muted", "output"), 0, 0));
++            component.addChild(new VisualLinePreview({
++                text: styled,
++                maxVisualLines: options.expanded ? EXPANDED_OUTPUT_LINES : OUTPUT_PREVIEW_LINES,
++                formatHint: (hidden) => omissionHint(theme, hidden, "lines"),
++            }));
+         }
++        const fullOutputPath = result.details?.fullOutputPath;
++        if (fullOutputPath)
++            component.addChild(new Text(theme.fg("muted", `Full output: ${fullOutputPath}`), 0, 0));
+         if (timerText) {
+             component.addChild(new Spacer(1));
+             component.addChild(new Text(theme.fg("muted", timerText), 0, 0));
+@@ -140,4 +134,4 @@
+         return component;
+     },
+ };
+-//# sourceMappingURL=renderer.js.map
+\ No newline at end of file
++//# sourceMappingURL=renderer.js.map
 diff --git a/dist/extensions/mcp/tools.js b/dist/extensions/mcp/tools.js
 index 7884fb2e84d582bdeb2e6b81c249401f6a95b8a6..b0822db6b211de21eb83611a2d571565d8c8687b 100644
 --- a/dist/extensions/mcp/tools.js

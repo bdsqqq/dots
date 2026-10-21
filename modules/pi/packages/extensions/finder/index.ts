@@ -542,7 +542,7 @@ if (import.meta.vitest) {
       const output = lines.join("\n");
 
       // Child connectors remain content; the parent shell adds its own frame.
-      expect(output).toContain("├ ");
+      expect(output).toContain("╰ ✓ Grep");
       expect(output).toContain("Found it in src/tools/grep.ts");
       expect(output).not.toContain("╰────");
 

@@ -1002,7 +1002,9 @@ if (import.meta.vitest) {
     });
 
     describe("renderResult", () => {
-      it("renders review summary from Markdown", () => {
+      it("renders review summary from Markdown", async () => {
+        const { initTheme } = await import("@earendil-works/pi-coding-agent");
+        initTheme("dark", false);
         const tool = createCodeReviewTool();
         const mockTheme = {
           fg: (_color: string, text: string) => text,
@@ -1053,7 +1055,13 @@ if (import.meta.vitest) {
         if (!(result instanceof Container))
           throw new Error("expected container");
         const lines = result.children[0]?.render(80) ?? [];
-        expect(lines.join("\n")).toContain("1 comment");
+        expect(lines.join("\n")).toContain("1 comment: 1 high");
+        expect(
+          result
+            .render(80)
+            .join("\n")
+            .match(/1 comment: 1 high/g),
+        ).toHaveLength(1);
       });
 
       it("encapsulates the final report like tool output", async () => {
@@ -1112,7 +1120,8 @@ No issues found.`;
         );
 
         const lines = result.render(40);
-        expect(lines[0]).toBe("├ ⋯ Bash echo ok");
+        expect(lines[0]).toContain("Code review");
+        expect(lines.join("\n")).toContain("╰ ⋯ Bash echo ok");
         expect(lines.join("\n")).not.toContain("╰────");
         expect(lines.slice(1).some((line) => line.startsWith("│ "))).toBe(
           false,
