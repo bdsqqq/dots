@@ -51,6 +51,7 @@ in
     ../../modules/1password
     ../../modules/orbstack
     ../../modules/ghostty
+    ../../modules/rex
     ../../modules/open-display
     ../../modules/obsidian
     ../../modules/html-stuff
