@@ -33,6 +33,9 @@ in
           pkgs.nodejs
           pkgs.pnpm
           pkgs.curl
+          # Home Manager supplies the basic shell tools, but not awk, which
+          # the Vite+ bootstrap uses to parse package metadata.
+          pkgs.gawk
           pkgs.gzip
           pkgs.gnumake
           pkgs.gnutar
