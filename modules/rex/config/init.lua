@@ -3,6 +3,7 @@ rex.bind("cmd+shift+[Backslash]", "pane.split", { direction = "right" })
 rex.bind("cmd+shift+-", "pane.split", { direction = "down" })
 
 rex.bind("cmd+k", "client.palette.toggle")
+rex.bind("cmd+;", "client.sidebar.toggle")
 rex.bind("cmd+9", "client.tab.goto", { index = -1 })
 
 rex.bind("alt+cmd+left", "pane.focus.left")
