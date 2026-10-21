@@ -15,7 +15,7 @@ export interface ZmxSession {
   clients: string;
   pid: string;
   created?: string;
-  startDir: string;
+  cwd: string;
 }
 
 interface ExecResult {
@@ -39,7 +39,7 @@ function extractZmxFragment(textBeforeCursor: string): string | undefined {
 }
 
 function parseRowsFields(line: string): ZmxSession | undefined {
-  const [name, clientsField, pidField, createdField, startDir = ""] =
+  const [name, clientsField, pidField, createdField, cwd = ""] =
     line.split("\t");
   if (!name) return undefined;
 
@@ -48,18 +48,18 @@ function parseRowsFields(line: string): ZmxSession | undefined {
     clients: clientsField?.replace(/^clients:/, "") || "?",
     pid: pidField?.replace(/^pid:/, "") || "?",
     created: createdField?.replace(/^created:/, ""),
-    startDir,
+    cwd,
   };
 }
 
 export function parseZmxSessions(output: string): ZmxSession[] {
-  if (output.includes("=")) {
+  if (/^(?:→\s*)?(?:name|session_name)=/m.test(output.trim())) {
     return parseZmxList(output).map((row) => ({
       name: row.name,
       clients: row.clients,
       pid: row.pid,
       created: row.created || undefined,
-      startDir: row.startDir,
+      cwd: row.cwd,
     }));
   }
 
@@ -75,7 +75,7 @@ function formatSessionItem(session: ZmxSession): AutocompleteItem {
   return {
     value: `zmx session ${session.name}`,
     label: `@zmx/${session.name}`,
-    description: `clients:${session.clients} pid:${session.pid} ${session.startDir}`,
+    description: `clients:${session.clients} pid:${session.pid} ${session.cwd}`,
   };
 }
 
@@ -234,15 +234,22 @@ if (import.meta.vitest) {
           clients: "0",
           pid: "123",
           created: "1770000000",
-          startDir: "/Users/bdsqqq/commonplace",
+          cwd: "/Users/bdsqqq/commonplace",
         },
       ]);
     });
 
-    it("parses both zmx list key variants", () => {
+    it("parses picker rows whose cwd contains an equals sign", () => {
+      expect(
+        parseZmxSessions("nix\tclients:0\tpid:1\tcreated:177\t/repo/a=b\n")[0]
+          ?.cwd,
+      ).toBe("/repo/a=b");
+    });
+
+    it("parses current and older zmx list key variants", () => {
       expect(
         parseZmxSessions(
-          "name=nix.build\tpid=123\tclients=0\tcreated=177\tstart_dir=/repo\n" +
+          "name=nix.build\tpid=123\tclients=0\tcreated=177\tcwd=/repo\tproject=nix\n" +
             "session_name=nix.yazi\tpid=456\tclients=1\tcreated=178\tstarted_in=/tmp\n",
         ),
       ).toEqual([
@@ -251,14 +258,14 @@ if (import.meta.vitest) {
           clients: "0",
           pid: "123",
           created: "177",
-          startDir: "/repo",
+          cwd: "/repo",
         },
         {
           name: "nix.yazi",
           clients: "1",
           pid: "456",
           created: "178",
-          startDir: "/tmp",
+          cwd: "/tmp",
         },
       ]);
     });
@@ -269,9 +276,9 @@ if (import.meta.vitest) {
       expect(
         filterZmxSessions(
           [
-            { name: "nix.yazi", clients: "0", pid: "1", startDir: "/" },
-            { name: "nix", clients: "0", pid: "2", startDir: "/" },
-            { name: "nix.build", clients: "0", pid: "3", startDir: "/" },
+            { name: "nix.yazi", clients: "0", pid: "1", cwd: "/" },
+            { name: "nix", clients: "0", pid: "2", cwd: "/" },
+            { name: "nix.build", clients: "0", pid: "3", cwd: "/" },
           ],
           "nix",
         ).map((item) => item.label),
