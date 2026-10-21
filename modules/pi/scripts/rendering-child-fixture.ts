@@ -56,7 +56,18 @@ export default function childFixture(pi: ExtensionAPI) {
                   arguments: { path: "fixture.txt" },
                 },
               ]
-            : [{ type: "text", text: "SUBAGENT_FIXTURE" }],
+            : [
+                {
+                  type: "text",
+                  text: [
+                    "SUBAGENT_FIXTURE",
+                    ...Array.from({ length: 60 }, (_, i) =>
+                      i === 30 ? "CHILD_RAW_SENTINEL" : `child detail ${i}`,
+                    ),
+                    "CHILD_CONCLUSION",
+                  ].join("\n"),
+                },
+              ],
           stopReason: first ? "toolUse" : "stop",
           usage: {
             input: 4,
