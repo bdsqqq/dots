@@ -1292,10 +1292,9 @@ index dcf5bf9b84394f2d151e6862733b239d8d6fbe84..3461fea40046f4a26bb4dd9189ec4ee3
      },
      renderResult(result, _options, theme, context) {
 diff --git a/dist/extensions/codemode/renderer.js b/dist/extensions/codemode/renderer.js
-index d97b1df..3e75f48 100644
 --- a/dist/extensions/codemode/renderer.js
 +++ b/dist/extensions/codemode/renderer.js
-@@ -1,65 +1,153 @@
+@@ -1,65 +1,138 @@
 -/**
 - * Presentation for the codemode tool.
 - *
@@ -1305,14 +1304,14 @@ index d97b1df..3e75f48 100644
 - * Nested calls are not separate tool rows because they never reach the model as tool calls.
 - */
 -import { Container, Spacer, Text } from "@earendil-works/pi-tui";
+-import { getTextOutput, replaceTabs, startToolTimer, str, toolTimerText } from "../../core/tools/render-utils.js";
+-import { keyHint } from "../../modes/interactive/components/keybinding-hints.js";
 +/** Presentation only: expansion is a larger window, not raw output. */
 +import { Container, Spacer, Text, stripTerminalSequences, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
- import { getTextOutput, replaceTabs, startToolTimer, str, toolTimerText } from "../../core/tools/render-utils.js";
--import { keyHint } from "../../modes/interactive/components/keybinding-hints.js";
++import { getTextOutput, replaceTabs, str } from "../../core/tools/render-utils.js";
  import { VisualLinePreview } from "../../modes/interactive/components/visual-truncate.js";
  import { highlightCode } from "../../modes/interactive/theme/theme.js";
 -const CODE_PREVIEW_LINES = 10;
-+const CODE_PREVIEW_LINES = 6;
 +const EXPANDED_CODE_LINES = 12;
  const CALL_PREVIEW_COUNT = 8;
 +const EXPANDED_CALL_COUNT = 12;
@@ -1322,19 +1321,16 @@ index d97b1df..3e75f48 100644
  const SCRIPT_HEADER = /^Script (completed|failed)\nWall time [\d.]+ seconds\nOutput:\n$/;
 -function expandHint(theme, hidden, noun) {
 -    return `${theme.fg("muted", `... (${hidden} more ${noun},`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
-+function omissionHint(theme, hidden, noun) {
-+    return theme.fg("muted", `/tool-output for raw · ${hidden} more ${noun}`);
- }
- function formatDuration(ms) {
+-}
+-function formatDuration(ms) {
 -    if (ms === undefined)
 -        return "";
-+    if (ms === undefined) return "";
-     return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
- }
+-    return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
+-}
 -/** Cents for larger amounts, two significant digits for the fractions of a cent classifier calls cost. */
- function formatCost(cost) {
-     return `$${cost >= 0.01 ? cost.toFixed(2) : cost.toPrecision(2)}`;
- }
+-function formatCost(cost) {
+-    return `$${cost >= 0.01 ? cost.toFixed(2) : cost.toPrecision(2)}`;
+-}
  function statusIcon(call, theme) {
      switch (call.status) {
 -        case "running":
@@ -1355,16 +1351,7 @@ index d97b1df..3e75f48 100644
 -    const args = !expanded && call.args.length > COLLAPSED_ARGS_CHARS
 -        ? `${call.args.slice(0, COLLAPSED_ARGS_CHARS - 3)}...`
 -        : call.args;
-+function singleLine(text) {
-+    return stripTerminalSequences(text ?? "").replace(/\s+/g, " ").trim();
-+}
-+function formatCall(call, theme) {
-+    let line = `${statusIcon(call, theme)} ${theme.fg("toolTitle", singleLine(call.name))}`;
-+    // Failure reasons precede input so narrow rows do not spend their width on arguments first.
-+    if (call.error) line += ` ${theme.fg("error", singleLine(call.error))}`;
-+    const args = singleLine(call.args);
-+    if (args) line += ` ${theme.fg("muted", args)}`;
-     const duration = formatDuration(call.durationMs);
+-    const duration = formatDuration(call.durationMs);
 -    let line = `${statusIcon(call, theme)} ${theme.fg("toolTitle", call.name)}`;
 -    if (args)
 -        line += ` ${theme.fg("muted", args)}`;
@@ -1374,10 +1361,17 @@ index d97b1df..3e75f48 100644
 -        line += ` ${theme.fg("dim", formatCost(call.cost))}`;
 -    if (expanded && call.error)
 -        line += `\n    ${theme.fg("error", call.error.split("\n").join("\n    "))}`;
-+    if (duration) line += ` ${theme.fg("dim", duration)}`;
-+    if (call.cost) line += ` ${theme.fg("dim", formatCost(call.cost))}`;
++function singleLine(text) {
++    return stripTerminalSequences(text ?? "").replace(/\s+/g, " ").trim();
++}
++function formatCall(call, theme) {
++    let line = `${statusIcon(call, theme)} ${theme.fg("toolTitle", singleLine(call.name))}`;
++    // Failure reasons precede input so narrow rows do not spend their width on arguments first.
++    if (call.error) line += ` ${theme.fg("error", singleLine(call.error))}`;
++    const args = singleLine(call.args);
++    if (args) line += ` ${theme.fg("muted", args)}`;
      return line;
- }
++}
 +function selectCalls(calls, budget) {
 +    if (calls.length <= budget) return calls;
 +    // Pending/failed/cancelled calls take precedence over successful head/tail context.
@@ -1400,14 +1394,12 @@ index d97b1df..3e75f48 100644
 +    }
 +    return (value.totalConsole > 0 ? clip(value.console) : value.console === undefined) && (value.diagnostic === undefined || clip(value.diagnostic)) && (value.imageFiles === undefined || clip(value.imageFiles)) && (value.spillFailure === undefined || clip(value.spillFailure)) && (value.imageSaveFailures === undefined || (count(value.imageSaveFailures?.total) && value.imageSaveFailures.total > 0 && clip(value.imageSaveFailures.first)));
 +}
-+function renderOutputPreview(component, preview, expanded, theme) {
++function renderOutputPreview(component, preview, expanded, theme, recovery) {
 +    component.addChild(new Spacer(1));
 +    const plural = (count, noun) => `${count} ${noun}${count === 1 ? "" : "s"}`;
-+    let cachedWidth, cachedLines;
 +    component.addChild({
-+        invalidate() { cachedLines = undefined; },
++        invalidate() {},
 +        render(width) {
-+            if (cachedLines && cachedWidth === width) return cachedLines;
 +            const rows = (text, color = "toolOutput") => new Text(replaceTabs(text).split("\n").map((line) => theme.fg(color, line)).join("\n"), 0, 0).render(width).map((line) => truncateToWidth(line, width, ""));
 +            const section = (title, item, color = "toolOutput", result) => {
 +                const head = rows(item.omittedChars ? item.head.replace(/\n$/, "") : item.head === "" ? "(empty text)" : item.head, color);
@@ -1427,8 +1419,8 @@ index d97b1df..3e75f48 100644
 +            const before = [];
 +            if (preview.spillFailure) before.push(section("storage warning · full output unavailable", preview.spillFailure, "error"));
 +            if (preview.imageSaveFailures) before.push(section(`image save ${plural(preview.imageSaveFailures.total, "failure")}`, preview.imageSaveFailures.first, "error"));
-+            if (preview.diagnostic) before.push(section("diagnostic", preview.diagnostic, "error"));
-+            const results = preview.results.map((item) => section(`result ${item.ordinal}/${preview.totalResults} · ${item.source}`, item, "toolOutput", item));
++            if (preview.diagnostic) before.push(section("", preview.diagnostic, "error"));
++            const results = preview.results.map((item) => section("", item, "toolOutput", item));
 +            const after = [];
 +            if (preview.imageFiles) after.push(section("image files", preview.imageFiles));
 +            if (preview.console) after.push(section("console", preview.console));
@@ -1451,7 +1443,8 @@ index d97b1df..3e75f48 100644
 +                for (const item of sections) if (remaining > 0 && item.allocation < item.limit) { item.allocation++; remaining--; changed = true; }
 +                if (!changed) break;
 +            }
-+            const lines = rows(`output · ${plural(preview.totalResults, "result")} · ${preview.totalConsole} console · ${plural(preview.totalImages, "image")}`, "muted");
++            const lines = [];
++            if (!sections.length && !preview.totalImages) lines.push(...rows("(no output)", "muted"));
 +            let shortened = !!preview.spillFailure, previous = 0;
 +            const gap = (count, start, end) => {
 +                if (count <= 0) return;
@@ -1460,7 +1453,8 @@ index d97b1df..3e75f48 100644
 +            };
 +            for (const item of sections) {
 +                if (item.result) { gap(item.result.ordinal - previous - 1, previous + 1, item.result.ordinal - 1); previous = item.result.ordinal; }
-+                lines.push(...rows(item.title, "muted"));
++                if (lines.length) lines.push("");
++                if (item.title) lines.push(...rows(item.title, "muted"));
 +                const sourceClipped = item.item.omittedChars > 0;
 +                const clipped = sourceClipped || item.needed > item.allocation;
 +                if (!clipped) lines.push(...item.head, ...item.tail);
@@ -1475,24 +1469,26 @@ index d97b1df..3e75f48 100644
 +                }
 +            }
 +            gap(preview.totalResults - previous, previous + 1, preview.totalResults);
-+            if (shortened) lines.push(...rows(preview.spillFailure ? "/tool-output for retained raw only · full output unavailable" : "/tool-output for raw output", "muted"));
-+            cachedWidth = width;
-+            return cachedLines = lines;
++            recovery.omitted ||= shortened;
++            recovery.unavailable ||= !!preview.spillFailure;
++            return lines;
 +        },
 +    });
-+}
+ }
  export const codemodeRenderers = {
      renderCall(args, theme, context) {
-         startToolTimer(context);
+-        startToolTimer(context);
 -        // The code includes the `// @options:` line, so options show as part of the script.
          const code = str(args?.code);
          const title = theme.fg("toolTitle", theme.bold("codemode"));
          const component = context.lastComponent ?? new Container();
-@@ -70,15 +158,13 @@ export const codemodeRenderers = {
+@@ -69,75 +142,84 @@
+             return component;
          }
          component.addChild(new Text(title, 0, 0));
-         if (code) {
-+            component.addChild(new Text(theme.fg("muted", "script"), 0, 0));
+-        if (code) {
++        context.state.sourceOmitted = false;
++        if (code && context.expanded) {
              const highlighted = highlightCode(replaceTabs(code.replace(/\r/g, "").trimEnd()), "javascript").join("\n");
 -            component.addChild(context.expanded
 -                ? new Text(highlighted, 0, 0)
@@ -1504,58 +1500,64 @@ index d97b1df..3e75f48 100644
 -                }));
 +            component.addChild(new VisualLinePreview({
 +                text: highlighted,
-+                maxVisualLines: context.expanded ? EXPANDED_CODE_LINES : CODE_PREVIEW_LINES,
-+                formatHint: (hidden) => omissionHint(theme, hidden, "lines"),
++                maxVisualLines: EXPANDED_CODE_LINES,
++                formatHint: (hidden) => {
++                    context.state.sourceOmitted = true;
++                    return theme.fg("muted", `… ${hidden} source lines omitted …`);
++                },
 +            }));
          }
          return component;
      },
-@@ -88,51 +174,55 @@ export const codemodeRenderers = {
+     renderResult(result, options, theme, context) {
+-        const timerText = toolTimerText(context, options.isPartial);
+         const component = context.lastComponent ?? new Container();
          component.clear();
++        const recovery = { omitted: false, unavailable: false };
          const calls = result.details?.calls ?? [];
-         if (calls.length > 0) {
+-        if (calls.length > 0) {
 -            const shown = options.expanded ? calls : calls.slice(-CALL_PREVIEW_COUNT);
 -            const lines = shown.map((call) => formatCall(call, theme, options.expanded));
 -            if (shown.length < calls.length) {
 -                lines.unshift(`${theme.fg("muted", `... (${calls.length - shown.length} earlier calls,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`);
-+            const shown = selectCalls(calls, options.expanded ? EXPANDED_CALL_COUNT : CALL_PREVIEW_COUNT);
-+            component.addChild(new Spacer(1));
-+            component.addChild(new Text(theme.fg("muted", "calls"), 0, 0));
-+            const lines = shown.map((call) => formatCall(call, theme));
-+            const hidden = calls.length - shown.length;
-+            if (hidden) {
-+                const shownSet = new Set(shown);
-+                const omitted = calls.filter((call) => !shownSet.has(call));
-+                const failures = omitted.filter((call) => call.status === "error").length;
-+                const running = omitted.filter((call) => call.status === "running").length;
-+                const cancelled = omitted.filter((call) => call.status === "cancelled").length;
-+                const counts = [failures && `${failures} failed`, running && `${running} running`, cancelled && `${cancelled} cancelled`].filter(Boolean);
-+                lines.push(omissionHint(theme, hidden, `calls${counts.length ? ` (${counts.join(", ")})` : ""}`));
-             }
+-            }
 -            // Collapsed rows hide earlier calls, so the total covers every call.
-             const priced = calls.filter((call) => call.cost);
+-            const priced = calls.filter((call) => call.cost);
 -            if (priced.length > 1) {
 -                const total = priced.reduce((sum, call) => sum + (call.cost ?? 0), 0);
 -                lines.push(theme.fg("muted", `Model calls: ${formatCost(total)}`));
 -            }
--            component.addChild(new Spacer(1));
++        const activity = options.expanded ? calls : calls.filter((call) => call.status !== "ok");
++        component.addChild({ render() { recovery.omitted = calls.length > activity.length || !!context.state.sourceOmitted; recovery.unavailable = false; return []; }, invalidate() {} });
++        if (activity.length > 0) {
++            const shown = selectCalls(activity, options.expanded ? EXPANDED_CALL_COUNT : CALL_PREVIEW_COUNT);
+             component.addChild(new Spacer(1));
 -            component.addChild(new Text(lines.join("\n"), 0, 0));
-+            if (priced.length > 1)
-+                lines.push(theme.fg("muted", `Model calls: ${formatCost(priced.reduce((sum, call) => sum + (call.cost ?? 0), 0))}`));
+-        }
+-        // Drop the "Script completed\nWall time ...\nOutput:\n" header. Rejected input (invalid options)
+-        // has no header.
++            const lines = shown.map((call) => formatCall(call, theme));
++            const hidden = activity.length - shown.length;
++            if (hidden) {
++                const shownSet = new Set(shown);
++                const omitted = activity.filter((call) => !shownSet.has(call));
++                const failures = omitted.filter((call) => call.status === "error").length;
++                const running = omitted.filter((call) => call.status === "running").length;
++                const cancelled = omitted.filter((call) => call.status === "cancelled").length;
++                const counts = [failures && `${failures} failed`, running && `${running} running`, cancelled && `${cancelled} cancelled`].filter(Boolean);
++                lines.push(theme.fg("muted", `… ${hidden} more calls${counts.length ? ` (${counts.join(", ")})` : ""}`));
++            }
 +            // Clip once at actual render width: every call occupies exactly one visual row.
 +            component.addChild({
 +                render: (width) => {
 +                    const clipped = lines.map((line) => truncateToWidth(line, width, width < 3 ? "…" : "..."));
 +                    // A short call list can still hide a diagnostic suffix horizontally.
-+                    if (!hidden && lines.some((line) => visibleWidth(line) > width))
-+                        clipped.push(truncateToWidth(theme.fg("muted", "/tool-output for full raw result"), width));
++                    recovery.omitted ||= hidden > 0 || lines.some((line) => visibleWidth(line) > width);
 +                    return clipped;
 +                },
 +                invalidate() {},
 +            });
-         }
--        // Drop the "Script completed\nWall time ...\nOutput:\n" header. Rejected input (invalid options)
--        // has no header.
++        }
          const [first, ...rest] = result.content;
          const hasHeader = first?.type === "text" && SCRIPT_HEADER.test(first.text);
 -        const output = options.isPartial
@@ -1565,7 +1567,7 @@ index d97b1df..3e75f48 100644
 +        const output = options.isPartial ? "" : getTextOutput({ ...result, content: hasHeader ? rest : result.content }, context.showImages).trim();
 +        const preview = result.details?.outputPreview;
 +        if (!options.isPartial && validPreview(preview)) {
-+            renderOutputPreview(component, preview, options.expanded, theme);
++            renderOutputPreview(component, preview, options.expanded, theme, recovery);
 +        } else if (output) {
              const color = context.isError ? "error" : "toolOutput";
 -            const styled = replaceTabs(output)
@@ -1590,20 +1592,32 @@ index d97b1df..3e75f48 100644
 -                if (fullOutputPath)
 -                    component.addChild(new Text(theme.fg("muted", `Full output: ${fullOutputPath}`), 0, 0));
 -            }
-+            component.addChild(new Text(theme.fg("muted", "output"), 0, 0));
-+            component.addChild(new VisualLinePreview({
-+                text: styled,
-+                maxVisualLines: options.expanded ? EXPANDED_OUTPUT_LINES : OUTPUT_PREVIEW_LINES,
-+                formatHint: (hidden) => omissionHint(theme, hidden, "lines"),
-+            }));
-         }
-+        const fullOutputPath = result.details?.fullOutputPath;
-+        if (fullOutputPath)
-+            component.addChild(new Text(theme.fg("muted", `Full output: ${fullOutputPath}`), 0, 0));
-         if (timerText) {
-             component.addChild(new Spacer(1));
-             component.addChild(new Text(theme.fg("muted", timerText), 0, 0));
-@@ -140,4 +230,4 @@ export const codemodeRenderers = {
+-        }
+-        if (timerText) {
+-            component.addChild(new Spacer(1));
+-            component.addChild(new Text(theme.fg("muted", timerText), 0, 0));
+-        }
++            component.addChild({
++                render(width) {
++                    return new VisualLinePreview({
++                        text: styled,
++                        maxVisualLines: options.expanded ? EXPANDED_OUTPUT_LINES : OUTPUT_PREVIEW_LINES,
++                        formatHint: (hidden) => {
++                            recovery.omitted = true;
++                            return theme.fg("muted", `… ${hidden} more lines …`);
++                        },
++                    }).render(width);
++                },
++                invalidate() {},
++            });
++        }
++        component.addChild({
++            render(width) {
++                return recovery.omitted || result.details?.fullOutputPath
++                    ? [truncateToWidth(theme.fg("muted", recovery.unavailable ? "/tool-output for retained raw only · full output unavailable" : "/tool-output for full raw result"), width)] : [];
++            },
++            invalidate() {},
++        });
          return component;
      },
  };

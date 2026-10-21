@@ -576,7 +576,7 @@ async function runSampler({
   state(
     "codemode-small-results",
     [call("codemode", { code: `text('A');text('B');text('C');` })],
-    "result 2/3",
+    "B",
   );
   state(
     "codemode-eight-lines",
@@ -1025,12 +1025,14 @@ async function runSampler({
                   "shared omission hint missing after output group",
                 );
                 assert.ok(
-                  compact.includes("SCRIPT_TOP") &&
-                    compact.includes("SCRIPT_TAIL") &&
-                    !compact.includes("SCRIPT_MIDDLE_12"),
-                  "script head/tail policy missing",
+                  !compact.includes("SCRIPT_TOP") &&
+                    !compact.includes("SCRIPT_TAIL"),
+                  "collapsed source displaced returned content",
                 );
-                assert.ok(result.includes("Took"), "preview lost timing");
+                assert.ok(
+                  !result.includes("Took"),
+                  "timing telemetry displaced content",
+                );
               }
               assert.ok(
                 !output.includes("RAW_ONLY_SENTINEL"),
@@ -1052,8 +1054,8 @@ async function runSampler({
             if (s.id === "codemode-four-emissions") {
               for (const n of [1, 2, 3, 4]) {
                 assert.ok(
-                  output.includes(`result ${n}/4`),
-                  `missing native result ${n}`,
+                  !output.includes(`result ${n}/4`),
+                  "result ordinal bookkeeping returned",
                 );
                 assert.ok(
                   output.includes(`EMISSION_HEAD_${n}`),
@@ -1200,7 +1202,7 @@ async function runSampler({
               );
               assert.match(
                 compactCalls,
-                /12 more calls \(2 failed\)/,
+                /2 more calls \(2 failed\)/,
                 "omitted failure counter is not truthful",
               );
             }
@@ -1235,19 +1237,19 @@ async function runSampler({
                 "child did not complete real tool + final-model turns",
               );
               assert.ok(
-                frame.includes(`${usage.turns} turns`) &&
-                  frame.includes(`$${usage.cost.toFixed(4)}`) &&
+                !frame.includes(`${usage.turns} turns`) &&
+                  !frame.includes(`$${usage.cost.toFixed(4)}`) &&
                   frame.toLowerCase().includes("read") &&
                   /│ [├╰] ✓ Read/.test(frame),
-                "subagent tree/usage differs from executed child",
+                "subagent activity missing or telemetry leaked",
               );
             }
             if (s.id === "codemode-directories-discovery")
               assert.ok(
                 output.includes("✗ read") &&
                   output.includes("✓ read") &&
-                  output.includes("Took"),
-                "nested partial-failure statuses/timing missing",
+                  !output.includes("Took"),
+                "nested partial-failure statuses missing or telemetry leaked",
               );
             if (s.id === "codemode-agents-web") {
               for (const child of [
@@ -1512,6 +1514,13 @@ async function runSampler({
     // Isolated old expansion behavior: native Text renders all script/output rows.
     // Feed those actual visual rows to the SAME verifier, not echoed PTY source.
     const { Text } = await import("@earendil-works/pi-tui");
+    // Scale the isolated negative beyond the aggregate ceiling at every width.
+    // Execution-time truncation can make even huge real emissions quite short;
+    // neither a clipped real result nor the small head/tail fixture proves that
+    // the verifier rejects the old unbounded native Text behavior.
+    const unboundedFixture = Array(3).fill(
+      resultEntry.message.content.map((p: any) => p.text ?? "").join("\n"),
+    ).join("\n");
     for (const width of [20, 80, 140]) {
       const unbounded = {
         callLines: [
@@ -1533,9 +1542,7 @@ async function runSampler({
         resultLines: [
           "output",
           ...new Text(
-            resultEntry.message.content
-              .map((p: any) => p.text ?? "")
-              .join("\n"),
+            unboundedFixture,
             0,
             0,
           ).render(width - 4),

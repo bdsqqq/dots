@@ -763,29 +763,32 @@ export function renderAgentTree(
     0,
   );
   const toolCalls = r.toolCalls ?? getToolDisplayItems(r.messages ?? []);
+  const activity =
+    showExpanded || r.exitCode === -1
+      ? toolCalls
+      : toolCalls.filter((item) => item.isError !== false);
   const limit = showExpanded ? EXPANDED_ITEM_COUNT : COLLAPSED_ITEM_COUNT;
   // Keep failures before filling remaining slots with recent activity, then
   // restore chronology. Selection never rewrites the persisted call history.
   const selected = new Set<number>();
-  for (let i = toolCalls.length - 1; i >= 0 && selected.size < limit; i--) {
-    if (toolCalls[i]!.isError) selected.add(i);
+  for (let i = activity.length - 1; i >= 0 && selected.size < limit; i--) {
+    if (activity[i]!.isError) selected.add(i);
   }
-  for (let i = toolCalls.length - 1; i >= 0 && selected.size < limit; i--)
+  for (let i = activity.length - 1; i >= 0 && selected.size < limit; i--)
     selected.add(i);
   const visibleTools = [...selected]
     .sort((a, b) => a - b)
-    .map((i) => toolCalls[i]!);
-  const skippedTools = toolCalls.length - visibleTools.length;
-  const skippedErrors = toolCalls.filter(
+    .map((i) => activity[i]!);
+  const skippedTools = activity.length - visibleTools.length;
+  const skippedErrors = activity.filter(
     (item, i) => item.isError && !selected.has(i),
   ).length;
-  const usage = formatUsageStats(r.usage, r.model);
 
   container.addChild({
     render(width: number): string[] {
       if (width <= 0) return [];
       const rows: string[] = [];
-      let omitted = skippedTools > 0;
+      let omitted = toolCalls.length > visibleTools.length;
       const line = (text: string) => {
         const flat = text.replace(/\s+/g, " ").trim();
         if (visibleWidth(flat) > width) omitted = true;
@@ -813,10 +816,16 @@ export function renderAgentTree(
       };
       if (opts.header === "full")
         line(fg("toolTitle", theme.bold(opts.label ?? r.agent)));
-      section(answer, showExpanded ? 26 : 8);
-      // Diagnostics stay ahead of activity even when a failed child has output.
+      // Failure reasons must not follow a long successful-looking partial answer.
       if (isError) section(error, 3);
-      if (showExpanded && r.task) section(task, 4);
+      section(answer, showExpanded ? 26 : 8);
+      // Short task text is already the call title; expansion earns only additional context.
+      if (
+        showExpanded &&
+        r.task.length > 80 &&
+        trimBlankLines(r.task) !== output
+      )
+        section(task, 4);
       visibleTools.forEach((item, index) => {
         const connector = index === visibleTools.length - 1 ? "╰" : "├";
         line(`${fg("muted", connector)} ${renderToolLine(item, fg)}`);
@@ -828,9 +837,6 @@ export function renderAgentTree(
             `… ${skippedTools} calls omitted${skippedErrors ? ` (${skippedErrors} failed)` : ""}`,
           ),
         );
-      if (usage) line(fg("dim", usage));
-      if (showExpanded && r.continueId)
-        line(fg("dim", `continue: ${r.continueId}`));
       if (omitted) line(fg("muted", "/tool-output for full raw result"));
       return rows;
     },
@@ -964,9 +970,6 @@ if (import.meta.vitest) {
           .map((line) => stripTerminalSequences(line).trimEnd()),
       ).toEqual([
         "├ (no output)",
-        "Task: verify",
-        "settlement and abort",
-        "findings",
         "╰ ⋯ Grep /failure/ …",
         "/tool-output for fu…",
       ]);
@@ -1038,8 +1041,8 @@ if (import.meta.vitest) {
       });
 
       expect(container.render(80).map((line) => line.trimEnd())).toEqual([
-        "(no output)",
         "[aborted]",
+        "(no output)",
       ]);
     });
   });
@@ -1134,14 +1137,15 @@ if (import.meta.vitest) {
       expect(large).not.toContain("RAW_ONLY_SENTINEL");
       expect(large).toMatch(/rows omitted/);
       expect(large).toContain("… 28 calls omitted");
-      expect(small).toContain("… 37 calls omitted");
+      expect(small).not.toContain("calls omitted");
+      expect(small.match(/Read file-/g)).toHaveLength(2);
       expect(small).toContain("✕ Read file-0.ts extra context");
       expect(small).toContain("✕ Read file-1.ts extra context");
       expect(large.match(/Read file-/g)).toHaveLength(12);
       expect(small).not.toContain("Task:");
       expect(large).toContain("Task:");
-      expect(large).toContain("continue: continuation-reference");
-      expect(large.match(/fixture\/model/g)).toHaveLength(1);
+      expect(large).not.toContain("continue: continuation-reference");
+      expect(large).not.toContain("fixture/model");
       expect(large.match(/\/tool-output/g)).toHaveLength(1);
     });
 
@@ -1359,15 +1363,16 @@ if (import.meta.vitest) {
         expect(
           rows().filter((line: string) => line.includes("╰────")),
         ).toHaveLength(1);
-        expect(text).toContain("│ ├ ✕ Read child-1.ts");
-        expect(text).toContain("… 8 calls omitted");
+        expect(text).toContain("│ ╰ ✕ Read child-1.ts");
+        expect(text).toContain("/tool-output");
+        expect(text).not.toContain("calls omitted");
         expect(text).not.toContain("child-0.ts");
         expect(text).not.toContain("expanded task details");
         expect(text).toContain("markdown summary");
-        expect(text).toContain("fixture/model");
+        expect(text).not.toContain("fixture/model");
         component.setExpanded(true);
         text = rows().join("\n");
-        expect(text).toContain("expanded task details");
+        expect(text).not.toContain("expanded task details");
         expect(text).toContain("child-0.ts");
         for (const status of ["failed", "cancelled", "timed_out"] as const) {
           const failedSource: SingleResult = {
@@ -2241,8 +2246,10 @@ if (import.meta.vitest) {
 
       const expanded = new Container();
       renderAgentTree(details, expanded, true, mockTheme, { header: "none" });
-      expect(expanded.render(40).join("\n")).toContain("explain the call path");
-      expect(expanded.render(40).join("\n")).toContain("$0.0010");
+      expect(expanded.render(40).join("\n")).not.toContain(
+        "explain the call path",
+      );
+      expect(expanded.render(40).join("\n")).not.toContain("$0.0010");
     });
   });
 }

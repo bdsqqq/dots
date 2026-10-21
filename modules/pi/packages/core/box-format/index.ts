@@ -684,16 +684,11 @@ if (import.meta.vitest) {
             expect(hint).toBeLessThan(collapsed.indexOf("FINAL_ERROR"));
           }
           if (definition === codemodeRenderers && width >= 80) {
-            expect(collapsed).toContain("CODE_000");
-            expect(collapsed).toContain("CODE_029");
-            expect(collapsed).not.toContain("CODE_015");
-            expect(collapsed).toContain("child_0");
-            expect(collapsed).toContain("child_11");
-            expect(collapsed).not.toContain("child_6");
-            expect(collapsed).toContain("4 more calls");
+            expect(collapsed).not.toContain("CODE_000");
+            expect(collapsed).not.toContain("child_0");
             expect(collapsed).toContain("26 more lines");
-            expect(collapsed).toContain("/tmp/full-output");
-            expect(collapsed).toContain("Took 1.2s");
+            expect(collapsed).toContain("/tool-output");
+            expect(collapsed).not.toContain("Took 1.2s");
           }
           component.setExpanded(true);
           expect(rows(component, width).join("\n")).toContain(
@@ -806,7 +801,7 @@ if (import.meta.vitest) {
         },
       });
       const text = rows(component).join("\n");
-      expect(text).toContain("const answer");
+      expect(text).not.toContain("const answer");
       // Native highlighted content survives composition byte-for-byte at its allotted width.
       const nativeCallRows: string[] =
         component.callRendererComponent.render(76);
@@ -816,12 +811,14 @@ if (import.meta.vitest) {
           shellRows.some((shell) => shell.includes(native)),
         ),
       ).toBe(true);
-      expect(text).toContain("✓ read fixture 23ms");
-      expect(text).toContain("✗ probe nested failure bad 4ms");
+      expect(text).not.toContain("✓ read fixture");
+      expect(text).toContain("✗ probe nested failure bad");
       expect(text).toContain("⊘ cancelled");
       expect(text).toContain("script output");
-      expect(text).toContain("Took 1.2s");
+      expect(text).not.toContain("Took 1.2s");
       component.setExpanded(true);
+      expect(rows(component).join("\n")).toContain("const answer");
+      expect(rows(component).join("\n")).toContain("✓ read fixture");
       expect(rows(component).join("\n")).toContain("nested failure");
       expect(component.callRendererComponent).toBe(call);
       expect(component.resultRendererComponent).toBe(output);
@@ -944,7 +941,7 @@ if (import.meta.vitest) {
             for (const n of [1, 2, 3, 4]) {
               expect(text).toContain(`HEAD_${n}`);
               expect(text).toContain(`TAIL_${n}`);
-              expect(text).toContain(`result ${n}/4`);
+              expect(text).not.toContain(`result ${n}/4`);
             }
           }
         }
@@ -965,7 +962,7 @@ if (import.meta.vitest) {
             ...result,
             details: { outputPreview: malformed },
           });
-          expect(rows(component).join("\n")).toContain("output");
+          expect(rows(component).join("\n")).toContain("HEAD_1");
         }
         const values = await run(
           `text(''); text('a\\nb'); text(3); text(null); text([1,2]); text({x:1}); text('==> text 99/99 <=='); return {done:true};`,
@@ -1009,7 +1006,7 @@ if (import.meta.vitest) {
         );
         expect(mixed.content.some((p: any) => p.type === "image")).toBe(true);
         component.updateResult(mixed);
-        expect(rows(component).join("\n")).toContain("diagnostic");
+        expect(rows(component).join("\n")).toContain("AFTER_SUCCESS");
         expect(mixed.details.outputPreview.imageFiles.head).toContain(
           "pi-codemode",
         );
@@ -1075,7 +1072,7 @@ if (import.meta.vitest) {
         );
         for (const width of [20, 80]) {
           const grid = nativeView(fourWithProgram, width);
-          const excerpt = grid.slice(grid.indexOf("result 4/4"));
+          const excerpt = grid.slice(grid.indexOf("PROGRAM_RESULT"));
           expect(excerpt).toContain("PROGRAM_RESULT");
           expect(excerpt).toContain('print("done")');
           // Seven logical rows minus the trailing blank = six meaningful rows, two retained.
@@ -1087,7 +1084,7 @@ if (import.meta.vitest) {
         );
         for (const width of [20, 80]) {
           const grid = nativeView(whitespace, width);
-          for (let n = 1; n <= 3; n++) expect(grid).toContain(`result ${n}/3`);
+          expect(grid).not.toMatch(/result \d\/3/);
           expect(grid).toContain("(blank text)");
           expect(grid).toContain("(empty text)");
           expect(grid).not.toContain("/tool-output");
@@ -1231,6 +1228,61 @@ if (import.meta.vitest) {
             .split("\n")
             .some((line: string) => line.trim() === "B"),
         ).toBe(false);
+        // The immediately shipped preview already fits ABC; boundedness alone
+        // must not let its bookkeeping headings pass the content-first contract.
+        expect(
+          spawnSync(
+            "git",
+            ["apply", "-R", "--include=dist/extensions/codemode/renderer.js"],
+            { cwd: temporary, input: shippedPatch.stdout },
+          ).status,
+        ).toBe(0);
+        const shipped = spawnSync(
+          "git",
+          ["show", "58c8fd1a:modules/pi/patches/pi-coding-agent-1.3.0.patch"],
+          { encoding: "utf8" },
+        );
+        expect(shipped.status).toBe(0);
+        expect(
+          spawnSync(
+            "git",
+            ["apply", "--include=dist/extensions/codemode/renderer.js"],
+            { cwd: temporary, input: shipped.stdout },
+          ).status,
+        ).toBe(0);
+        const shippedSource = (
+          await readFile(
+            `${temporary}/dist/extensions/codemode/renderer.js`,
+            "utf8",
+          )
+        ).replace(
+          /from "([^"]+)"/g,
+          (_m: string, spec: string) =>
+            `from ${JSON.stringify(pathToFileURL(require.resolve(spec)).href)}`,
+        );
+        await writeFile(`${temporary}/shipped-renderer.mjs`, shippedSource);
+        const shippedRenderer = (
+          await import(pathToFileURL(`${temporary}/shipped-renderer.mjs`).href)
+        ).codemodeRenderers;
+        const contentFirst = (renderer: any) => {
+          const text = renderer
+            .renderResult(
+              abc,
+              { expanded: false, isPartial: false },
+              plainTheme,
+              { state: {}, showImages: false },
+            )
+            .render(100)
+            .join("\n");
+          expect(text).not.toMatch(/output ·|result \d+\/\d+ ·/);
+          expect(
+            text
+              .split("\n")
+              .filter((line: string) => /^[ABC]$/.test(line.trim())),
+          ).toHaveLength(3);
+        };
+        contentFirst(codemodeRenderers);
+        expect(() => contentFirst(shippedRenderer)).toThrow();
         const eight = await run(
           `text(Array.from({length:8},(_,n)=>'ROW_'+n).join('\\n'));`,
         );
@@ -1246,7 +1298,9 @@ if (import.meta.vitest) {
         );
         for (const width of [20, 80, 100, 140]) {
           const compact = nativeView(abc, width);
-          expect(compact).toContain("result 2/3");
+          expect(compact).not.toMatch(
+            /output ·|result \d\/3|^script$|^calls$/m,
+          );
           expect(compact.split("\n").some((line) => line.trim() === "B")).toBe(
             true,
           );
@@ -1263,7 +1317,8 @@ if (import.meta.vitest) {
           }
           const mixedGrid = nativeView(mixedSize, width);
           for (let n = 0; n < 7; n++) expect(mixedGrid).toContain("T_" + n);
-          expect(mixedGrid).toContain("result 8/8");
+          expect(mixedGrid).toContain("BIG_0");
+          expect(mixedGrid).not.toContain("result 8/8");
           expect(
             mixedGrid.split("\n").filter((line) => /^(T_|BIG_)/.test(line))
               .length,
@@ -1317,8 +1372,17 @@ if (import.meta.vitest) {
           await run(`text('a'.repeat(112)+'\\n'+'b'.repeat(300));`)
         ).details.outputPreview.results[0];
         expect(newlineAtCut.partialHead).toBeUndefined();
-        expect(nativeView(abc, 100)).toContain("0 images");
-        expect(nativeView(eight, 100)).toContain("1 result");
+        expect(nativeView(abc, 100)).not.toContain("0 images");
+        expect(nativeView(eight, 100)).not.toContain("1 result");
+        const literal = await run(
+          `text('output · 4 results');text('result1/1');`,
+        );
+        expect(nativeView(literal, 100)).toContain("output · 4 results");
+        expect(nativeView(literal, 100)).toContain("result1/1");
+        expect(nativeView(await run("void 0"), 100)).toContain("(no output)");
+        expect(nativeView(await run("text('')"), 100)).toContain(
+          "(empty text)",
+        );
         for (const [code, imageFailure, spillFailure, scriptFailure] of [
           [`image('data:image/png;base64,${png}');`, true, false, false],
           [
@@ -1507,9 +1571,7 @@ if (import.meta.vitest) {
         expect(expanded).toContain("OUTPUT_HEAD");
         expect(expanded.replace(/[\s│]/g, "")).toContain("OPAQUE_JSON_TAIL");
         expect(expanded).toContain("FINAL_ERROR");
-        expect(expanded).toContain("script");
-        expect(expanded).toContain("calls");
-        expect(expanded).toContain("output");
+        expect(expanded).not.toMatch(/^ [│] (script|calls|output)\s*$/m);
         expect(expanded).not.toContain("Script failed");
         expect(
           expandedRows.filter((line) => /│ [✓✗…⊘] child_/.test(line)),
@@ -1519,10 +1581,10 @@ if (import.meta.vitest) {
           expect(expanded).toContain("… child_18");
           expect(expanded).toContain("⊘ child_19");
           expect(expanded).toContain("28 more calls");
-          expect(expanded).toContain("Model calls: $0.40");
-          expect(expanded).toContain("/tool-output for raw");
-          expect(expanded).toContain("/tmp/codemode-full-output");
-          expect(expanded).toContain("Took 1.2s");
+          expect(expanded).not.toContain("Model calls:");
+          expect(expanded.match(/\/tool-output/g)).toHaveLength(1);
+          expect(expanded).not.toContain("/tmp/codemode-full-output");
+          expect(expanded).not.toContain("Took 1.2s");
           expect(expanded).toContain('"demo":{"result":{"allSettled"');
           expect(expanded).not.toContain("✗ OPAQUE_NOT_A_CALL");
         }
@@ -1576,7 +1638,7 @@ if (import.meta.vitest) {
       expect(expanded).toContain("✗ fail_11 REASON_11");
       expect(expanded).not.toContain("fail_12");
       expect(expanded).not.toContain("PARTIAL_OUTPUT_MUST_WAIT");
-      expect(expanded).toContain("Elapsed");
+      expect(expanded).not.toContain("Elapsed");
       expect(expandedRows.length).toBeLessThan(30);
       component.setExpanded(false);
       expect(rows(component, 100).join("\n")).toContain(
@@ -2543,10 +2605,10 @@ if (import.meta.vitest) {
         ).toContain("expanded detail");
         expect(
           plain(data.renderedTools["call-10"].resultHtmlExpanded),
-        ).toContain("Took 1.2s");
+        ).not.toContain("Took 1.2s");
         expect(
           plain(data.renderedTools["call-10"].resultHtmlExpanded),
-        ).toContain("✓ read fixture 4ms");
+        ).toContain("✓ read fixture");
         const expandable = document.querySelector(
           "#tool-call-call-5 .tool-output.expandable",
         );
