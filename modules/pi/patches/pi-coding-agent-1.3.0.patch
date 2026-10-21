@@ -1292,10 +1292,10 @@ index dcf5bf9b84394f2d151e6862733b239d8d6fbe84..3461fea40046f4a26bb4dd9189ec4ee3
      },
      renderResult(result, _options, theme, context) {
 diff --git a/dist/extensions/codemode/renderer.js b/dist/extensions/codemode/renderer.js
-index d97b1df..e2f0f49 100644
+index d97b1df..3e75f48 100644
 --- a/dist/extensions/codemode/renderer.js
 +++ b/dist/extensions/codemode/renderer.js
-@@ -1,65 +1,145 @@
+@@ -1,65 +1,153 @@
 -/**
 - * Presentation for the codemode tool.
 - *
@@ -1412,6 +1412,14 @@ index d97b1df..e2f0f49 100644
 +            const section = (title, item, color = "toolOutput", result) => {
 +                const head = rows(item.omittedChars ? item.head.replace(/\n$/, "") : item.head === "" ? "(empty text)" : item.head, color);
 +                const tail = item.omittedChars && item.tail ? rows(item.tail, color) : [];
++                // Plan against meaningful visual edges, not Text's padded/reset-only blank rows.
++                // Only these fresh display arrays change; source units and interior blanks remain intact.
++                const blank = (line) => stripTerminalSequences(line).trim() === "";
++                while (head.length && blank(head[0])) head.shift();
++                if (!head.length) while (tail.length && blank(tail[0])) tail.shift();
++                while (tail.length && blank(tail.at(-1))) tail.pop();
++                if (!tail.length) while (head.length && blank(head.at(-1))) head.pop();
++                if (!head.length && !tail.length) head.push(...rows("(blank text)", color));
 +                const needed = head.length + tail.length;
 +                return { title, item, color, result, head, tail, needed, allocation: Math.min(2, needed), limit: needed };
 +            };
@@ -1480,7 +1488,7 @@ index d97b1df..e2f0f49 100644
          const code = str(args?.code);
          const title = theme.fg("toolTitle", theme.bold("codemode"));
          const component = context.lastComponent ?? new Container();
-@@ -70,15 +150,13 @@ export const codemodeRenderers = {
+@@ -70,15 +158,13 @@ export const codemodeRenderers = {
          }
          component.addChild(new Text(title, 0, 0));
          if (code) {
@@ -1502,7 +1510,7 @@ index d97b1df..e2f0f49 100644
          }
          return component;
      },
-@@ -88,51 +166,55 @@ export const codemodeRenderers = {
+@@ -88,51 +174,55 @@ export const codemodeRenderers = {
          component.clear();
          const calls = result.details?.calls ?? [];
          if (calls.length > 0) {
@@ -1595,7 +1603,7 @@ index d97b1df..e2f0f49 100644
          if (timerText) {
              component.addChild(new Spacer(1));
              component.addChild(new Text(theme.fg("muted", timerText), 0, 0));
-@@ -140,4 +222,4 @@ export const codemodeRenderers = {
+@@ -140,4 +230,4 @@ export const codemodeRenderers = {
          return component;
      },
  };

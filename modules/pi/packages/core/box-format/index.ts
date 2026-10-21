@@ -1064,6 +1064,64 @@ if (import.meta.vitest) {
             })
             .render(width)
             .join("\n");
+        const program =
+          'PROGRAM_RESULT\n# comment\ndef main():\n  x = 1\n  print(x)\nprint("done")\n';
+        const fourWithProgram = await run(
+          `text(Array.from({length:300},(_,n)=>n+' log row').join('\\n')); text(Array.from({length:8},(_,n)=>'HOST_'+n).join('\\n')); text(Array.from({length:8},(_,n)=>'ASSET_'+n).join('\\n')); text(${JSON.stringify(program)});`,
+        );
+        const originalProgram = JSON.stringify(fourWithProgram);
+        expect(fourWithProgram.details.outputPreview.results[3].head).toBe(
+          program,
+        );
+        for (const width of [20, 80]) {
+          const grid = nativeView(fourWithProgram, width);
+          const excerpt = grid.slice(grid.indexOf("result 4/4"));
+          expect(excerpt).toContain("PROGRAM_RESULT");
+          expect(excerpt).toContain('print("done")');
+          // Seven logical rows minus the trailing blank = six meaningful rows, two retained.
+          expect(excerpt).toContain("4 rows omitted");
+        }
+        expect(JSON.stringify(fourWithProgram)).toBe(originalProgram);
+        const whitespace = await run(
+          `text(' \\n\\t\\n');text('');text('\\u001b[0m\\n\\u001b[0m');`,
+        );
+        for (const width of [20, 80]) {
+          const grid = nativeView(whitespace, width);
+          for (let n = 1; n <= 3; n++) expect(grid).toContain(`result ${n}/3`);
+          expect(grid).toContain("(blank text)");
+          expect(grid).toContain("(empty text)");
+          expect(grid).not.toContain("/tool-output");
+        }
+        const interior = await run(
+          `text('\\u001b[0m\\nSTART\\n\\n  indented\\nEND\\n\\u001b[0m');`,
+        );
+        for (const width of [20, 80]) {
+          const grid = nativeView(interior, width);
+          expect(grid).toContain("START");
+          expect(grid).toContain("  indented");
+          const lines = grid.split("\n");
+          const start = lines.findIndex((line) => line.trim() === "START");
+          expect(start).toBeGreaterThanOrEqual(0);
+          expect(lines[start + 1]?.trim()).toBe("");
+          expect(grid).not.toContain("/tool-output");
+        }
+        const consoleEdges = await run(
+          `console.log('\\nCONSOLE_START\\n\\n  detail\\nCONSOLE_END\\n');`,
+        );
+        const originalConsole = JSON.stringify(consoleEdges);
+        for (const width of [20, 80]) {
+          const grid = nativeView(consoleEdges, width);
+          const lines = grid.split("\n");
+          const start = lines.findIndex(
+            (line) => line.trim() === "CONSOLE_START",
+          );
+          expect(start).toBeGreaterThanOrEqual(0);
+          expect(lines[start + 1]?.trim()).toBe("");
+          expect(grid).toContain("  detail");
+          expect(grid).toContain("CONSOLE_END");
+          expect(grid).not.toContain("/tool-output");
+        }
+        expect(JSON.stringify(consoleEdges)).toBe(originalConsole);
         const logs = Array.from(
           { length: 300 },
           (_, n) => `${n + 1} line of output`,
@@ -1162,6 +1220,11 @@ if (import.meta.vitest) {
             )
             .render(100)
             .join("\n");
+        expect(
+          oldView(fourWithProgram).slice(
+            oldView(fourWithProgram).indexOf("result 4/4"),
+          ),
+        ).not.toContain('print("done")');
         const abc = await run(`text('A');text('B');text('C');`);
         expect(
           oldView(abc)
