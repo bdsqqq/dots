@@ -2,34 +2,34 @@ let
   overlay =
     final: prev:
     let
-      version = "0.5.0";
+      version = "0.8.1";
       src = prev.fetchFromGitHub {
         owner = "neurosnap";
         repo = "zmx";
         rev = "v${version}";
-        hash = "sha256-eVp9Lgpx4Dn60NH17zZ+VOUy1VVK73A17bIkPFDKuz4=";
+        hash = "sha256-0gxaoup7boFMm4NQCQ8mHusX1oS8h/MacFxhSPLi2XM=";
       };
 
       artifact =
         if final.stdenv.hostPlatform.isDarwin && final.stdenv.hostPlatform.isAarch64 then
           prev.fetchurl {
             url = "https://zmx.sh/a/zmx-${version}-macos-aarch64.tar.gz";
-            hash = "sha256-O5N58P8M8Qf3+HBI0sRfb76r7ViNZ2rYasIYvtko0Qc=";
+            hash = "sha256-HYaxyfukf6cHpvDpdrIFELB8HCbQ7QELlBSyosXmvu8=";
           }
         else if final.stdenv.hostPlatform.isDarwin && final.stdenv.hostPlatform.isx86_64 then
           prev.fetchurl {
             url = "https://zmx.sh/a/zmx-${version}-macos-x86_64.tar.gz";
-            hash = "sha256-d27kjv1Q0L2Xtm+ktDA6JmKVwKDhYwRbc6xmJo1XgbY=";
+            hash = "sha256-MghXitkdimIHd3LcihNpqSAz2ehBabrGc++FQrb/lwc=";
           }
         else if final.stdenv.hostPlatform.isLinux && final.stdenv.hostPlatform.isAarch64 then
           prev.fetchurl {
             url = "https://zmx.sh/a/zmx-${version}-linux-aarch64.tar.gz";
-            hash = "sha256-youXaIO9bdahR9kUD9b2JewpEMs6chCCGksoWND8nVw=";
+            hash = "sha256-lD60TIEjM/1FDaEgl1Ia/TM5Q26G+MKsYYuQXEyezmg=";
           }
         else if final.stdenv.hostPlatform.isLinux && final.stdenv.hostPlatform.isx86_64 then
           prev.fetchurl {
             url = "https://zmx.sh/a/zmx-${version}-linux-x86_64.tar.gz";
-            hash = "sha256-TMH2uFTczcq65MuRvQN5oj5vghAEivXYHgZh5ZSlDCg=";
+            hash = "sha256-39dXILlCRm8ohwcxzIbbwHr6cvuPO9XutP9wfk7s6+g=";
           }
         else
           throw "unsupported platform for zmx: ${final.stdenv.hostPlatform.system}";
@@ -48,7 +48,9 @@ let
           mkdir -p "$out/bin"
           tar -xzf "${artifact}" -C "$out/bin"
           chmod +x "$out/bin/zmx"
-          "$out/bin/zmx" completions zsh > zmx.zsh
+          # zmx initializes its state directories even for completions. Keep
+          # those writes inside the build sandbox rather than its read-only HOME.
+          ZMX_DIR="$TMPDIR/zmx-completions" "$out/bin/zmx" completions zsh > zmx.zsh
           installShellCompletion --cmd zmx --zsh zmx.zsh
           runHook postInstall
         '';

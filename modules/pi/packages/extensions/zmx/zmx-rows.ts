@@ -6,13 +6,14 @@ export interface ZmxRow {
   clients: string;
   pid: string;
   created: string;
-  startDir: string;
+  cwd: string;
   details: Record<string, string>;
 }
 
 const KEY_ALIASES = {
   session_name: "name",
-  started_in: "start_dir",
+  started_in: "cwd",
+  start_dir: "cwd",
 } as const;
 
 const KNOWN_KEYS = new Set([
@@ -21,6 +22,7 @@ const KNOWN_KEYS = new Set([
   "pid",
   "clients",
   "created",
+  "cwd",
   "start_dir",
   "started_in",
 ]);
@@ -33,7 +35,7 @@ type KnownKey =
   | "pid"
   | "clients"
   | "created"
-  | "start_dir";
+  | "cwd";
 
 function normalizeKey(key: string): string {
   return KEY_ALIASES[key as keyof typeof KEY_ALIASES] ?? key;
@@ -54,8 +56,11 @@ export function parseZmxList(output: string): ZmxRow[] {
 export function parseZmxListLine(line: string): ZmxRow | undefined {
   const details: Record<string, string> = {};
 
-  for (const rawField of line.split("\t")) {
-    const field = stripPrefixBeforeKnownKey(rawField.trim());
+  for (const [index, rawField] of line.split("\t").entries()) {
+    const field =
+      index === 0
+        ? stripPrefixBeforeKnownKey(rawField.trim())
+        : rawField.trim();
     const separator = field.indexOf("=");
     if (separator === -1) continue;
 
@@ -63,7 +68,9 @@ export function parseZmxListLine(line: string): ZmxRow | undefined {
     if (!KNOWN_KEYS.has(rawKey)) continue;
 
     const key = normalizeKey(rawKey) as KnownKey;
-    details[key] = field.slice(separator + 1);
+    // Labels follow built-in fields and can reuse keys such as cwd or pid.
+    // Keep the first value so labels cannot replace session metadata.
+    details[key] ??= field.slice(separator + 1);
   }
 
   if (!details.name) return undefined;
@@ -73,7 +80,7 @@ export function parseZmxListLine(line: string): ZmxRow | undefined {
     clients: details.clients ?? "?",
     pid: details.pid ?? "?",
     created: details.created ?? "",
-    startDir: details.start_dir ?? "",
+    cwd: details.cwd ?? "",
     details,
   };
 }
@@ -86,7 +93,7 @@ export function formatZmxRows(rows: readonly ZmxRow[]): string {
         `clients:${row.clients}`,
         `pid:${row.pid}`,
         `created:${row.created}`,
-        row.startDir,
+        row.cwd,
       ].join("\t"),
     )
     .join("\n");
@@ -108,6 +115,16 @@ if (import.meta.vitest) {
   const { describe, expect, it } = import.meta.vitest;
 
   describe("zmxRowsFromListOutput", () => {
+    it("parses current cwd without letting labels overwrite built-in fields", () => {
+      expect(
+        zmxRowsFromListOutput(
+          "→ name=nix.build\tpid=123\tclients=0\tcreated=177\tcwd=/repo with spaces/a=b\tcmd=bash\tcwd=fake\tpid=999\tsession_name=fake\tproject=nix\n",
+        ),
+      ).toBe(
+        "nix.build\tclients:0\tpid:123\tcreated:177\t/repo with spaces/a=b\n",
+      );
+    });
+
     it("parses name output", () => {
       expect(
         zmxRowsFromListOutput(
