@@ -43,23 +43,24 @@ in
       { pkgs, ... }:
       let
         package = (
-          pkgs.wacli or (pkgs.buildGoModule {
+          # v0.24.0 requires Go 1.27; keep this selection local to the fallback.
+          pkgs.wacli or (pkgs.buildGo127Module {
             pname = "wacli";
-            version = "0.2.0";
+            version = "0.24.0";
             src = pkgs.fetchFromGitHub {
-              owner = "steipete";
+              owner = "openclaw";
               repo = "wacli";
-              tag = "v0.2.0";
-              hash = "sha256-tJ5d33VVW5aYvacHJEVm8cVKVtpdWCIOdHNy2WTR4Cg=";
+              tag = "v0.24.0";
+              hash = "sha256-7Apg6qK8ucfMYa5w/y8Q6NCr5qyZtYpgNknkZNJXzmk=";
             };
-            vendorHash = "sha256-0mHZjZHQBHTlPzVT4ScyRBSaQ4Z8FEm2GFfsPF6Tjrw=";
+            vendorHash = "sha256-Kcbd/If+63q4TRifEH3iZ+Doc5sF10MQLViBhsr0buE=";
             subPackages = [ "cmd/wacli" ];
             # Message search uses SQLite FTS5; upstream enables it in release builds.
             tags = [ "sqlite_fts5" ];
             ldflags = [
               "-s"
               "-w"
-              "-X main.version=0.2.0"
+              "-X main.version=0.24.0"
             ];
             meta.mainProgram = "wacli";
             meta.license = pkgs.lib.licenses.mit;
@@ -81,8 +82,8 @@ in
             } "$@"
           '')
         ];
-        # v0.2.0 has flags, not a settings file. Its store is private mutable SQLite
-        # state (including device keys and messages), never a tracked config link.
+        # Native config.yaml and SQLite state remain CLI-owned and writable;
+        # readiness selects an explicit store rather than a named-account default.
       };
   };
 }

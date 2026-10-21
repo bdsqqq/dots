@@ -7,9 +7,9 @@ description: "Use wacli for bounded searches of an existing local WhatsApp store
 
 ## choose the identity and bound the task
 
-1. Check `wacli --version` and command help. This module's fallback is v0.2.0;
-   never assume newer named-account flags exist. Select the intended private
-   store explicitly with `--store DIR` when using multiple identities.
+1. Check `wacli --version` and command help. This module's fallback is v0.24.0;
+   check installed help before choosing named-account flags. Select the intended
+   private store explicitly with `--store DIR` when using multiple identities.
 2. A bounded local search is
    `wacli --store DIR messages search 'QUERY' --limit 20 --json`.
    This reads already captured messages, not a complete remote archive.
@@ -27,9 +27,12 @@ write a message draft does not authorize sending it.
 
 ## private pairing lifecycle — only when requested
 
-v0.2.0 uses `~/.wacli` on macOS AND Linux, overridden with `--store DIR`.
-It has no native settings file. Newer versions may change this; check installed
-help. A store identifies one linked WhatsApp device/account and contains:
+v0.24.0 defaults to `~/.wacli` on macOS and an XDG state directory on Linux
+(with legacy-path compatibility), overridden with `--store DIR` or
+`WACLI_STORE_DIR`. Native `config.yaml` can select named accounts. This module
+does not provision that config; explicit `--store DIR` avoids default-account
+selection and cannot be combined with `--account`. Check installed help.
+A store identifies one linked WhatsApp device/account and contains:
 
 - `session.db`: device identity and encryption keys
 - `wacli.db`: private chats/messages and search index
@@ -54,6 +57,8 @@ identities. Do not silently start `sync --follow` or create a daemon.
 `wacli --store DIR auth status` and `wacli --store DIR doctor` do not connect by
 default, but open/create databases and acquire the lock: they are NOT metadata-only
 inspection. Run them only with permission to touch private local state.
+`doctor --read-only` uses native read-only inspection and rejects `--connect`;
+`groups info` requires writable mode because it caches live metadata.
 `doctor --connect` also connects remotely. During setup-only work, use filesystem
 metadata and `--help` instead. Never inspect session key values or database rows
 just to establish whether files exist.
@@ -70,7 +75,7 @@ Report the binary version, selected store (redact private path if needed), query
 bounds, and sanitized result/blocker. Help is a binary smoke check; pairing,
 sync, remote access, and sending remain separate runtime checks.
 
-Source contracts: [v0.2.0 store path](https://github.com/openclaw/wacli/blob/v0.2.0/internal/config/config.go),
-[auth and logout](https://github.com/openclaw/wacli/blob/v0.2.0/cmd/wacli/auth.go),
-[doctor side effects](https://github.com/openclaw/wacli/blob/v0.2.0/cmd/wacli/doctor.go),
-[storage layout](https://github.com/openclaw/wacli/blob/v0.2.0/docs/spec.md).
+Source contracts: [v0.24.0 store path](https://github.com/openclaw/wacli/blob/v0.24.0/internal/config/config.go),
+[auth and logout](https://github.com/openclaw/wacli/blob/v0.24.0/cmd/wacli/auth.go),
+[doctor side effects](https://github.com/openclaw/wacli/blob/v0.24.0/cmd/wacli/doctor.go),
+[storage layout](https://github.com/openclaw/wacli/blob/v0.24.0/docs/spec.md).

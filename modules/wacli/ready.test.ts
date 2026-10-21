@@ -13,7 +13,15 @@ const runner =
 const report = (authenticated = true, connected = true) => ({
   success: true,
   error: null,
-  data: { authenticated, connected, lock_held: false },
+  data: {
+    authenticated,
+    connected,
+    lock_held: false,
+    session_revoked: false,
+    fts_enabled: true,
+    connection_state: connected ? "connected" : "disconnected",
+    linked_jid: "123:1@s.whatsapp.net",
+  },
 });
 test("paired state plus selected authenticated read; no sync and no helper DB replacement", () => {
   const dir = fixture();
@@ -39,7 +47,8 @@ test("paired state plus selected authenticated read; no sync and no helper DB re
     };
     check(cfg, false, run);
     assert.equal(calls.length, 2);
-    assert.ok(calls[0].includes("--connect"));
+    assert.deepEqual(calls[0], ["--store", dir, "--timeout", "10s", "--json", "doctor", "--connect"]);
+    assert.deepEqual(calls[1], ["--store", dir, "--timeout", "10s", "--json", "groups", "info", "--jid", "123@g.us"]);
     assert.ok(calls.every((c) => !c.includes("sync") && !c.includes("auth")));
     files.forEach((p, i) => assert.deepEqual(readFileSync(p), before[i]));
     check(cfg, true, runner([report(true, false)]));
@@ -51,6 +60,20 @@ test("paired state plus selected authenticated read; no sync and no helper DB re
       { success: true, data: { authenticated: "true" } },
     ])
       assert.throws(() => check(cfg, false, runner([value])), /unpaired|connection/);
+    for (const data of [
+      { session_revoked: true },
+      { session_revoked: undefined },
+      { store_error: "PRIVATE_STORE_ERROR" },
+      { fts_enabled: false },
+      { lock_held: true },
+    ]) {
+      const unhealthy = report();
+      Object.assign(unhealthy.data, data);
+      assert.throws(() => check(cfg, true, runner([unhealthy])), /unpaired, locked, or invalid/);
+    }
+    const inconsistent = report();
+    inconsistent.data.connection_state = "logged_out";
+    assert.throws(() => check(cfg, false, runner([inconsistent])), /connection failed/);
     assert.throws(
       () =>
         check(
