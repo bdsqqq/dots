@@ -2,40 +2,14 @@
 let
   isDarwin = lib.hasInfix "darwin" hostSystem;
 
-  # Finder records Trash metadata that powers the visible Trash UI and Put Back.
-  # trash-cli uses freedesktop .trashinfo files, which creates a parallel trash
-  # store on macOS instead of the UX users expect.
+  # Use native macOS Trash rather than trash-cli's parallel freedesktop store.
+  # The system CLI avoids Finder automation permission prompts and hangs.
   trashDarwin = pkgs.runCommand "trash-darwin" { } ''
     mkdir -p "$out/bin"
 
     cat > "$out/bin/trash" <<'EOF'
     #!/usr/bin/env bash
-    set -euo pipefail
-
-    if [ "$#" -eq 0 ]; then
-      echo "usage: trash FILE..." >&2
-      exit 64
-    fi
-
-    for path in "$@"; do
-      case "$path" in
-        --) continue ;;
-        -*) echo "trash: unsupported darwin option: $path" >&2; exit 64 ;;
-      esac
-
-      case "$path" in
-        /*) absolute_path="$path" ;;
-        *) absolute_path="$PWD/$path" ;;
-      esac
-
-      /usr/bin/osascript - "$absolute_path" <<'APPLESCRIPT'
-    on run argv
-      set targetPath to item 1 of argv
-      set targetFile to POSIX file targetPath
-      tell application "Finder" to delete targetFile
-    end run
-    APPLESCRIPT
-    done
+    exec /usr/bin/trash "$@"
     EOF
 
     cat > "$out/bin/trash-empty" <<'EOF'
