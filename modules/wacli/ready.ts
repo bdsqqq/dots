@@ -55,13 +55,16 @@ export function check(cfg: Config, local = false, run: Runner = capture): void {
     report.error != null ||
     !record(report.data) ||
     report.data.authenticated !== true ||
-    report.data.lock_held !== false
+    report.data.lock_held !== false ||
+    report.data.session_revoked !== false ||
+    (report.data.store_error != null && report.data.store_error !== "") ||
+    report.data.fts_enabled !== true
   )
     throw new Error(
       "WhatsApp is unpaired, locked, or invalid; resolve the selected store privately",
     );
   if (local) return;
-  if (report.data.connected !== true)
+  if (report.data.connected !== true || report.data.connection_state !== "connected")
     throw new Error("WhatsApp connection failed; check the selected linked device privately");
   // doctor --connect alone only proves transport. A single group info request
   // proves authenticated access without sync/backfill; upstream caches its metadata.
