@@ -738,7 +738,7 @@ async function runSampler({
     "node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/tool-execution.js",
     "node_modules/@earendil-works/pi-coding-agent/dist/extensions/codemode/renderer.js",
     "node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/visual-truncate.js",
-    "patches/pi-coding-agent-1.3.0.patch",
+    "patches/pi-coding-agent-1.4.0.patch",
     "node_modules/@earendil-works/pi-tui/package.json",
     "node_modules/@earendil-works/pi-tui/dist/tui.js",
   );
