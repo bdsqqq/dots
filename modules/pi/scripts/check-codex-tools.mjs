@@ -10,9 +10,9 @@ import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 if (!process.argv.includes("--live"))
   throw new Error("explicit --live required; uses existing Codex OAuth");
-const { loadProviderContractTools } = await createJiti(import.meta.url).import(
-  "../packages/core/prompt-patch/provider-contract.ts",
-);
+const { loadProviderContractTools, getCodexRequestTools } = await createJiti(
+  import.meta.url,
+).import("../packages/core/prompt-patch/provider-contract.ts");
 const tools = await loadProviderContractTools(process.argv.includes("--built"));
 const runtime = await ModelRuntime.create({ refreshOnCreate: false });
 const signal = AbortSignal.timeout(60000);
@@ -45,19 +45,20 @@ const result = await runtime.complete(
     reasoningEffort: "low",
     toolChoice: "none",
     onPayload(payload) {
+      const declaredTools = getCodexRequestTools(payload);
       assert.deepEqual(
-        payload.tools.map((tool) => tool.name).sort(),
+        declaredTools.map((tool) => tool.name).sort(),
         tools.map((tool) => tool.name).sort(),
       );
       inventory = {
         model: model.id,
-        tools: payload.tools.map(({ name, strict, type }) => ({
+        tools: declaredTools.map(({ name, strict, type }) => ({
           name,
           strict,
           type,
         })),
         sha256: createHash("sha256")
-          .update(JSON.stringify(payload.tools))
+          .update(JSON.stringify(declaredTools))
           .digest("hex"),
       };
     },

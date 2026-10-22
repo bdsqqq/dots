@@ -58,6 +58,31 @@ export async function loadProviderContractTools(
   return [...tools.values()];
 }
 
+type CodexToolDeclaration = {
+  name: string;
+  strict?: boolean | null;
+  type: string;
+  parameters?: {
+    type: string;
+    required: string[];
+    properties: Record<string, unknown>;
+  };
+};
+
+export function getCodexRequestTools(payload: unknown): CodexToolDeclaration[] {
+  const request = payload as {
+    tools?: CodexToolDeclaration[];
+    input?: Array<{ type?: string; tools?: CodexToolDeclaration[] }>;
+  };
+  // 1.4 declares tools in transcript items on models supporting incremental tools.
+  return [
+    ...(request.tools ?? []),
+    ...(request.input ?? [])
+      .filter((item) => item.type === "additional_tools")
+      .flatMap((item) => item.tools ?? []),
+  ];
+}
+
 if (import.meta.vitest) {
   const { it, expect, vi } = import.meta.vitest;
   const { InMemoryCredentialStore, normalizeContext } =
@@ -99,104 +124,123 @@ if (import.meta.vitest) {
     },
   );
 
-  it("advertises the complete registry through the actual Codex request builder", async () => {
-    const tools = await loadProviderContractTools();
-    const runtime = await ModelRuntime.create({
-      credentials: new InMemoryCredentialStore(),
-      refreshOnCreate: false,
-      modelsPath: null,
-    });
-    const model = runtime.getModel("openai-codex", "gpt-6-astra");
-    if (!model || model.api !== "openai-codex-responses")
-      throw new Error("Codex test model missing");
-    const network = vi
-      .spyOn(globalThis, "fetch")
-      .mockRejectedValue(new Error("network forbidden"));
-    let payload:
-      | {
-          tools: Array<{
-            name: string;
-            strict?: boolean | null;
-            type: string;
-            parameters?: {
-              type: string;
-              required: string[];
-              properties: Record<string, unknown>;
-            };
-          }>;
-        }
-      | undefined;
-    try {
-      // Only token shape is needed before onPayload; no credential is read or sent.
-      const token = `test.${Buffer.from(
-        JSON.stringify({
-          "https://api.openai.com/auth": { chatgpt_account_id: "offline-test" },
-        }),
-      ).toString("base64url")}.test`;
-      const result = await stream(
-        { ...model, api: "openai-codex-responses" },
-        normalizeContext({
-          messages: [
-            { role: "user", content: "offline schema check", timestamp: 0 },
-          ],
-          tools,
-        }),
-        {
-          apiKey: token,
-          transport: "sse",
-          onPayload(value) {
-            payload = value as typeof payload;
-            throw new Error("captured before transport");
-          },
-        },
-      ).result();
-      expect(result.errorMessage).toContain("captured before transport");
-      expect(payload?.tools.map((tool) => tool.name).sort()).toEqual(
-        tools.map((tool) => tool.name).sort(),
-      );
-      expect(
-        payload?.tools.find((tool) => tool.name === "read_web_page"),
-      ).toMatchObject({
-        strict: false,
-      });
-      expect(
-        payload?.tools.find((tool) => tool.name === "web_search"),
-      ).toMatchObject({
-        strict: true,
-      });
-      for (const name of ["edit", "write"]) {
-        const wire = payload?.tools.find((tool) => tool.name === name);
-        expect(wire).toMatchObject({
-          type: "function",
-          parameters: { type: "object" },
-        });
-        expect(wire?.parameters?.required).toContain("path");
-        const properties = wire?.parameters?.properties;
-        expect(properties?.path).toMatchObject({ type: "string" });
-        if (name === "edit") {
-          expect(wire?.parameters?.required).toContain("edits");
-          expect(properties?.edits).toMatchObject({
-            type: "array",
-            items: {
-              type: "object",
-              required: ["oldText", "newText"],
-              properties: {
-                oldText: { type: "string" },
-                newText: { type: "string" },
-              },
-            },
-          });
-        } else {
-          expect(wire?.parameters?.required).toContain("content");
-          expect(properties?.content).toMatchObject({ type: "string" });
-        }
-      }
-      expect(payload?.tools.some((tool) => tool.name === "apply_patch")).toBe(
-        false,
-      );
-      expect(network).not.toHaveBeenCalled();
-    } finally {
-      network.mockRestore();
-    }
+  it("reads both Codex declaration locations without counting unrelated input", () => {
+    const tool = (name: string) => ({ name, type: "function" });
+    expect(
+      getCodexRequestTools({
+        tools: [tool("legacy")],
+        input: [
+          { type: "additional_tools", tools: [tool("incremental")] },
+          { type: "message", tools: [tool("not-a-declaration")] },
+        ],
+      }).map(({ name }) => name),
+    ).toEqual(["legacy", "incremental"]);
+    expect(getCodexRequestTools({ input: [] })).toEqual([]);
   });
+
+  it.each(["native", "legacy"])(
+    "advertises the complete registry through the actual %s Codex request builder",
+    async (mode) => {
+      const tools = await loadProviderContractTools();
+      const runtime = await ModelRuntime.create({
+        credentials: new InMemoryCredentialStore(),
+        refreshOnCreate: false,
+        modelsPath: null,
+      });
+      const model = runtime.getModel("openai-codex", "gpt-6-astra");
+      if (!model || model.api !== "openai-codex-responses")
+        throw new Error("Codex test model missing");
+      const network = vi
+        .spyOn(globalThis, "fetch")
+        .mockRejectedValue(new Error("network forbidden"));
+      let payload: CodexToolDeclaration[] | undefined;
+      try {
+        // Only token shape is needed before onPayload; no credential is read or sent.
+        const token = `test.${Buffer.from(
+          JSON.stringify({
+            "https://api.openai.com/auth": {
+              chatgpt_account_id: "offline-test",
+            },
+          }),
+        ).toString("base64url")}.test`;
+        const result = await stream(
+          {
+            ...model,
+            api: "openai-codex-responses",
+            ...(mode === "legacy"
+              ? {
+                  compat: {
+                    ...model.compat,
+                    supportsMidConvoSystemMessages: false,
+                    supportsAdditionalTools: false,
+                    supportsToolSearch: false,
+                  },
+                }
+              : {}),
+          },
+          normalizeContext({
+            messages: [
+              { role: "user", content: "offline schema check", timestamp: 0 },
+            ],
+            tools,
+          }),
+          {
+            apiKey: token,
+            transport: "sse",
+            onPayload(value) {
+              payload = getCodexRequestTools(value);
+              throw new Error("captured before transport");
+            },
+          },
+        ).result();
+        expect(result.errorMessage).toContain("captured before transport");
+        expect(payload?.map((tool) => tool.name).sort()).toEqual(
+          tools.map((tool) => tool.name).sort(),
+        );
+        expect(
+          payload?.find((tool) => tool.name === "read_web_page"),
+        ).toMatchObject({
+          strict: false,
+        });
+        expect(
+          payload?.find((tool) => tool.name === "web_search"),
+        ).toMatchObject({
+          strict: true,
+        });
+        for (const name of ["edit", "write"]) {
+          const wire = payload?.find((tool) => tool.name === name);
+          expect(wire).toMatchObject({
+            type: "function",
+            parameters: { type: "object" },
+          });
+          expect(wire?.parameters?.required).toContain("path");
+          const properties = wire?.parameters?.properties;
+          expect(properties?.path).toMatchObject({ type: "string" });
+          if (name === "edit") {
+            expect(wire?.parameters?.required).toContain("edits");
+            expect(properties?.edits).toMatchObject({
+              type: "array",
+              items: {
+                type: "object",
+                required: ["oldText", "newText"],
+                properties: {
+                  oldText: { type: "string" },
+                  newText: { type: "string" },
+                },
+              },
+            });
+          } else {
+            expect(wire?.parameters?.required).toContain("content");
+            expect(properties?.content).toMatchObject({ type: "string" });
+          }
+        }
+        expect(payload?.some((tool) => tool.name === "apply_patch")).toBe(
+          false,
+        );
+        expect(network).not.toHaveBeenCalled();
+      } finally {
+        network.mockRestore();
+      }
+    },
+  );
 }

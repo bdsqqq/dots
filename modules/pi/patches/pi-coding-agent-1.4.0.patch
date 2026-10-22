@@ -1,7 +1,10 @@
 diff --git a/dist/core/agent-session.js b/dist/core/agent-session.js
+index 8728a3e0..2c6c39c6 100644
 --- a/dist/core/agent-session.js
 +++ b/dist/core/agent-session.js
-@@ -1114,13 +1114,13 @@
+@@ -1132,15 +1132,15 @@ export class AgentSession {
+         this._rebuildSystemPrompt(tools.map((tool) => tool.name));
+     }
      /**
 -     * Whether `--tools` and `--exclude-tools` keep the tool registered. MCP tools stay registered
 -     * unless the allowlist filters them (see `_allowlistFiltersMcp`).
@@ -19,10 +22,11 @@ diff --git a/dist/core/agent-session.js b/dist/core/agent-session.js
      /**
       * Whether the tool may be active, which declares it to the model. MCP tools the allowlist keeps
 diff --git a/dist/core/export-html/index.js b/dist/core/export-html/index.js
+index 39214dc5..d4ed1991 100644
 --- a/dist/core/export-html/index.js
 +++ b/dist/core/export-html/index.js
-@@ -115,8 +115,6 @@
-         .replace("{{MARKED_JS}}", markedJs)
+@@ -117,8 +117,6 @@ function generateHtml(sessionData, themeName) {
+         .replace("{{MARKED_CJK_FRIENDLY_JS}}", markedCjkFriendlyJs)
          .replace("{{HIGHLIGHT_JS}}", hljsJs);
  }
 -/** Tools rendered directly by the HTML template (not pre-rendered via TUI→ANSI→HTML pipeline) */
@@ -30,7 +34,7 @@ diff --git a/dist/core/export-html/index.js b/dist/core/export-html/index.js
  /**
   * Pre-render custom tools to HTML using their TUI renderers.
   */
-@@ -129,7 +127,7 @@
+@@ -131,7 +129,7 @@ function preRenderCustomTools(entries, toolRenderer) {
          // Find tool calls in assistant messages
          if (msg.role === "assistant" && Array.isArray(msg.content)) {
              for (const block of msg.content) {
@@ -39,7 +43,7 @@ diff --git a/dist/core/export-html/index.js b/dist/core/export-html/index.js
                      const callHtml = toolRenderer.renderCall(block.id, block.name, block.arguments);
                      if (callHtml) {
                          renderedTools[block.id] = { callHtml };
-@@ -140,13 +138,14 @@
+@@ -142,13 +140,14 @@ function preRenderCustomTools(entries, toolRenderer) {
          // Find tool results
          if (msg.role === "toolResult" && msg.toolCallId) {
              const toolName = msg.toolName || "";
@@ -58,12 +62,13 @@ diff --git a/dist/core/export-html/index.js b/dist/core/export-html/index.js
                          resultHtmlExpanded: rendered.expanded,
                      };
 diff --git a/dist/core/export-html/template.js b/dist/core/export-html/template.js
+index f845fce7..f22aeb2f 100644
 --- a/dist/core/export-html/template.js
 +++ b/dist/core/export-html/template.js
 @@ -961,7 +961,7 @@
-
+ 
          const invalidArg = '<span class="tool-error">[invalid arg]</span>';
-
+ 
 -        switch (name) {
 +        switch (renderedTools?.[call.id] ? '__pre_rendered__' : name) {
            case 'bash': {
@@ -77,7 +82,7 @@ diff --git a/dist/core/export-html/template.js b/dist/core/export-html/template.
 +              } else if (rendered.callHtml !== '') {
                  html += `<div class="tool-header"><span class="tool-name">${escapeHtml(name)}</span></div>`;
                }
-
+ 
 @@ -1071,6 +1071,7 @@
                  const output = getResultText();
                  if (output) html += formatExpandableOutput(output, 10);
@@ -87,9 +92,10 @@ diff --git a/dist/core/export-html/template.js b/dist/core/export-html/template.
                // Fallback to JSON display (existing behavior)
                html += `<div class="tool-header"><span class="tool-name">${escapeHtml(name)}</span></div>`;
 diff --git a/dist/core/export-html/tool-renderer.d.ts b/dist/core/export-html/tool-renderer.d.ts
+index 8da1d1e0..58fc531e 100644
 --- a/dist/core/export-html/tool-renderer.d.ts
 +++ b/dist/core/export-html/tool-renderer.d.ts
-@@ -17,15 +17,16 @@
+@@ -17,15 +17,16 @@ export interface ToolHtmlRendererDeps {
      width?: number;
  }
  export interface ToolHtmlRenderer {
@@ -110,6 +116,7 @@ diff --git a/dist/core/export-html/tool-renderer.d.ts b/dist/core/export-html/to
          expanded?: string;
      } | undefined;
 diff --git a/dist/core/export-html/tool-renderer.js b/dist/core/export-html/tool-renderer.js
+index 58644ed7..1ceed160 100644
 --- a/dist/core/export-html/tool-renderer.js
 +++ b/dist/core/export-html/tool-renderer.js
 @@ -1,110 +1,54 @@
@@ -161,9 +168,7 @@ diff --git a/dist/core/export-html/tool-renderer.js b/dist/core/export-html/tool
 +            components.set(id, component);
          }
 -        return state;
-+        else if (args !== undefined) component.updateArgs(args);
-+        return component;
-     };
+-    };
 -    const createRenderContext = (toolCallId, lastComponent, expanded, isPartial, isError) => {
 -        return {
 -            args: renderedArgs.get(toolCallId),
@@ -181,7 +186,9 @@ diff --git a/dist/core/export-html/tool-renderer.js b/dist/core/export-html/tool
 -            durationMs: undefined,
 -            outputPad: 1,
 -        };
--    };
++        else if (args !== undefined) component.updateArgs(args);
++        return component;
+     };
 +    // OSC 8 hyperlinks are terminal controls, not HTML. Keep their labels and
 +    // ANSI highlighting without leaking terminal control bytes into the document.
 +    const render = (component) => ansiLinesToHtml(component.render(width, false)
@@ -734,6 +741,7 @@ index 211e4b82..66327549 100644
 \ No newline at end of file
 +//# sourceMappingURL=custom-message.js.map
 diff --git a/dist/modes/interactive/components/tool-execution.d.ts b/dist/modes/interactive/components/tool-execution.d.ts
+index 0736b6ff..165f47de 100644
 --- a/dist/modes/interactive/components/tool-execution.d.ts
 +++ b/dist/modes/interactive/components/tool-execution.d.ts
 @@ -1,16 +1,22 @@
@@ -761,7 +769,7 @@ diff --git a/dist/modes/interactive/components/tool-execution.d.ts b/dist/modes/
      private selfRenderContainer;
      private selfRenderHeight;
      private callRendererComponent?;
-@@ -64,10 +70,10 @@
+@@ -64,10 +70,10 @@ export declare class ToolExecutionComponent extends Container {
      setShowImages(show: boolean): void;
      setImageWidthCells(width: number): void;
      invalidate(): void;
@@ -776,7 +784,7 @@ diff --git a/dist/modes/interactive/components/tool-execution.d.ts b/dist/modes/
  //# sourceMappingURL=tool-execution.d.ts.map
 \ No newline at end of file
 diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/interactive/components/tool-execution.js
-index d447db5ade5e37d6bc91cb91006ea0c711821b29..73348332cbc32da436c370b16341dc463854a4bb 100644
+index d447db5a..73348332 100644
 --- a/dist/modes/interactive/components/tool-execution.js
 +++ b/dist/modes/interactive/components/tool-execution.js
 @@ -1,13 +1,17 @@
@@ -1076,10 +1084,10 @@ index 2316e506..5dc34c38 100644
 \ No newline at end of file
 +//# sourceMappingURL=user-message.js.map
 diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive/interactive-mode.js
+index 5303aad4..da68cfa6 100644
 --- a/dist/modes/interactive/interactive-mode.js
 +++ b/dist/modes/interactive/interactive-mode.js
-@@ -3505,7 +3505,16 @@ export class InteractiveMode {
-         this.stop();
+@@ -3473,7 +3473,16 @@ export class InteractiveMode {
          await this.runtimeHost.dispose();
          const resumeCommand = formatResumeCommand(this.sessionManager);
          if (resumeCommand) {
@@ -1096,8 +1104,9 @@ diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive
 +            process.stdout.write(`\n${banner}\n\n${resumeCommand}\n`);
          }
          process.exit(0);
+     }
 diff --git a/package.json b/package.json
-index cdb88d0c..c6fca425 100644
+index e0955b0e..89664b23 100644
 --- a/package.json
 +++ b/package.json
 @@ -7,7 +7,7 @@
@@ -1110,9 +1119,10 @@ index cdb88d0c..c6fca425 100644
  	"main": "./dist/index.js",
  	"types": "./dist/index.d.ts",
 diff --git a/dist/core/tools/edit.js b/dist/core/tools/edit.js
+index a5f1b34a..e166705e 100644
 --- a/dist/core/tools/edit.js
 +++ b/dist/core/tools/edit.js
-@@ -87,7 +87,6 @@
+@@ -87,7 +87,6 @@ export function createEditToolDefinition(cwd, options) {
          promptGuidelines: [...editToolSystemPromptContribution.guidelines],
          parameters: editSchema,
          constrainedSampling: { type: "json_schema", strict: "prefer" },
@@ -1121,9 +1131,10 @@ diff --git a/dist/core/tools/edit.js b/dist/core/tools/edit.js
          async execute(_toolCallId, input, signal, _onUpdate, ctx) {
              const { path, edits } = validateEditInput(input);
 diff --git a/dist/core/tools/renderers/edit.js b/dist/core/tools/renderers/edit.js
+index a64a3d1d..fd7fe9dc 100644
 --- a/dist/core/tools/renderers/edit.js
 +++ b/dist/core/tools/renderers/edit.js
-@@ -10,7 +10,7 @@
+@@ -10,7 +10,7 @@ import { renderDiff } from "../../../modes/interactive/components/diff.js";
  import { computeEditsDiff } from "../edit-diff.js";
  import { renderToolPath, str } from "../render-utils.js";
  function createEditCallRenderComponent() {
@@ -1132,7 +1143,7 @@ diff --git a/dist/core/tools/renderers/edit.js b/dist/core/tools/renderers/edit.
          preview: undefined,
          previewArgsKey: undefined,
          previewPending: false,
-@@ -86,7 +86,7 @@
+@@ -86,7 +86,7 @@ function getEditHeaderBg(preview, settledError, theme) {
  }
  function buildEditCallComponent(component, args, theme, cwd, outputPad) {
      component.setBgFn(getEditHeaderBg(component.preview, component.settledError, theme));
@@ -1141,7 +1152,7 @@ diff --git a/dist/core/tools/renderers/edit.js b/dist/core/tools/renderers/edit.
      component.clear();
      component.addChild(new Text(formatEditCall(args, theme, cwd), 0, 0));
      if (!component.preview) {
-@@ -122,7 +122,8 @@
+@@ -122,7 +122,8 @@ export const editRenderers = {
              component.previewPending = false;
              component.settledError = false;
          }
@@ -1151,7 +1162,7 @@ diff --git a/dist/core/tools/renderers/edit.js b/dist/core/tools/renderers/edit.
              component.previewPending = true;
              const requestKey = argsKey;
              void computeEditsDiff(previewInput.path, previewInput.edits, context.cwd).then((preview) => {
-@@ -161,7 +162,7 @@
+@@ -161,7 +162,7 @@ export const editRenderers = {
              return component;
          }
          component.addChild(new Spacer(1));
@@ -1161,7 +1172,7 @@ diff --git a/dist/core/tools/renderers/edit.js b/dist/core/tools/renderers/edit.
      },
  };
 diff --git a/dist/core/tools/renderers/bash.js b/dist/core/tools/renderers/bash.js
-index 43430f16caa03ec9b2c57a5e105b257f4b11416b..898f96ae85a0541b3089d58881184d170fcf265f 100644
+index 43430f16..898f96ae 100644
 --- a/dist/core/tools/renderers/bash.js
 +++ b/dist/core/tools/renderers/bash.js
 @@ -44,8 +44,7 @@ function rebuildBashResultRenderComponent(component, result, options, showImages
@@ -1175,7 +1186,7 @@ index 43430f16caa03ec9b2c57a5e105b257f4b11416b..898f96ae85a0541b3089d58881184d17
              }));
          }
 diff --git a/dist/core/tools/renderers/read.js b/dist/core/tools/renderers/read.js
-index c76b38e397be910466b4e12cebb07f13c0cceca0..5dd63183c9ffdfe202d6ea5ffc75f12e42bec37c 100644
+index c76b38e3..5dd63183 100644
 --- a/dist/core/tools/renderers/read.js
 +++ b/dist/core/tools/renderers/read.js
 @@ -9,6 +9,7 @@ import { basename, dirname, isAbsolute, relative, resolve as resolvePath, sep }
@@ -1224,7 +1235,7 @@ index c76b38e397be910466b4e12cebb07f13c0cceca0..5dd63183c9ffdfe202d6ea5ffc75f12e
  //# sourceMappingURL=read.js.map
 \ No newline at end of file
 diff --git a/dist/core/tools/renderers/write.js b/dist/core/tools/renderers/write.js
-index dcf5bf9b84394f2d151e6862733b239d8d6fbe84..3461fea40046f4a26bb4dd9189ec4ee3389e8e47 100644
+index dcf5bf9b..3461fea4 100644
 --- a/dist/core/tools/renderers/write.js
 +++ b/dist/core/tools/renderers/write.js
 @@ -7,12 +7,13 @@
@@ -1292,6 +1303,7 @@ index dcf5bf9b84394f2d151e6862733b239d8d6fbe84..3461fea40046f4a26bb4dd9189ec4ee3
      },
      renderResult(result, _options, theme, context) {
 diff --git a/dist/extensions/codemode/renderer.js b/dist/extensions/codemode/renderer.js
+index d97b1dff..5c5fa511 100644
 --- a/dist/extensions/codemode/renderer.js
 +++ b/dist/extensions/codemode/renderer.js
 @@ -1,65 +1,138 @@
@@ -1371,7 +1383,7 @@ diff --git a/dist/extensions/codemode/renderer.js b/dist/extensions/codemode/ren
 +    const args = singleLine(call.args);
 +    if (args) line += ` ${theme.fg("muted", args)}`;
      return line;
-+}
+ }
 +function selectCalls(calls, budget) {
 +    if (calls.length <= budget) return calls;
 +    // Pending/failed/cancelled calls take precedence over successful head/tail context.
@@ -1474,7 +1486,7 @@ diff --git a/dist/extensions/codemode/renderer.js b/dist/extensions/codemode/ren
 +            return lines;
 +        },
 +    });
- }
++}
  export const codemodeRenderers = {
      renderCall(args, theme, context) {
 -        startToolTimer(context);
@@ -1482,7 +1494,7 @@ diff --git a/dist/extensions/codemode/renderer.js b/dist/extensions/codemode/ren
          const code = str(args?.code);
          const title = theme.fg("toolTitle", theme.bold("codemode"));
          const component = context.lastComponent ?? new Container();
-@@ -69,75 +142,84 @@
+@@ -69,75 +142,84 @@ export const codemodeRenderers = {
              return component;
          }
          component.addChild(new Text(title, 0, 0));
@@ -1533,9 +1545,6 @@ diff --git a/dist/extensions/codemode/renderer.js b/dist/extensions/codemode/ren
 +            const shown = selectCalls(activity, options.expanded ? EXPANDED_CALL_COUNT : CALL_PREVIEW_COUNT);
              component.addChild(new Spacer(1));
 -            component.addChild(new Text(lines.join("\n"), 0, 0));
--        }
--        // Drop the "Script completed\nWall time ...\nOutput:\n" header. Rejected input (invalid options)
--        // has no header.
 +            const lines = shown.map((call) => formatCall(call, theme));
 +            const hidden = activity.length - shown.length;
 +            if (hidden) {
@@ -1557,7 +1566,9 @@ diff --git a/dist/extensions/codemode/renderer.js b/dist/extensions/codemode/ren
 +                },
 +                invalidate() {},
 +            });
-+        }
+         }
+-        // Drop the "Script completed\nWall time ...\nOutput:\n" header. Rejected input (invalid options)
+-        // has no header.
          const [first, ...rest] = result.content;
          const hasHeader = first?.type === "text" && SCRIPT_HEADER.test(first.text);
 -        const output = options.isPartial
@@ -1574,8 +1585,7 @@ diff --git a/dist/extensions/codemode/renderer.js b/dist/extensions/codemode/ren
 -                .split("\n")
 -                .map((line) => theme.fg(color, line))
 -                .join("\n");
-+            const styled = replaceTabs(output).split("\n").map((line) => theme.fg(color, line)).join("\n");
-             component.addChild(new Spacer(1));
+-            component.addChild(new Spacer(1));
 -            if (options.expanded) {
 -                component.addChild(new Text(styled, 0, 0));
 -            }
@@ -1594,9 +1604,9 @@ diff --git a/dist/extensions/codemode/renderer.js b/dist/extensions/codemode/ren
 -            }
 -        }
 -        if (timerText) {
--            component.addChild(new Spacer(1));
++            const styled = replaceTabs(output).split("\n").map((line) => theme.fg(color, line)).join("\n");
+             component.addChild(new Spacer(1));
 -            component.addChild(new Text(theme.fg("muted", timerText), 0, 0));
--        }
 +            component.addChild({
 +                render(width) {
 +                    return new VisualLinePreview({
@@ -1610,7 +1620,7 @@ diff --git a/dist/extensions/codemode/renderer.js b/dist/extensions/codemode/ren
 +                },
 +                invalidate() {},
 +            });
-+        }
+         }
 +        component.addChild({
 +            render(width) {
 +                return recovery.omitted || result.details?.fullOutputPath
@@ -1625,7 +1635,7 @@ diff --git a/dist/extensions/codemode/renderer.js b/dist/extensions/codemode/ren
 \ No newline at end of file
 +//# sourceMappingURL=renderer.js.map
 diff --git a/dist/extensions/mcp/tools.js b/dist/extensions/mcp/tools.js
-index 7884fb2e84d582bdeb2e6b81c249401f6a95b8a6..b0822db6b211de21eb83611a2d571565d8c8687b 100644
+index 7884fb2e..b0822db6 100644
 --- a/dist/extensions/mcp/tools.js
 +++ b/dist/extensions/mcp/tools.js
 @@ -295,7 +295,6 @@ export function createMcpToolRenderers(label) {
@@ -1637,7 +1647,7 @@ index 7884fb2e84d582bdeb2e6b81c249401f6a95b8a6..b0822db6b211de21eb83611a2d571565
                  }));
                  const fullOutputPath = result.details?.fullOutputPath;
 diff --git a/dist/modes/interactive/components/bash-execution.js b/dist/modes/interactive/components/bash-execution.js
-index 45a755862b076edf24f4bc9ef9dd46ca11868d78..bd200abc788d8340f9ba32f927911851f2a3e48f 100644
+index 45a75586..bd200abc 100644
 --- a/dist/modes/interactive/components/bash-execution.js
 +++ b/dist/modes/interactive/components/bash-execution.js
 @@ -1,13 +1,13 @@
@@ -1718,7 +1728,7 @@ index 45a755862b076edf24f4bc9ef9dd46ca11868d78..bd200abc788d8340f9ba32f927911851
              if (this.status === "cancelled") {
                  statusParts.push(theme.fg("warning", "(cancelled)"));
 diff --git a/dist/modes/interactive/components/visual-truncate.d.ts b/dist/modes/interactive/components/visual-truncate.d.ts
-index 2cba1feac6c555fa709bd8842173970feafbfb62..0cc8eff9a6888420561de685bce173808e7b99b0 100644
+index 2cba1fea..0cc8eff9 100644
 --- a/dist/modes/interactive/components/visual-truncate.d.ts
 +++ b/dist/modes/interactive/components/visual-truncate.d.ts
 @@ -19,16 +19,16 @@ export interface VisualTruncateResult {
@@ -1743,7 +1753,7 @@ index 2cba1feac6c555fa709bd8842173970feafbfb62..0cc8eff9a6888420561de685bce17380
      formatHint: (hidden: number) => string;
  }
 diff --git a/dist/modes/interactive/components/visual-truncate.js b/dist/modes/interactive/components/visual-truncate.js
-index c5212e7f073d96dd64716f91fd4893e269aa9757..732427084cedac8e59e7bacd207c150d9b429846 100644
+index c5212e7f..73242708 100644
 --- a/dist/modes/interactive/components/visual-truncate.js
 +++ b/dist/modes/interactive/components/visual-truncate.js
 @@ -13,21 +13,27 @@ import { Text, truncateToWidth } from "@earendil-works/pi-tui";
@@ -1797,10 +1807,10 @@ index c5212e7f073d96dd64716f91fd4893e269aa9757..732427084cedac8e59e7bacd207c150d
              else {
                  this.cachedLines = lines;
 diff --git a/dist/extensions/codemode/execute.js b/dist/extensions/codemode/execute.js
-index a193424..0cea8e8 100644
+index 5f6f61df..4cd337f0 100644
 --- a/dist/extensions/codemode/execute.js
 +++ b/dist/extensions/codemode/execute.js
-@@ -207,6 +207,66 @@ function valueText(value) {
+@@ -254,6 +254,66 @@ function valueText(value) {
          return value;
      return JSON.stringify(value) ?? String(value);
  }
@@ -1867,7 +1877,7 @@ index a193424..0cea8e8 100644
  /**
   * Lay out the script's output so the model can tell items apart: providers join adjacent text
   * blocks with a newline or with nothing. With more than one text item (`text()` or the returned
-@@ -284,12 +344,14 @@ function formatError(result, calls) {
+@@ -331,12 +391,14 @@ function formatError(result, calls) {
      return `${head}\n\n${formatCallSummary(calls)}`;
  }
  /** Write the full text output to a temp file, like bash does for truncated output. */
@@ -1884,7 +1894,7 @@ index a193424..0cea8e8 100644
      }
  }
  /** File extensions of the image types `image()` accepts. Must list every type the sandbox's `image()` detects. */
-@@ -304,8 +366,18 @@ const IMAGE_EXTENSIONS = {
+@@ -351,8 +413,18 @@ const IMAGE_EXTENSIONS = {
   * image but has no other way to reach its bytes: scripts cannot write files, and `write` only takes
   * text. Images shown more than once are saved once.
   */
@@ -1904,7 +1914,7 @@ index a193424..0cea8e8 100644
      const label = async ({ data, mimeType }) => {
          const bytes = Buffer.from(data, "base64");
          const kind = `${mimeType}, ${formatSize(bytes.length)}`;
-@@ -316,10 +388,14 @@ async function saveImages(items) {
+@@ -363,10 +435,14 @@ async function saveImages(items) {
          // tool calls already ran, so it becomes part of the label.
          try {
              const path = await writeOutputFile("pi-codemode", extension, bytes);
@@ -1920,7 +1930,7 @@ index a193424..0cea8e8 100644
          }
      };
      const result = await Promise.all(items.map(async (item) => {
-@@ -339,7 +415,7 @@ async function saveImages(items) {
+@@ -386,7 +462,7 @@ async function saveImages(items) {
   * item that keeps the start and end of the text, and images follow it. The full text is written to
   * a temp file.
   */
@@ -1929,7 +1939,7 @@ index a193424..0cea8e8 100644
      const texts = items.filter((item) => item.type === "text").map((item) => item.text);
      const combined = texts.join("\n");
      const budget = maxTokens * CHARS_PER_TOKEN;
-@@ -351,7 +427,7 @@ async function truncateOutput(items, maxTokens) {
+@@ -398,7 +474,7 @@ async function truncateOutput(items, maxTokens) {
      const head = combined.slice(0, headChars);
      const tail = tailChars > 0 ? combined.slice(-tailChars) : "";
      let text = `Warning: truncated output (original token count: ${Math.ceil(combined.length / CHARS_PER_TOKEN)})\nTotal output lines: ${combined.split("\n").length}\n\n${head}…${Math.ceil(removed / CHARS_PER_TOKEN)} tokens truncated…${tail}`;
@@ -1938,7 +1948,7 @@ index a193424..0cea8e8 100644
      text +=
          "path" in spilled
              ? `\n\n[Full output: ${spilled.path} (read with offset/limit)]`
-@@ -468,14 +544,18 @@ export async function executeCodemode(toolCallId, input, signal, onUpdate, ctx,
+@@ -543,14 +619,18 @@ export async function executeCodemode(toolCallId, input, signal, onUpdate, ctx,
              call.status = "cancelled";
      }
      const scriptOutput = [...result.output];
@@ -1959,7 +1969,7 @@ index a193424..0cea8e8 100644
      }
      const items = formatOutput(scriptOutput);
      if (!result.ok)
-@@ -486,13 +566,13 @@ export async function executeCodemode(toolCallId, input, signal, onUpdate, ctx,
+@@ -561,13 +641,13 @@ export async function executeCodemode(toolCallId, input, signal, onUpdate, ctx,
              text: `Note: models.generateImages() returned ${generatedImages} image${generatedImages === 1 ? "" : "s"} that the script did not show. Show each image block of result.output with image(block).`,
          });
      }
@@ -1977,7 +1987,7 @@ index a193424..0cea8e8 100644
          details.fullOutputPath = truncated.fullOutputPath;
      return {
 diff --git a/dist/extensions/codemode/tool.d.ts b/dist/extensions/codemode/tool.d.ts
-index 342278a..613a4e5 100644
+index 342278ad..613a4e5b 100644
 --- a/dist/extensions/codemode/tool.d.ts
 +++ b/dist/extensions/codemode/tool.d.ts
 @@ -73,7 +73,31 @@ export interface CodemodeNestedCall {
