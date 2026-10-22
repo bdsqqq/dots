@@ -124,5 +124,33 @@
     "expectedSkills": ["emil-design-eng"],
     "forbiddenSkills": ["explaining-with-animations", "html-thingy"],
     "expectedBehavior": "Use the UI motion workflow, not an educational animation or explanatory page. Preserve the component's API."
+  },
+  {
+    "id": "sessions-learning-review",
+    "prompt": "Review my recent agent sessions for useful lessons about how we work together. Propose a few concrete improvements with evidence and scope; do not change anything yet.",
+    "expectedSkills": ["learning-from-sessions"],
+    "forbiddenSkills": ["review", "designing-agent-skills"],
+    "expectedBehavior": "Bound native history selection, pin branches, inspect actual exchanges and counterexamples, and check current targets before proposing changes. Return cited proposals or an honest no-change result; no profiles, files, schedules or automatic application."
+  },
+  {
+    "id": "sessions-learning-not-lookup",
+    "prompt": "Find the Pi session where we discussed Rex remotes and tell me what command we settled on. This is a factual lookup, not a lessons review; don't propose workflow changes.",
+    "expectedSkills": [],
+    "forbiddenSkills": ["learning-from-sessions", "review", "designing-agent-skills"],
+    "expectedBehavior": "Retrieve bounded native history and answer the factual request. Do not infer preferences, create a report, or suggest durable changes."
+  },
+  {
+    "id": "sessions-learning-not-code-review",
+    "prompt": "Review this patch for bugs: before, await saveToken(token); onSuccess(); after, saveToken(token); onSuccess(); saveToken returns a promise that can reject. Do not fix the patch.",
+    "expectedSkills": ["review"],
+    "forbiddenSkills": ["learning-from-sessions", "designing-agent-skills"],
+    "expectedBehavior": "Review the supplied implementation change, not conversation history. No edits, memory proposals or unrelated workflow analysis."
+  },
+  {
+    "id": "sessions-learning-authoring-overlap",
+    "prompt": "Write a new reusable skill for reviewing conversation history for collaboration lessons. Don't review any actual sessions or install the draft yet.",
+    "expectedSkills": ["designing-agent-skills"],
+    "forbiddenSkills": ["learning-from-sessions"],
+    "expectedBehavior": "Author and evaluate a skill within the requested scope, rather than executing a review of private history. Do not install, inspect real sessions or apply inferred lessons."
   }
 ]
