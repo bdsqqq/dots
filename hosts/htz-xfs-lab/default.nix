@@ -56,6 +56,7 @@ let
 in
 {
   imports = [
+    ./working-storage.nix
     (modulesPath + "/profiles/qemu-guest.nix")
     ../../modules/primary-user.nix
     ../../modules/nix
