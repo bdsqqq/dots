@@ -1,0 +1,17 @@
+{
+  "volume": "/mnt/xfs-vdo",
+  "home": "/home/bdsqqq",
+  "label": "xfs-vdo-lab",
+  "device": "xfs_vdo_lab-vpool0-vpool",
+  "directories": [
+    "commonplace",
+    ".cache",
+    ".npm",
+    ".local/share",
+    ".t3",
+    ".rustup",
+    ".cargo",
+    ".agent-browser",
+    ".vite-plus"
+  ]
+}
