@@ -251,6 +251,7 @@
             };
             expected = {
               mbp-m2 = [
+                "TYPESAFE_API_KEY"
                 "artificial_analysis_api_key"
                 "axiom.toml"
                 "axiom/host_metrics_token"
@@ -267,6 +268,7 @@
                 "syncthing_gui_password"
               ];
               mbp-m5 = [
+                "TYPESAFE_API_KEY"
                 "artificial_analysis_api_key"
                 "axiom.toml"
                 "axiom/host_metrics_token"
@@ -294,6 +296,7 @@
                 "syncthing_gui_password"
               ];
               lgo-z2e = [
+                "TYPESAFE_API_KEY"
                 "artificial_analysis_api_key"
                 "axiom.toml"
                 "axiom/host_metrics_token"
@@ -331,6 +334,7 @@
                 "tailscale_auth_key"
               ];
               htz-xfs-lab = [
+                "TYPESAFE_API_KEY"
                 "artificial_analysis_api_key"
                 "gh_token"
                 "gog_keyring_password"
