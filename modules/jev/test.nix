@@ -29,8 +29,8 @@ assert valid dormant && dormant.sops.secrets == { };
 assert valid retained && retained.sops.secrets == { };
 assert !(valid missing) && missing.sops.secrets == { };
 assert valid configured;
-assert builtins.attrNames configured.sops.secrets == [ "jev_api_key" ];
-assert configured.sops.secrets.jev_api_key.sopsFile == ./test.nix;
-assert configured.sops.secrets.jev_api_key.owner == "bdsqqq";
-assert configured.sops.secrets.jev_api_key.mode == "0400";
+assert builtins.attrNames configured.sops.secrets == [ "TYPESAFE_API_KEY" ];
+assert configured.sops.secrets.TYPESAFE_API_KEY.sopsFile == ./test.nix;
+assert configured.sops.secrets.TYPESAFE_API_KEY.owner == "bdsqqq";
+assert configured.sops.secrets.TYPESAFE_API_KEY.mode == "0400";
 { passed = true; }
