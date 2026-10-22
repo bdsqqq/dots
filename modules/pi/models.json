@@ -1,3 +1,7 @@
 {
-  "providers": {}
+  "providers": {
+    "typesafe": {
+      "apiKey": "!cat /run/secrets/TYPESAFE_API_KEY"
+    }
+  }
 }

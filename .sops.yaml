@@ -29,6 +29,8 @@ creation_rules:
     key_groups:
       - age:
           - *user_bdsqqq
+          - *host_lgo_z2e
+          - *host_htz_xfs_lab
   - path_regex: ^modules/tailscale/secrets\.yaml$
     key_groups:
       - age:

@@ -222,6 +222,48 @@ if (import.meta.vitest) {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  test("native TypeSafe credentials resolve from the configured file without shell exports or stored auth", async () => {
+    const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
+    const { InMemoryCredentialStore } = await import("@earendil-works/pi-ai");
+    vi.stubEnv("TYPESAFE_API_KEY", undefined);
+    const source = JSON.parse(
+      fs.readFileSync(new URL("../../../models.json", import.meta.url), "utf8"),
+    );
+    const command = source.providers.typesafe.apiKey;
+    expect(command).toBe("!cat /run/secrets/TYPESAFE_API_KEY");
+    const keyFile = path.join(dir, "fixture-key");
+    fs.writeFileSync(keyFile, "fixture-only-key\n", { mode: 0o400 });
+    const runtimeFor = async (file: string, name: string) => {
+      const config = structuredClone(source);
+      config.providers.typesafe.apiKey = command.replace(
+        "/run/secrets/TYPESAFE_API_KEY",
+        `'${file}'`,
+      );
+      return ModelRuntime.create({
+        credentials: new InMemoryCredentialStore(),
+        modelsPath: write(path.join(dir, name), config),
+        refreshOnCreate: false,
+      });
+    };
+    const runtime = await runtimeFor(keyFile, "models.json");
+    expect(runtime.getError()).toBeUndefined();
+    expect(
+      runtime.getModelOfType("classifier", "typesafe", "jev-latest")?.api,
+    ).toBe("typesafe-system-one");
+    expect(await runtime.getAuth("typesafe")).toMatchObject({
+      auth: { apiKey: "fixture-only-key" },
+    });
+    // Native discovery advertises command credentials without running them;
+    // actual resolution must reject a missing runtime file instead of guessing.
+    const missing = await runtimeFor(
+      path.join(dir, "missing-key"),
+      "missing-models.json",
+    );
+    await expect(missing.getAuth("typesafe")).rejects.toThrow(
+      /API key|resolve/i,
+    );
+  });
+
   test("native global/project precedence agrees with SettingsManager; project authority is opt-in", () => {
     write(resolveGlobalSettingsPath(), {
       [ns]: { nested: { a: 1, b: 2 }, enabled: true },

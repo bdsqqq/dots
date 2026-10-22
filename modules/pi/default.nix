@@ -12,8 +12,12 @@ let
   parallelApiKeyPath = config.sops.secrets.parallel_api_key.path;
 in
 {
-  imports = [ ./packages/extensions/web-search/credential.nix ];
+  imports = [
+    ./packages/extensions/web-search/credential.nix
+    ../jev/credential.nix
+  ];
   my.parallelWebSearch.credential.required = true;
+  my.jev.credential.required = true;
 
   home-manager.users.bdsqqq =
     { pkgs
