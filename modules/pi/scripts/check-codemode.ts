@@ -95,12 +95,27 @@ try {
     timestamp: Date.now(),
   });
   history.branch(rootEntry);
+  const largeEntry = history.appendMessage({
+    role: "toolResult",
+    toolCallId: "large",
+    toolName: "fixture",
+    content: [{ type: "text", text: '\"\\\\\\n😀'.repeat(6000) }],
+    isError: false,
+    timestamp: Date.now(),
+  });
+  const correctionLeaf = history.appendMessage({
+    role: "user",
+    content: "LATER_CORRECTION",
+    timestamp: Date.now(),
+  });
+  history.branch(rootEntry);
   const selectedLeaf = history.appendMessage({
     role: "user",
     content: "SELECTED_BRANCH_FIXTURE",
     timestamp: Date.now(),
   });
   const targetSession = history.getSessionFile()!;
+  const originalHistory = readFileSync(targetSession);
   const targetMetadata = (await SessionManager.list(temporary, sessions)).find(
     (s) => s.id === targetId,
   )!;
@@ -321,7 +336,19 @@ try {
     const fixture=listed.value.find(s=>s.sessionId===${JSON.stringify(targetId)});
     check(fixture && fixture.workspace===${JSON.stringify(temporary)} && fixture.sessionFile===${JSON.stringify(targetSession)},'history_list lost session identity');
     check(fixture.firstMessage===${JSON.stringify(targetMetadata.firstMessage)},'history_list disagrees with native SDK metadata');
+    check(listed.page && listed.page.offset===0,'history_list lost page metadata');
     const request={workspace:${JSON.stringify(temporary)},sessionId:${JSON.stringify(targetId)}};
+    const largeRequest={...request,entryId:${JSON.stringify(correctionLeaf)}};
+    const firstPage=await tools.history_read({...largeRequest,limit:2});
+    check(firstPage.ok && firstPage.page.nextOffset===2 && firstPage.omitted[0]?.entryId===${JSON.stringify(largeEntry)},'huge entry was not explicitly omitted');
+    const secondPage=await tools.history_read({...largeRequest,offset:firstPage.page.nextOffset});
+    check(secondPage.ok && secondPage.value.entries[0]?.id===${JSON.stringify(correctionLeaf)} && secondPage.page.nextOffset===null,'later correction was lost');
+    const chunk=await tools.history_read({...largeRequest,contentId:${JSON.stringify(largeEntry)}});
+    check(chunk.ok && chunk.content.text.startsWith('{') && chunk.content.nextOffset>0,'bounded entry content unavailable');
+    const siblingContent=await tools.history_read({...largeRequest,contentId:${JSON.stringify(abandonedLeaf)}});
+    check(!siblingContent.ok && siblingContent.error.code==='entry_not_found','sibling entry content leaked');
+    const unpinned=await tools.history_read({...request,offset:1});
+    check(!unpinned.ok && unpinned.error.code==='branch_required','unpinned continuation accepted');
     const selected=await tools.history_read({...request,entryId:${JSON.stringify(selectedLeaf)}});
     check(selected.ok && selected.value.selection==='entry' && selected.value.leafId===${JSON.stringify(selectedLeaf)},'history_read lost selected leaf');
     check(selected.value.sessionFile===fixture.sessionFile && selected.value.workspace===fixture.workspace,'history adapters disagree on identity');
@@ -458,6 +485,11 @@ try {
   assert.equal(
     readFileSync(join(temporary, "format.json"), "utf8"),
     '{\n  "fixture": true\n}\n',
+  );
+  assert.deepEqual(
+    readFileSync(targetSession),
+    originalHistory,
+    "history tools changed native storage",
   );
   const mailbox = join(temporary, "mailbox", targetId);
   const queued = readdirSync(mailbox).filter((p) => p.endsWith(".json"));
