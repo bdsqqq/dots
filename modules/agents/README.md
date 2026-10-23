@@ -12,7 +12,6 @@ easier to verify.
 | [`config/global-agents.md`](../../config/global-agents.md) | voice, permissions, completion, delegation, evidence, project knowledge |
 | [`skills/write/SKILL.md`](skills/write/SKILL.md) | substantial prose composition/editing, not every response |
 | [`skills/review/SKILL.md`](skills/review/SKILL.md) | read-only implementation review |
-| [`skills/learning-from-sessions/SKILL.md`](skills/learning-from-sessions/SKILL.md) | native-history lessons and scoped change proposals, not automatic memory |
 | [`skills/dig/SKILL.md`](skills/dig/SKILL.md) | uncertain multi-step investigation, direct-first and optionally delegated |
 | [`skills/making-meaningful-contributions/SKILL.md`](skills/making-meaningful-contributions/SKILL.md) | pre-submission readiness, not a second general review |
 | [`skills/designing-agent-skills/SKILL.md`](skills/designing-agent-skills/SKILL.md) | authoring, selection cases, and behavioral evaluation |
@@ -53,16 +52,6 @@ the [pi skill executor](../pi/packages/extensions/skill/index.ts) keeps caller
 arguments after the instruction block as a lossless JSON string. absence/blank
 input preserves prior output. escaping tag delimiters avoids making caller input
 look like a second instruction block; it is not a security sandbox.
-
-## learning from sessions
-
-ask “review my recent sessions for useful lessons,” then request evidence, a diff,
-or application of a named proposal. native Pi can also load it explicitly with
-`/skill:learning-from-sessions`. use `/reload` or a fresh session after adding it.
-the workflow reuses native history and the conversation as its review surface;
-there is no collector, hidden profile, timer, or automatic context injection.
-approval is conversational, not a new technical sandbox; a diff preview is not
-permission to apply it.
 
 ## run the checks
 
