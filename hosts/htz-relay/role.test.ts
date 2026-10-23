@@ -12,6 +12,15 @@ type Role = {
   services: Record<string, boolean>;
   containers: string[];
   automerge: string;
+  maintenance: {
+    keepOutputs: boolean;
+    keepDerivations: boolean;
+    gcAutomatic: boolean;
+    gcOptions: string;
+    gcAfterUpgrade: boolean;
+    pressureBytes: number;
+    targetBytes: number;
+  };
 };
 
 const source = process.env.ROLE_FLAKE ?? `path:${fileURLToPath(new URL("../../", import.meta.url))}`;
@@ -42,6 +51,15 @@ function evaluate(injectTool = false): Role {
     };
     containers = builtins.attrNames cfg.containers;
     automerge = toString cfg.systemd.services.syncthing-automerge.serviceConfig.ExecStart;
+    maintenance = {
+      keepOutputs = cfg.nix.settings.keep-outputs;
+      keepDerivations = cfg.nix.settings.keep-derivations;
+      gcAutomatic = cfg.nix.gc.automatic;
+      gcOptions = cfg.nix.gc.options;
+      gcAfterUpgrade = builtins.elem "nix-gc.service" cfg.systemd.services.nixos-upgrade.unitConfig.OnSuccess;
+      pressureBytes = cfg.nix.settings.min-free;
+      targetBytes = cfg.nix.settings.max-free;
+    };
   }`;
   const result = spawnSync("nix", ["eval", "--offline", "--impure", "--json", "--expr", expression], {
     encoding: "utf8", timeout: 120_000, maxBuffer: 4 * 1024 * 1024,
@@ -80,6 +98,16 @@ test("unused personal-agent credentials are not provisioned by the relay role", 
   assert.ok(current.secrets.includes("tailscale_auth_key"));
   assert.ok(current.secrets.includes("axiom/papertrail_token"));
   assert.ok(current.secrets.includes("axiom/host_metrics_token"));
+});
+
+test("native Nix collects old generations after upgrades with pressure GC enabled", () => {
+  const expected = {
+    keepOutputs: false, keepDerivations: false,
+    gcAutomatic: true, gcOptions: "--delete-old", gcAfterUpgrade: true,
+    pressureBytes: 4 * 1024 ** 3, targetBytes: 8 * 1024 ** 3,
+  };
+  assert.deepEqual(current.maintenance, expected);
+  assert.throws(() => assert.deepEqual({ ...current.maintenance, gcAfterUpgrade: false }, expected));
 });
 
 test("the verifier detects an isolated reintroduction of a global developer runtime", () => {

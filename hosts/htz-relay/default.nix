@@ -106,10 +106,18 @@ in
 
   boot.kernelPackages = pkgs.unstable.linuxPackages_latest;
 
+  nix.settings = {
+    keep-outputs = lib.mkForce false;
+    keep-derivations = lib.mkForce false;
+    min-free = 4 * 1024 * 1024 * 1024;
+    max-free = 8 * 1024 * 1024 * 1024;
+  };
   nix.gc = {
     dates = "daily";
-    options = "--delete-older-than 3d";
+    # keep the current profile generation; running/booted closures stay rooted.
+    options = "--delete-old";
   };
+  system.autoUpgrade.runGarbageCollection = true;
 
   systemd.services.home-manager-bdsqqq = {
     requires = [ "mnt-storage\\x2d01.mount" ];
