@@ -191,6 +191,14 @@ in
     ];
   };
 
+  # keep memory-pressure spill off the volume used for storage experiments.
+  swapDevices = [
+    {
+      device = "/swapfile";
+      size = 4096;
+    }
+  ];
+
   services.openssh = {
     enable = true;
     settings = {

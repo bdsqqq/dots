@@ -336,6 +336,12 @@
               htz-xfs-lab = [
                 "TYPESAFE_API_KEY"
                 "artificial_analysis_api_key"
+                "axiom.toml"
+                "axiom/host_metrics_token"
+                "axiom/papertrail_token"
+                "axiom/personal_org_id"
+                "axiom/personal_token"
+                "axiom/personal_url"
                 "gh_token"
                 "gog_keyring_password"
                 "gog_oauth_client"
@@ -417,10 +423,9 @@
               hostSystem = "x86_64-linux";
               headMode = "headless";
             };
-            modules = [
+            modules = nixosObservabilityModules ++ [
               inputs.disko.nixosModules.disko
               inputs.home-manager.nixosModules.home-manager
-              inputs.sops-nix.nixosModules.sops
               {
                 nixpkgs = {
                   config.allowUnfree = true;
