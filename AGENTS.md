@@ -14,6 +14,12 @@ the repo manages every host and feature without exclusively controlling edits:
 - install and run from the same live source and manifest/lockfile. local edits
   are intentional divergence; mismatched installation/runtime sources are not.
 
+## implementation
+
+use typescript and the existing node toolchain for new repo-owned maintenance
+programs and tests. keep native system wiring and justified upstream-language
+tests as exceptions; don't migrate existing code incidentally.
+
 ## verification
 
 verify each coherent change slice with the smallest executable checks that
