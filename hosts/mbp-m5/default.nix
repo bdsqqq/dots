@@ -67,7 +67,6 @@ in
     ../../modules/mpv
     ../../modules/iina
     ../../modules/1password
-    ../../modules/orbstack
     ../../modules/obs
     ../../modules/helium/remotes.nix
   ];
@@ -93,7 +92,7 @@ in
   };
 
   nix = {
-    linux-builder.enable = true;
+    linux-builder.enable = false;
     settings.trusted-users = [ "@admin" ];
   };
 
