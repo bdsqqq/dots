@@ -418,7 +418,10 @@ in
           ];
 
           systemd.services.vector.enable = lib.mkForce false;
-          systemd.services.axiom-deploy-annotation.serviceConfig.ExecStart = lib.mkForce deployAnnotate;
+          # a disabled annotation service has no tokenPath to render.
+          systemd.services.axiom-deploy-annotation = lib.mkIf deployCfg.enable {
+            serviceConfig.ExecStart = lib.mkForce deployAnnotate;
+          };
 
           systemd.services.otelcol-axiom = {
             description = "OpenTelemetry Collector - logs and metrics to Axiom";
