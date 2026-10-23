@@ -36,9 +36,6 @@ let
   relay = evaluate "x86_64-linux" {
     services.tailscale = hostFlags ../../hosts/htz-relay/default.nix;
   };
-  gru = evaluate "x86_64-linux" {
-    services.tailscale = hostFlags ../../hosts/gru-relay/default.nix;
-  };
   lab = evaluate "x86_64-linux" {
     services.tailscale = hostFlags ../../hosts/htz-xfs-lab/default.nix;
   };
@@ -54,10 +51,8 @@ assert linux.services.tailscale.enable;
 assert linux.services.tailscale.extraUpFlags == [ "--ssh=false" ];
 assert linux.services.tailscale.extraSetFlags == [ "--ssh=false" ];
 assert lib.sort builtins.lessThan operator.services.tailscale.extraSetFlags == [ "--operator=bdsqqq" "--ssh=false" ];
-assert builtins.all vpnOnly [ linux operator relay gru lab ];
+assert builtins.all vpnOnly [ linux operator relay lab ];
 assert builtins.elem "--operator=bdsqqq" relay.services.tailscale.extraSetFlags;
-assert builtins.elem "--advertise-exit-node" gru.services.tailscale.extraSetFlags;
-assert builtins.elem "--advertise-exit-node" gru.services.tailscale.extraUpFlags;
 assert darwin.services.tailscale == { enable = false; extraUpFlags = [ ]; extraSetFlags = [ ]; };
 assert darwin.services.openssh == {
   enable = true;

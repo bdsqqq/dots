@@ -247,7 +247,6 @@
               lgo-z2e = builtins.attrNames self.nixosConfigurations.lgo-z2e.config.sops.secrets;
               htz-relay = builtins.attrNames self.nixosConfigurations.htz-relay.config.sops.secrets;
               htz-xfs-lab = builtins.attrNames self.nixosConfigurations.htz-xfs-lab.config.sops.secrets;
-              gru-relay = builtins.attrNames self.nixosConfigurations.gru-relay.config.sops.secrets;
             };
             expected = {
               mbp-m2 = [
@@ -312,7 +311,6 @@
                 "tailscale_auth_key"
               ];
               htz-relay = [
-                "artificial_analysis_api_key"
                 "axiom.toml"
                 "axiom/host_metrics_token"
                 "axiom/papertrail_token"
@@ -328,8 +326,6 @@
                 "cloudflare-tunnel-money"
                 "cloudflare-tunnel-photos"
                 "cloudflare-tunnel-t3"
-                "gh_token"
-                "hf_token"
                 "syncthing_gui_password"
                 "tailscale_auth_key"
               ];
@@ -347,27 +343,6 @@
                 "gog_oauth_client"
                 "hf_token"
                 "parallel_api_key"
-                "tailscale_auth_key"
-              ];
-              gru-relay = [
-                "artificial_analysis_api_key"
-                "axiom.toml"
-                "axiom/host_metrics_token"
-                "axiom/papertrail_token"
-                "axiom/personal_org_id"
-                "axiom/personal_token"
-                "axiom/personal_url"
-                "cloudflare-connector-files-tailscale-auth-key"
-                "cloudflare-connector-shared-tailscale-auth-key"
-                "cloudflare-connector-t3-tailscale-auth-key"
-                "cloudflare-tunnel-dash"
-                "cloudflare-tunnel-files"
-                "cloudflare-tunnel-html-stuff"
-                "cloudflare-tunnel-money"
-                "cloudflare-tunnel-photos"
-                "cloudflare-tunnel-t3"
-                "gh_token"
-                "hf_token"
                 "tailscale_auth_key"
               ];
             };
@@ -472,40 +447,6 @@
                   lib.mkForce "read-only";
               })
               ./hosts/htz-relay/default.nix
-            ];
-          };
-
-          "gru-relay" = inputs.nixpkgs.lib.nixosSystem {
-            specialArgs = {
-              inherit inputs tailnetApps;
-              hostSystem = "x86_64-linux";
-              headMode = "headless";
-            };
-            modules = nixosObservabilityModules ++ [
-              stylix.nixosModules.stylix
-              inputs.nix-flatpak.nixosModules.nix-flatpak
-              inputs.home-manager.nixosModules.home-manager
-              ({ pkgs, config, lib, ... }: {
-                nixpkgs.hostPlatform = "x86_64-linux";
-                nixpkgs.overlays = [
-                  (import ./overlays/unstable.nix inputs)
-                  (import ./modules/zmx).overlay
-                ];
-                system.configurationRevision = flakeRevision;
-
-                services.axiom-deploy-annotation = {
-                  enable = true;
-                  tokenPath = config.sops.secrets."axiom/personal_token".path;
-                  apiEndpoint = "https://api.axiom.co/v2/annotations";
-                  datasets = [ "papertrail" "papertrail-traces" ];
-                  repositoryUrl = "https://github.com/bdsqqq/dots";
-                  user = "bdsqqq";
-                  group = "users";
-                };
-                systemd.services.axiom-deploy-annotation.serviceConfig.ProtectHome =
-                  lib.mkForce "read-only";
-              })
-              ./hosts/gru-relay/default.nix
             ];
           };
 
