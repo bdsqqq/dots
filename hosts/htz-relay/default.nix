@@ -60,7 +60,6 @@ in
     ../../modules/tmux
     ../../modules/agents
     ../../modules/gog
-    ../../modules/wacli
     ../../modules/goplaces
     ../../modules/openhue
     ../../modules/xurl
