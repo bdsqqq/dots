@@ -84,7 +84,6 @@ runtime access, and authentication need separate checks.
 | `mmn-m4`    | aarch64-darwin | household storage and media service host  |
 | `lgo-z2e`   | x86_64-linux   | Niri/Jovian graphical system              |
 | `htz-relay` | x86_64-linux   | storage, Syncthing, and application relay |
-| `gru-relay` | x86_64-linux   | Tailscale exit node and ingress relay     |
 
 ## common operations
 

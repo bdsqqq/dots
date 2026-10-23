@@ -34,39 +34,16 @@ in
   imports = ([
     ../../modules/primary-user.nix
     ../../modules/nix
-    ../../modules/nix/nix-ld.nix
     ../../modules/ssh
     ../../modules/ssh/authorized-keys.nix
     ../../modules/tailscale
     ../../modules/tailnet-registry
     ../../modules/cloudflare-ingress
     ../../modules/secrets
-    ../../modules/fonts
     ../../modules/nix/auto-upgrade.nix
     ../../modules/syncthing
     ../../modules/o11y/hwmon.nix
-    ../../modules/core-cli
-    ../../modules/shell
-    ../../modules/btop
-    ../../modules/homebrew/environment.nix
-    ../../modules/fzf
-    ../../modules/zoxide
-    ../../modules/nvim
-    ../../modules/git
-    ../../modules/tealdeer
-    ../../modules/trash
-    (import ../../modules/zmx).module
-    ../../modules/direnv
-    ../../modules/tmux
-    ../../modules/agents
-    ../../modules/gog
-    ../../modules/goplaces
-    ../../modules/openhue
-    ../../modules/xurl
-    ../../modules/weather
-    ../../modules/remindctl
-    ../../modules/node-pnpm
-    ../../modules/mise
+    # Service modules own their runtimes; the relay has no agent/developer setup.
     ../../modules/syncthing/automerge
     ./apps-container.nix
   ])
@@ -281,15 +258,12 @@ in
       isDarwin = false;
       hostSystem = "x86_64-linux";
       headMode = "headless";
-      torchBackend = "cpu";
     };
     users.bdsqqq = { lib, ... }: {
       home.username = "bdsqqq";
       home.homeDirectory = "/home/bdsqqq";
       home.stateVersion = "25.05";
       programs.home-manager.enable = true;
-      home.activation.installPnpmTools = lib.mkForce (lib.hm.dag.entryAfter [ "linkGeneration" ] "");
-      home.activation.installVitePlus = lib.mkForce (lib.hm.dag.entryAfter [ "linkGeneration" ] "");
       home.file."commonplace" = {
         force = true;
         source = config.hm.lib.file.mkOutOfStoreSymlink config.my.paths.commonplace;
@@ -300,7 +274,6 @@ in
   time.timeZone = "Europe/London";
   i18n.defaultLocale = "en_US.UTF-8";
 
-  environment.shellAliases.g = "lazygit";
   boot.loader.grub = {
     enable = true;
     device = "/dev/sda";
@@ -311,9 +284,10 @@ in
     git
     ghostty.terminfo
     htop
-    lazygit
+    jq
+    ripgrep
+    tmux
     tree
-    zmx
   ];
 
   services.qemuGuest.enable = true;
