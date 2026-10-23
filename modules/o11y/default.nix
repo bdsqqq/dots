@@ -375,8 +375,12 @@ in
               trap cleanup EXIT HUP INT TERM
 
               export AXIOM_URL="${edgeUrl}"
-              export AXIOM_TOKEN_LOGS="$(cat ${secret "papertrail_token"})"
-              export AXIOM_TOKEN_METRICS="$(cat ${secret "host_metrics_token"})"
+              # export masks cat's exit status; fail so the supervisor retries
+              # when SOPS has not installed credentials yet, including at boot.
+              AXIOM_TOKEN_LOGS="$(cat ${secret "papertrail_token"})" || exit 1
+              AXIOM_TOKEN_METRICS="$(cat ${secret "host_metrics_token"})" || exit 1
+              [ -n "$AXIOM_TOKEN_LOGS" ] && [ -n "$AXIOM_TOKEN_METRICS" ] || exit 1
+              export AXIOM_TOKEN_LOGS AXIOM_TOKEN_METRICS
               ${pkgs.opentelemetry-collector-contrib}/bin/otelcol-contrib --config /etc/otelcol/axiom.yaml &
               child_pid=$!
               printf '%s\n' "$child_pid" > "$pid_file"
@@ -432,8 +436,11 @@ in
 
             script = ''
               export AXIOM_URL="${edgeUrl}"
-              export AXIOM_TOKEN_LOGS="$(cat ${secret "papertrail_token"})"
-              export AXIOM_TOKEN_METRICS="$(cat ${secret "host_metrics_token"})"
+              # export masks cat's exit status; let Restart=always retry reads.
+              AXIOM_TOKEN_LOGS="$(cat ${secret "papertrail_token"})" || exit 1
+              AXIOM_TOKEN_METRICS="$(cat ${secret "host_metrics_token"})" || exit 1
+              [ -n "$AXIOM_TOKEN_LOGS" ] && [ -n "$AXIOM_TOKEN_METRICS" ] || exit 1
+              export AXIOM_TOKEN_LOGS AXIOM_TOKEN_METRICS
               exec ${pkgs.opentelemetry-collector-contrib}/bin/otelcol-contrib --config /etc/otelcol/axiom.yaml
             '';
 

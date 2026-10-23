@@ -87,9 +87,30 @@ in
 
   boot.kernelPackages = pkgs.unstable.linuxPackages_latest;
 
+  # Hourly upgrades need collection at the same cadence on this 25 GB root.
+  # Keep current profiles and the booted system, not rollback generations.
   nix.gc = {
-    dates = "daily";
-    options = "--delete-older-than 3d";
+    dates = "hourly";
+    options = "--delete-old";
+  };
+  nix.settings = {
+    keep-outputs = lib.mkForce false;
+    keep-derivations = lib.mkForce false;
+    min-free = 2 * 1024 * 1024 * 1024;
+    max-free = 4 * 1024 * 1024 * 1024;
+  };
+  systemd.services.nixos-upgrade = {
+    requires = [ "nix-gc.service" ];
+    after = [ "nix-gc.service" ];
+    # The observed refresh unpacked 5.9 GiB; leave room for build scratch too.
+    # GC cannot create capacity when every remaining path is still live.
+    preStart = ''
+      available="$(df -B1 --output=avail / | tail -n 1)"
+      if ! [ "$available" -ge 8589934592 ]; then
+        echo "refusing upgrade: root has $available available bytes; need 8 GiB" >&2
+        exit 1
+      fi
+    '';
   };
 
   boot.kernelParams = [
