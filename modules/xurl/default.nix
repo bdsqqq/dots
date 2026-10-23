@@ -128,7 +128,7 @@ in
         home.packages = [
           package
           (pkgs.writeShellScriptBin "xurl-ready" ''
-            exec ${pkgs.nodejs}/bin/node --experimental-strip-types ${lib.escapeShellArg source} ${
+            exec ${pkgs.nodejs_latest}/bin/node --experimental-strip-types ${lib.escapeShellArg source} ${
               lib.escapeShellArgs [
                 "${package}/bin/xurl"
                 "${pkgs.yq-go}/bin/yq"

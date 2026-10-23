@@ -42,7 +42,7 @@ in
       home.packages = [
         pkgs.openhue-cli
         (pkgs.writeShellScriptBin "openhue-ready" ''
-          exec ${pkgs.nodejs}/bin/node --experimental-strip-types ${lib.escapeShellArg source} ${
+          exec ${pkgs.nodejs_latest}/bin/node --experimental-strip-types ${lib.escapeShellArg source} ${
             lib.escapeShellArgs [
               "${pkgs.openhue-cli}/bin/openhue"
               "${pkgs.yq-go}/bin/yq"

@@ -2,7 +2,7 @@
 
 pkgs.writeShellApplication {
   name = "photo-gallery-server";
-  runtimeInputs = [ pkgs.nodejs ];
+  runtimeInputs = [ pkgs.nodejs_latest ];
   text = ''
     exec node ${./photo-gallery-server.mjs} \
       --copyparty ${pkgs.copyparty}/bin/copyparty \

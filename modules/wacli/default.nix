@@ -71,7 +71,7 @@ in
         home.packages = [
           package
           (pkgs.writeShellScriptBin "wacli-ready" ''
-            exec ${pkgs.nodejs}/bin/node --experimental-strip-types ${lib.escapeShellArg source} ${
+            exec ${pkgs.nodejs_latest}/bin/node --experimental-strip-types ${lib.escapeShellArg source} ${
               lib.escapeShellArgs [
                 "${package}/bin/wacli"
                 (if cfg.enable then "1" else "0")

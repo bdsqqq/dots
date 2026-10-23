@@ -25,6 +25,9 @@ in
     , lib
     , ...
     }:
+    let
+      pnpm = pkgs.pnpm_12;
+    in
     {
       home.file.".pi/agent/settings.json".source =
         config.lib.file.mkOutOfStoreSymlink "${repoPi}/settings.json";
@@ -56,8 +59,8 @@ in
           export PATH="${
             lib.makeBinPath (
               [
-                pkgs.nodejs
-                pkgs.pnpm
+                pkgs.nodejs_latest
+                pnpm
               ]
               ++ lib.optionals pkgs.stdenv.isLinux [
                 pkgs.gcc
@@ -65,7 +68,7 @@ in
               ]
             )
           }:$PATH"
-          "${pkgs.pnpm}/bin/pnpm" install --dir "${repoPi}" --frozen-lockfile
+          "${pnpm}/bin/pnpm" install --dir "${repoPi}" --frozen-lockfile
         fi
       '';
 

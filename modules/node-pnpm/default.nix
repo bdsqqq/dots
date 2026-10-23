@@ -6,16 +6,6 @@ let
   vpVersion = "1.3.0";
 in
 {
-  nixpkgs.overlays = [
-    (
-      final: prev: {
-        # Follow nixpkgs' current Node release, rather than its default LTS.
-        nodejs = prev.nodejs_latest;
-        pnpm = final.pnpm_12;
-      }
-    )
-  ];
-
   home-manager.users.bdsqqq =
     { config
     , pkgs
@@ -23,6 +13,10 @@ in
     , ...
     }:
     let
+      # Keep our runtime current without changing unrelated packages' build inputs
+      # and losing their upstream binary-cache matches.
+      nodejs = pkgs.nodejs_latest;
+      pnpm = pkgs.pnpm_12;
       vpHome = "${config.home.homeDirectory}/.vite-plus";
       vpInstaller = pkgs.fetchurl {
         url = "https://raw.githubusercontent.com/voidzero-dev/vite-plus/afbe4a285b4ac6ffac498eae71b10ff63069a029/packages/cli/install.sh";
@@ -30,8 +24,8 @@ in
       };
       activationPath = lib.makeBinPath (
         [
-          pkgs.nodejs
-          pkgs.pnpm
+          nodejs
+          pnpm
           pkgs.curl
           # Home Manager supplies the basic shell tools, but not awk, which
           # the Vite+ bootstrap uses to parse package metadata.
@@ -59,8 +53,8 @@ in
       ];
 
       home.packages = [
-        pkgs.nodejs
-        pkgs.pnpm
+        nodejs
+        pnpm
         pkgs.unzip
       ];
 
@@ -76,7 +70,7 @@ in
         export NODE_NO_WARNINGS=1
         export PATH="${activationPath}:$PATH"
 
-        "${pkgs.pnpm}/bin/pnpm" install \
+        "${pnpm}/bin/pnpm" install \
           --dir "${toolsDir}" \
           --frozen-lockfile \
           --reporter=append-only

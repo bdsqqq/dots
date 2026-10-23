@@ -2,7 +2,7 @@
   home-manager.users.bdsqqq =
     { lib, pkgs, ... }:
     let
-      nodeVersion = pkgs.nodejs.version;
+      nodeVersion = pkgs.nodejs_latest.version;
     in
     {
       home.packages = [ pkgs.mise ];

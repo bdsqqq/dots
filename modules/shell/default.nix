@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  headMode ? "graphical",
   ...
 }: {
   imports = [
@@ -17,7 +18,10 @@
   my.github.credential.required = true;
   my.huggingface.credential.required = true;
 
-  home-manager.users.bdsqqq = { config, pkgs, lib, ... }: {
+  home-manager.users.bdsqqq = { config, pkgs, lib, ... }:
+  let
+    graphicalLinux = pkgs.stdenv.isLinux && headMode == "graphical";
+  in {
     # define my.defaultShell option here, derived from enabled shell programs
     # other modules (tmux, etc.) can reference config.my.defaultShell
     options.my.defaultShell = lib.mkOption {
@@ -54,7 +58,7 @@
         imageViewer = "imv.desktop";
         videoPlayer = "vlc.desktop";
         fileManager = "yazi.desktop";
-      in if pkgs.stdenv.isDarwin then
+      in if !graphicalLinux then
         { }
       else {
         enable = true;
@@ -85,7 +89,8 @@
         };
       };
 
-      xdg.desktopEntries = if pkgs.stdenv.isDarwin then
+      # A store path in a desktop entry is a build dependency, even without a GUI.
+      xdg.desktopEntries = if !graphicalLinux then
         { }
       else {
         yazi = {
