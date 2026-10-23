@@ -13,7 +13,7 @@ let
       {
         nativeBuildInputs = [
           pkgs.jq
-          pkgs.nodejs
+          pkgs.nodejs_latest
         ];
       }
       ''

@@ -14,7 +14,7 @@ let
     name = "syncthing-automerge";
     runtimeInputs = [
       pkgs.git
-      pkgs.nodejs
+      pkgs.nodejs_latest
     ];
     text = ''
       exec node ${script} "$@"

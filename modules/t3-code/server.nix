@@ -53,7 +53,7 @@ let
     fi
 
     if [ -f ${lib.escapeShellArg developmentServer} ]; then
-      t3_command="${pkgs.nodejs}/bin/node ${developmentServer}"
+      t3_command="${pkgs.nodejs_latest}/bin/node ${developmentServer}"
     else
       t3_command="${toolsBin}/t3"
     fi
@@ -65,12 +65,12 @@ let
   '';
   t3Fork = pkgs.writeShellApplication {
     name = "t3-fork";
-    runtimeInputs = [ pkgs.nodejs ];
+    runtimeInputs = [ pkgs.nodejs_latest ];
     text = ''
       exec node ${lib.escapeShellArg developmentServer} "$@"
     '';
   };
-  t3DeployPnpm = pkgs.pnpm.override {
+  t3DeployPnpm = pkgs.pnpm_11.override {
     version = "11.10.0";
     hash = "sha256-YgtmBepPYvxWptCphzP0eQcdAyHgPkhrUix+mnRhdDE=";
   };
@@ -81,7 +81,7 @@ let
       pkgs.curl
       pkgs.gnused
       pkgs.git
-      pkgs.nodejs
+      pkgs.nodejs_latest
       t3DeployPnpm
     ];
     text = ''
@@ -268,7 +268,7 @@ in
                   pkgs.coreutils
                   pkgs.git
                   pkgs.gnused
-                  pkgs.nodejs
+                  pkgs.nodejs_latest
                 ]}"
                 EnvironmentFile=${config.sops.templates.t3-code-environment.path}
               '';
@@ -295,7 +295,7 @@ in
               pkgs.coreutils
               pkgs.git
               pkgs.gnused
-              pkgs.nodejs
+              pkgs.nodejs_latest
             ]}";
             serviceConfig = {
               Type = "exec";
@@ -337,7 +337,7 @@ in
               pkgs.coreutils
               pkgs.gnused
               pkgs.git
-              pkgs.nodejs
+              pkgs.nodejs_latest
               "/usr/local/bin"
               toolsBin
             ];

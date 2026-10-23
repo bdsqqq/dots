@@ -69,7 +69,7 @@ in
         export TOOL_AUTH_PLACES_ENABLED=${if cfg.enable then "1" else "0"}
         export TOOL_AUTH_PLACES_KEY_FILE=${lib.escapeShellArg (if apiKeyFile == null then "" else apiKeyFile)}
         export TOOL_AUTH_PLACES_BINARY=${package}/bin/goplaces
-        exec ${pkgs.nodejs}/bin/node ${lib.escapeShellArg live} "$@"
+        exec ${pkgs.nodejs_latest}/bin/node ${lib.escapeShellArg live} "$@"
       '';
       executable = if apiKeyFile == null then package else pkgs.writeShellScriptBin "goplaces" ''
         exec ${auth}/bin/goplaces-auth run "$@"

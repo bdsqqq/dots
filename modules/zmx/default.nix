@@ -100,7 +100,7 @@ let
         zmxRows = pkgs.writeShellApplication {
           name = "zmx-rows";
           runtimeInputs = [
-            pkgs.nodejs
+            pkgs.nodejs_latest
             pkgs.zmx
           ];
           text = ''

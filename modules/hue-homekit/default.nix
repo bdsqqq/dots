@@ -6,7 +6,7 @@
 }:
 let
   cfg = config.my.hueHomekit;
-  package = pkgs.callPackage ./package.nix { };
+  package = pkgs.callPackage ./package.nix { nodejs = pkgs.nodejs_latest; };
   daemonUrl = "http://127.0.0.1:${toString config.my.hueControl.port}";
   bridges = {
     hue-homekit = {

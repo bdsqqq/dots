@@ -43,7 +43,7 @@ lib.optionalAttrs (lib.hasInfix "darwin" hostSystem) (
       home-manager.users.bdsqqq = { pkgs, ... }: {
         home.packages = [
           (pkgs.writeShellScriptBin "remindctl-ready" ''
-            exec ${pkgs.nodejs}/bin/node --experimental-strip-types ${lib.escapeShellArg source} ${
+            exec ${pkgs.nodejs_latest}/bin/node --experimental-strip-types ${lib.escapeShellArg source} ${
               if hostSystem == "x86_64-darwin" then "/usr/local" else "/opt/homebrew"
             }/bin/remindctl ${
               lib.escapeShellArgs [

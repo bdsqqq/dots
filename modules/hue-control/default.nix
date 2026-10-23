@@ -7,7 +7,7 @@
 
 let
   cfg = config.my.hueControl;
-  package = pkgs.callPackage ./package.nix { };
+  package = pkgs.callPackage ./package.nix { nodejs = pkgs.nodejs_latest; };
   app = "${package}/Applications/Hue Control.app";
 in
 {

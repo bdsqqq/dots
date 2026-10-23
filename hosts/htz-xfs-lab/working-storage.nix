@@ -12,7 +12,7 @@ let
   tool = pkgs.writeShellApplication {
     name = "working-storage";
     runtimeInputs = [
-      pkgs.nodejs
+      pkgs.nodejs_latest
       pkgs.util-linux
       pkgs.vdo
       pkgs.lvm2_vdo

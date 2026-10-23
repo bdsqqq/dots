@@ -15,7 +15,7 @@ let
   });
   auth = pkgs.writeShellScriptBin "gog-auth" ''
     ${env}
-    exec ${pkgs.nodejs}/bin/node ${lib.escapeShellArg live} "$@"
+    exec ${pkgs.nodejs_latest}/bin/node ${lib.escapeShellArg live} "$@"
   '';
   wrapped = pkgs.writeShellScriptBin "gog" ''
     exec ${auth}/bin/gog-auth run "$@"
