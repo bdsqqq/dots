@@ -33,6 +33,7 @@ in
 {
   imports = ([
     ../../modules/primary-user.nix
+    ../../modules/agent-decoy
     ../../modules/nix
     ../../modules/ssh
     ../../modules/ssh/authorized-keys.nix

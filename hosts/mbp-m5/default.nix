@@ -13,6 +13,7 @@ in
     inputs.home-manager.darwinModules.home-manager
 
     ../../modules/primary-user.nix
+    ../../modules/agent-decoy
     ../../modules/nix
     ../../modules/nix/nix-ld.nix
     ../../modules/ssh

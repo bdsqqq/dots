@@ -80,6 +80,7 @@ in
     ./legion-metrics.nix
 
     ../../modules/primary-user.nix
+    ../../modules/agent-decoy
     ../../modules/nix
     ../../modules/nix/nix-ld.nix
     ../../modules/ssh

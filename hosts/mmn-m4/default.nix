@@ -12,6 +12,7 @@ in
   imports = [
     inputs.home-manager.darwinModules.home-manager
     ../../modules/primary-user.nix
+    ../../modules/agent-decoy
     ../../modules/auto-login
     ../../modules/nix
     ../../modules/secrets
