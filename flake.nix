@@ -247,8 +247,23 @@
               lgo-z2e = builtins.attrNames self.nixosConfigurations.lgo-z2e.config.sops.secrets;
               htz-relay = builtins.attrNames self.nixosConfigurations.htz-relay.config.sops.secrets;
               htz-xfs-lab = builtins.attrNames self.nixosConfigurations.htz-xfs-lab.config.sops.secrets;
+              htz-lab = builtins.attrNames self.nixosConfigurations.htz-lab.config.sops.secrets;
             };
             expected = {
+              htz-lab = [
+                "TYPESAFE_API_KEY"
+                "artificial_analysis_api_key"
+                "axiom.toml"
+                "axiom/host_metrics_token"
+                "axiom/papertrail_token"
+                "axiom/personal_org_id"
+                "axiom/personal_token"
+                "axiom/personal_url"
+                "gh_token"
+                "hf_token"
+                "parallel_api_key"
+                "tailscale_auth_key"
+              ];
               mbp-m2 = [
                 "TYPESAFE_API_KEY"
                 "artificial_analysis_api_key"
@@ -411,6 +426,28 @@
                 };
               }
               ./hosts/htz-xfs-lab/default.nix
+            ];
+          };
+
+          "htz-lab" = inputs.nixpkgs.lib.nixosSystem {
+            specialArgs = {
+              inherit inputs tailnetApps;
+              hostSystem = "x86_64-linux";
+              headMode = "headless";
+            };
+            modules = nixosObservabilityModules ++ [
+              inputs.disko.nixosModules.disko
+              inputs.home-manager.nixosModules.home-manager
+              {
+                nixpkgs = {
+                  config.allowUnfree = true;
+                  overlays = [
+                    (import ./overlays/unstable.nix inputs)
+                    (import ./modules/zmx).overlay
+                  ];
+                };
+              }
+              ./hosts/htz-lab/default.nix
             ];
           };
 

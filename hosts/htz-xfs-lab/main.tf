@@ -54,22 +54,56 @@ resource "hcloud_server" "this" {
     role      = "storage-lab"
     lifecycle = "disposable"
   }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "hcloud_server" "lab" {
+  name        = "htz-lab"
+  image       = "ubuntu-24.04"
+  server_type = "cx33"
+  location    = "nbg1"
+  ssh_keys    = [data.hcloud_ssh_key.operator.id]
+  backups     = false
+
+  delete_protection  = true
+  rebuild_protection = true
+
+  labels = {
+    role = "storage-lab"
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "hcloud_volume" "vdo" {
-  name      = "htz-xfs-lab-vdo"
-  size      = 50
-  server_id = hcloud_server.this.id
-  automount = false
+  name = "htz-xfs-lab-vdo"
+  size = 50
+  # The independent host must never take this active lab volume.
+  server_id         = hcloud_server.this.id
+  automount         = false
+  delete_protection = true
 
   labels = {
     role      = "xfs-vdo-lab"
-    lifecycle = "disposable"
+    lifecycle = "persistent"
+  }
+
+  lifecycle {
+    prevent_destroy = true
   }
 }
 
 output "ipv4_address" {
   value = hcloud_server.this.ipv4_address
+}
+
+output "lab_ipv4_address" {
+  value = hcloud_server.lab.ipv4_address
 }
 
 output "volume_id" {

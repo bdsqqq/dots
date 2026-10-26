@@ -24,12 +24,14 @@ creation_rules:
           - *host_htz_relay
           - *host_lgo_z2e
           - *host_htz_xfs_lab
+          - *host_htz_lab
   - path_regex: ^modules/jev/secrets\.yaml$
     key_groups:
       - age:
           - *user_bdsqqq
           - *host_lgo_z2e
           - *host_htz_xfs_lab
+          - *host_htz_lab
   - path_regex: ^modules/tailscale/secrets\.yaml$
     key_groups:
       - age:
@@ -57,6 +59,16 @@ creation_rules:
     key_groups:
       - age:
           - *user_bdsqqq
+  - path_regex: ^modules/(o11y|pi/packages/extensions/web-search)/secrets\.yaml$
+    key_groups:
+      - age:
+          - *user_bdsqqq
+          - *host_mbp_m2
+          - *host_htz_relay
+          - *host_r56
+          - *host_lgo_z2e
+          - *host_htz_xfs_lab
+          - *host_htz_lab
   - path_regex: (^|/)secrets\.yaml$
     key_groups:
       - age:
@@ -93,3 +105,4 @@ creation_rules:
           - *host_r56
           - *host_lgo_z2e
           - *host_htz_xfs_lab
+          - *host_htz_lab
