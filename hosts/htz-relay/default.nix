@@ -38,6 +38,7 @@ in
     ../../modules/ssh
     ../../modules/ssh/authorized-keys.nix
     ../../modules/tailscale
+    ../../modules/rex
     ../../modules/tailnet-registry
     ../../modules/cloudflare-ingress
     ../../modules/secrets

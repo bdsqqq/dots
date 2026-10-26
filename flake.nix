@@ -61,6 +61,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    rex = {
+      url = "https://pkgs.superlogical.com/rex/nix/snapshot.tar.gz";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     hunk = {
       url = "github:modem-dev/hunk";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -264,6 +269,7 @@
                 "hf_token"
                 "parallel_api_key"
                 "restic_ssd_01_password"
+                "rex_netrc"
                 "syncthing_gui_password"
               ];
               mbp-m5 = [
@@ -279,6 +285,7 @@
                 "gh_token"
                 "hf_token"
                 "parallel_api_key"
+                "rex_netrc"
                 "syncthing_gui_password"
               ];
               mmn-m4 = [
@@ -292,6 +299,7 @@
                 "gh_token"
                 "hf_token"
                 "restic_ssd_01_password"
+                "rex_netrc"
                 "syncthing_gui_password"
               ];
               lgo-z2e = [
@@ -307,6 +315,7 @@
                 "gh_token"
                 "hf_token"
                 "parallel_api_key"
+                "rex_netrc"
                 "syncthing_gui_password"
                 "tailscale_auth_key"
               ];
@@ -326,6 +335,7 @@
                 "cloudflare-tunnel-money"
                 "cloudflare-tunnel-photos"
                 "cloudflare-tunnel-t3"
+                "rex_netrc"
                 "syncthing_gui_password"
                 "tailscale_auth_key"
               ];
@@ -343,6 +353,7 @@
                 "gog_oauth_client"
                 "hf_token"
                 "parallel_api_key"
+                "rex_netrc"
                 "tailscale_auth_key"
               ];
             };

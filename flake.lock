@@ -780,6 +780,23 @@
         "url": "https://git.outfoxxed.me/outfoxxed/quickshell"
       }
     },
+    "rex": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1793053203,
+        "narHash": "sha256-aE7CEkE4c5IEyIjx1O4QsL7hKrqcNo6cmVfDpIbIVRg=",
+        "type": "tarball",
+        "url": "https://pkgs.superlogical.com/rex/nix/snapshot/0.0.1793053203-g5f1511.tar.gz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://pkgs.superlogical.com/rex/nix/snapshot.tar.gz"
+      }
+    },
     "root": {
       "inputs": {
         "agent-browser": "agent-browser",
@@ -800,6 +817,7 @@
         "nixpkgs": "nixpkgs_3",
         "nixpkgs-unstable": "nixpkgs-unstable",
         "quickshell": "quickshell",
+        "rex": "rex",
         "sops-nix": "sops-nix",
         "stylix": "stylix",
         "vicinae": "vicinae"
