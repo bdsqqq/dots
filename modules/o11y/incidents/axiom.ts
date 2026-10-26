@@ -60,16 +60,21 @@ export class Axiom {
       return match.data as Row;
     });
     // Scalar aggregations (including a real count of zero) use totals rather
-    // than matches. Empty matches alone do not establish absent data.
-    return (result.buckets?.totals ?? []).map((group: any) => {
-      if (!group.group || typeof group.group !== "object" || !Array.isArray(group.aggregations)) throw new Error("invalid APL aggregate");
-      const row: Row = { ...group.group };
-      for (const aggregate of group.aggregations) {
-        if (typeof aggregate.op !== "string" || Object.hasOwn(row, aggregate.op)) throw new Error("invalid APL aggregate alias");
-        row[aggregate.op] = aggregate.value;
-      }
-      return row;
-    });
+    // than matches. A grouped empty input also has a synthetic global total;
+    // without the requested group keys, that total is not a host observation.
+    const groupKeys: string[] = result.request?.groupBy ?? [];
+    if (!Array.isArray(groupKeys) || groupKeys.some(key => typeof key !== "string")) throw new Error("invalid APL grouping");
+    return (result.buckets?.totals ?? [])
+      .filter((group: any) => groupKeys.every(key => Object.hasOwn(group.group ?? {}, key)))
+      .map((group: any) => {
+        if (!group.group || typeof group.group !== "object" || !Array.isArray(group.aggregations)) throw new Error("invalid APL aggregate");
+        const row: Row = { ...group.group };
+        for (const aggregate of group.aggregations) {
+          if (typeof aggregate.op !== "string" || Object.hasOwn(row, aggregate.op)) throw new Error("invalid APL aggregate alias");
+          row[aggregate.op] = aggregate.value;
+        }
+        return row;
+      });
   }
   async ingest(event: Row): Promise<void> {
     const result = await this.post(`${API}/datasets/papertrail/ingest`, [event], true);
