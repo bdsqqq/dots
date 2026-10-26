@@ -1,5 +1,12 @@
 {
   "machines": {
+    "htz-lab": {
+      "ageRecipients": [
+        "age18hhyzgsu3jjc4zk0ufxs25s58gw6tw0sx5kvmlykfvlvlxzk3v9qwu6qy5"
+      ],
+      "bootstrapGeneration": 1,
+      "tag": "tag:service-host"
+    },
     "htz-xfs-lab": {
       "ageRecipients": [
         "age17jh6jw9nq0fk9ytkm0jntrsma7wnp4mw0nlze8ftz6rawtkhhscq5pkwd0"
