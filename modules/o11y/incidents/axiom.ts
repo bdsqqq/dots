@@ -89,6 +89,12 @@ export class Axiom {
   }
 }
 
+/** Legacy APL totals encode datetimes as Unix nanoseconds; row projections use RFC3339. */
+export function logSampleTime(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? Math.floor(value / 1_000_000) : NaN;
+  return typeof value === "string" ? Date.parse(value) : NaN;
+}
+
 export function metricSeries(result: any, start: number, end: number): Series[] {
   if (!Array.isArray(result.series) || result.error || result.status?.isPartial === true) throw new Error("missing or incomplete metrics result");
   return result.series.map((series: any) => {
@@ -160,7 +166,7 @@ export async function observations(client: Axiom, config: Configuration, now: nu
       const host = "htz-xfs-lab";
       const rows = await safe(rule.name, () => client.rows("| where ['resource.host.name'] == 'htz-xfs-lab' | extend record = parse_json(tostring(body)), sampled_at = _time | where tostring(record._SYSTEMD_UNIT) == 'working-storage-health.service' | extend health = parse_json(tostring(record.MESSAGE)) | summarize arg_max(sampled_at, health) by host = ['resource.host.name'] | project host, sampled_at, healthy = tobool(health.healthy)", now - 15 * MINUTE, now));
       const row = rows?.find(r => r.host === host);
-      const at = row ? Date.parse(String(row.sampled_at)) : undefined;
+      const at = row ? logSampleTime(row.sampled_at) : undefined;
       const valid = !row || (typeof row.healthy === "boolean" && Number.isFinite(at));
       if (!valid) errors.push(`${rule.name}: invalid sample`);
       result.push({ key: JSON.stringify([rule.name, host]), kind: rule.name, host, observedAt: now,
@@ -169,13 +175,13 @@ export async function observations(client: Axiom, config: Configuration, now: nu
         critical: true, detail: { healthy: typeof row?.healthy === "boolean" ? row.healthy : null, sampleAt: at ?? null } });
     } else if (rule.name.startsWith("hosts: kernel killed")) {
       const rows = await safe(rule.name, () => client.rows("| extend record = parse_json(tostring(body)), sampled_at = _time | where tostring(record._TRANSPORT) == 'kernel' | extend message = tolower(tostring(record.MESSAGE)) | where message contains 'killed process' and message contains 'out of memory' | summarize kills = count(), sampled_at = max(sampled_at) by host = ['resource.host.name'] | project host, kills, sampled_at", now - 5 * MINUTE, now));
-      const valid = rows?.every(row => typeof row.host === "string" && typeof row.kills === "number" && Number.isInteger(row.kills) && row.kills > 0 && Number.isFinite(Date.parse(String(row.sampled_at))));
+      const valid = rows?.every(row => typeof row.host === "string" && typeof row.kills === "number" && Number.isInteger(row.kills) && row.kills > 0 && logSampleTime(row.sampled_at) >= now - 5 * MINUTE && logSampleTime(row.sampled_at) < now);
       if (rows && !valid) errors.push(`${rule.name}: invalid sample`);
       for (const host of hosts) {
         const row = rows?.find(r => r.host === host);
         result.push({ key: JSON.stringify([rule.name, host]), kind: rule.name, host, observedAt: now,
           status: !valid ? "unknown" : row && Number(row.kills) > 0 ? "bad" : freshAt(host) !== undefined ? "healthy" : "unknown",
-          sampleAt: row ? Date.parse(String(row.sampled_at)) : freshAt(host), critical: true, detail: { kills: Number(row?.kills ?? 0) } });
+          sampleAt: row ? logSampleTime(row.sampled_at) : freshAt(host), critical: true, detail: { kills: Number(row?.kills ?? 0) } });
       }
     } else if (rule.name !== "hosts: incident evaluator stalled") {
       throw new Error(`unsupported host threshold rule: ${rule.name}`);
