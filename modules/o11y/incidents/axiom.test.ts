@@ -52,6 +52,19 @@ test("a real scalar count of zero is read from totals, not mistaken for missing 
   finally { store.close(); }
 });
 
+test("grouped empty aggregates are not host rows, but actual group totals remain visible", async () => {
+  for (const present of [false, true]) {
+    const client = new Axiom({ query: "q", ingest: "i", org: "o" }, async () => Response.json({
+      status: { isPartial: false }, matches: [], request: { groupBy: ["host"] },
+      buckets: { totals: [{ group: present ? { host: "host" } : {}, aggregations: [
+        { op: "kills", value: present ? 1 : 0 }, { op: "sampled_at", value: present ? new Date(now).toISOString() : null },
+      ] }] },
+    }));
+    const rows = await client.rows("| summarize kills = count(), sampled_at = max(_time) by host", now - 60_000, now);
+    assert.deepEqual(rows, present ? [{ host: "host", kills: 1, sampled_at: new Date(now).toISOString() }] : []);
+  }
+});
+
 function fixtureRules() {
   const directory = mkdtempSync(join(tmpdir(), "incident-adapter-"));
   const rulesPath = join(directory, "rules.json");
