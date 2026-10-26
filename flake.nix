@@ -251,6 +251,7 @@
             expected = {
               mbp-m2 = [
                 "TYPESAFE_API_KEY"
+                "annas_archive_key"
                 "artificial_analysis_api_key"
                 "axiom.toml"
                 "axiom/host_metrics_token"

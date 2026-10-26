@@ -44,6 +44,7 @@ in
     ../../modules/gog
     ../../modules/wacli
     ../../modules/goplaces
+    ../../modules/annas-archive
     ../../modules/openhue
     ../../modules/xurl
     ../../modules/weather

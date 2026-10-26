@@ -55,6 +55,7 @@ in
     ../../modules/gog
     ../../modules/wacli
     ../../modules/goplaces
+    ../../modules/annas-archive
     ../../modules/openhue
     ../../modules/xurl
     ../../modules/weather
@@ -87,6 +88,7 @@ in
   ];
 
   my.cloudflare.credential.required = true;
+  my.annasArchive.enable = true;
   my.terrariaSync = {
     enable = true;
     devices = [ "ipd" "mmn-m4" ];

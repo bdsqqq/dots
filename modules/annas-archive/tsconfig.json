@@ -1,0 +1,4 @@
+{
+  "extends": "../tool-auth/tsconfig.json",
+  "include": ["./*.ts", "../tool-auth/process.ts"]
+}
