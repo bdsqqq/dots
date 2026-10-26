@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { Axiom, metricObservation, metricSeries, notification, observations, type Rule } from "./axiom.ts";
+import { Axiom, logSampleTime, metricObservation, metricSeries, notification, observations, type Rule } from "./axiom.ts";
 import { IncidentStore } from "./state.ts";
 import { deliver } from "./delivery.ts";
 
@@ -30,6 +30,12 @@ test("metrics-v2 timestamps come from actual occupied buckets, not query-end or 
   const result = metricSeries({ series: [{ tags: { "host.name": "host" }, start: now / 1000 - 90, resolution: 30, data: [2, null, 4, 1000], summary: 9999 }] }, now - 120_000, now);
   assert.deepEqual(result[0].points, [{ at: now - 90_000, value: 2 }, { at: now - 30_000, value: 4 }]);
   for (const broken of [{}, { series: null }, { series: [], status: { isPartial: true } }, { series: [{ tags: {}, start: 1, resolution: 1, data: ["4"] }] }]) assert.throws(() => metricSeries(broken, 0, now));
+});
+
+test("log sample timestamps normalize both native wire formats without parsing numeric text as a date", () => {
+  assert.equal(logSampleTime(now * 1_000_000), now);
+  assert.equal(logSampleTime(new Date(now).toISOString()), now);
+  for (const invalid of [null, undefined, NaN, Infinity, "1.8e18"]) assert.ok(Number.isNaN(logSampleTime(invalid)));
 });
 
 test("Axiom ingest validates accepted counts and redacts arbitrary API failure content", async () => {
@@ -197,7 +203,7 @@ test("a single OOM kill opens immediately instead of waiting for another distinc
       if (String(url).includes("_mpl")) return Response.json({ series: [] });
       const body = JSON.parse(init!.body as string);
       return Response.json({ status: { isPartial: false }, matches: body.apl.includes("kills = count()")
-        ? [{ data: { host: "host", kills: 1, sampled_at: new Date(now - 30_000).toISOString() } }] : [] });
+        ? [{ data: { host: "host", kills: 1, sampled_at: (now - 30_000) * 1_000_000 } }] : [] });
     });
     const observation = (await observations(client, fixture.config, now)).observations.find(o => o.host === "host" && o.kind.includes("kernel killed"))!;
     assert.equal(store.observe(observation)?.action, "Open");
