@@ -12,6 +12,14 @@ type Role = {
   services: Record<string, boolean>;
   containers: string[];
   automerge: string;
+  incidents: {
+    enabled: boolean;
+    timer: boolean;
+    execStart: string;
+    stateDirectory: string;
+    credentials: string[];
+    user: string;
+  };
   maintenance: {
     keepOutputs: boolean;
     keepDerivations: boolean;
@@ -51,6 +59,14 @@ function evaluate(injectTool = false): Role {
     };
     containers = builtins.attrNames cfg.containers;
     automerge = toString cfg.systemd.services.syncthing-automerge.serviceConfig.ExecStart;
+    incidents = {
+      enabled = cfg.services.axiom-incidents.enable;
+      timer = cfg.systemd.timers.axiom-incidents.enable;
+      execStart = cfg.systemd.services.axiom-incidents.serviceConfig.ExecStart;
+      stateDirectory = cfg.systemd.services.axiom-incidents.serviceConfig.StateDirectory;
+      credentials = cfg.systemd.services.axiom-incidents.serviceConfig.LoadCredential;
+      user = cfg.systemd.services.axiom-incidents.serviceConfig.User;
+    };
     maintenance = {
       keepOutputs = cfg.nix.settings.keep-outputs;
       keepDerivations = cfg.nix.settings.keep-derivations;
@@ -108,6 +124,21 @@ test("native Nix collects old generations after upgrades with pressure GC enable
   };
   assert.deepEqual(current.maintenance, expected);
   assert.throws(() => assert.deepEqual({ ...current.maintenance, gcAfterUpgrade: false }, expected));
+});
+
+test("incident evaluation is unprivileged, persistent, and wired to both query and ingest credentials", () => {
+  assert.equal(current.incidents.enabled, true);
+  assert.equal(current.incidents.timer, true);
+  assert.match(current.incidents.execStart, /\/bin\/axiom-incidents poll$/);
+  assert.equal(current.incidents.stateDirectory, "axiom-incidents");
+  assert.equal(current.incidents.user, "bdsqqq");
+  const expected = [
+    "query-token:/run/secrets/axiom/personal_token",
+    "org-id:/run/secrets/axiom/personal_org_id",
+    "ingest-token:/run/secrets/axiom/papertrail_token",
+  ];
+  assert.deepEqual(current.incidents.credentials, expected);
+  assert.throws(() => assert.deepEqual(current.incidents.credentials.slice(0, 2), expected));
 });
 
 test("the verifier detects an isolated reintroduction of a global developer runtime", () => {
