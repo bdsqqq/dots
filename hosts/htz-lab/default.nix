@@ -177,6 +177,14 @@ in
   # The OS updater alone doesn't refresh editable, out-of-store program sources.
   # Git refuses conflicting/diverged work; Home Manager reapplies dependency
   # installation/builds even when only live source, not its derivation, changed.
+  # A fresh home must download mise/pnpm tools; cached homes hide this boot race.
+  systemd.services.home-manager-bdsqqq = {
+    wants = [ "network-online.target" ];
+    after = [
+      "network-online.target"
+      "tailscaled-autoconnect.service"
+    ];
+  };
   systemd.services.nixos-upgrade.after = [ "home-manager-bdsqqq.service" ];
   systemd.services.nixos-upgrade.serviceConfig = {
     ExecStartPre = [
