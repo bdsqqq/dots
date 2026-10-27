@@ -35,6 +35,7 @@ in
     ../../modules/flatpak
     ../../modules/homebrew
     ../../modules/homebrew/environment.nix
+    ../../modules/depot
     ../../modules/homebrew/best-effort.nix
     ../../modules/macos-defaults
     ../../modules/sleepless
@@ -87,6 +88,10 @@ in
   ];
 
   my.cloudflare.credential.required = true;
+  my.depot = {
+    organizationId = "jh98292fq5";
+    credential.required = true;
+  };
   my.terrariaSync = {
     enable = true;
     devices = [ "ipd" "mmn-m4" ];

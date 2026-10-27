@@ -29,6 +29,7 @@ in
     ../../modules/ssh/authorized-keys.nix
     ../../modules/btop
     ../../modules/homebrew/environment.nix
+    ../../modules/depot
     ../../modules/fzf
     ../../modules/zoxide
     ../../modules/nvim
