@@ -120,6 +120,11 @@ dependencies, or reload programs.
 `flake.lock` and custom package pins still need repository updates. the
 flake-update workflow proposes those changes; host timers do not advance them.
 
+[rex is the direct-publish pilot](modules/rex/README.md): a scheduled job validates
+both linux artifacts, commits only its release record to `main`, and host timers
+apply that published pin independently of host rebuilds. this does not change
+the update policy for other features.
+
 ## tailnet declarations
 
 features publish services with `modules/**/tailnet-app.nix`. the catalog
