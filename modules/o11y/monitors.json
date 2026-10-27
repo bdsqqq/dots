@@ -92,6 +92,21 @@
     "notifierIds": []
   },
   {
+    "name": "hosts: telemetry missing (htz-lab)",
+    "description": "No host-metrics uptime samples for 15 minutes from the independent always-on agent host. The persistent incident ledger owns notifications through both email and webhook; this raw evaluator stays notification-free.",
+    "type": "Threshold",
+    "mplQuery": "`host-metrics`:`system.uptime` | where `host.name` == \"htz-lab\" | group using max | align using count",
+    "operator": "Below",
+    "threshold": 1,
+    "intervalMinutes": 5,
+    "rangeMinutes": 15,
+    "triggerFromNRuns": 1,
+    "notifyByGroup": false,
+    "notifyEveryRun": false,
+    "alertOnNoData": true,
+    "notifierIds": []
+  },
+  {
     "name": "hosts: telemetry missing (htz-xfs-lab)",
     "description": "No host-metrics uptime samples for 15 minutes from this always-on server. Kept separate per expected server because an absent host cannot form a group in a fleet-wide query. Sleeping laptops are intentionally excluded.",
     "type": "Threshold",
