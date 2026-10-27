@@ -118,7 +118,8 @@ test("evaluated native Linux role is independent and forces its system derivatio
 }, () => {
   const role: Role = JSON.parse(execFileSync("nix", [
     "eval", "--json", "--no-write-lock-file",
-    `path:${root}#nixosConfigurations.htz-lab.config`, "--apply", `c: {
+    // Let Nix detect Git: an explicit path: would also copy ignored local state.
+    `${root}#nixosConfigurations.htz-lab.config`, "--apply", `c: {
       hostname = c.networking.hostName;
       nativeT3 = c.my.t3Code.nativeService.enable;
       gogAuth = c.my.gog.enable;
