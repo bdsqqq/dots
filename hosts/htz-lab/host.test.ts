@@ -18,6 +18,7 @@ interface Role {
   sshKeys: string[];
   checkoutSync: string[];
   runtimeApply: string[];
+  activationAfter: string[];
   drv: string;
 }
 
@@ -33,6 +34,8 @@ function assertIndependent(role: Role): void {
   assert.ok(role.checkoutSync.some((cmd) => cmd.endsWith("fetch origin main")));
   assert.ok(role.checkoutSync.some((cmd) => cmd.endsWith("-c merge.autoStash=false merge --ff-only origin/main")));
   assert.ok(role.runtimeApply.some((cmd) => cmd.endsWith("restart home-manager-bdsqqq.service")));
+  assert.ok(role.activationAfter.includes("network-online.target"));
+  assert.ok(role.activationAfter.includes("tailscaled-autoconnect.service"));
   assert.ok(role.drv.endsWith(".drv"));
 }
 
@@ -42,7 +45,8 @@ const fixture: Role = {
   bootstrap: "/source/tailscale/secrets/machines/htz-lab.yaml",
   sshKeys: ["/etc/ssh/ssh_host_ed25519_key"],
   checkoutSync: ["git fetch origin main", "git -c merge.autoStash=false merge --ff-only origin/main"],
-  runtimeApply: ["systemctl restart home-manager-bdsqqq.service"], drv: "/nix/store/fixture.drv",
+  runtimeApply: ["systemctl restart home-manager-bdsqqq.service"],
+  activationAfter: ["network-online.target", "tailscaled-autoconnect.service"], drv: "/nix/store/fixture.drv",
 };
 
 test("role verifier rejects inherited storage and enrollment", () => {
@@ -55,6 +59,7 @@ test("role verifier rejects inherited storage and enrollment", () => {
     { gogAuth: true },
     { checkoutSync: [] },
     { runtimeApply: [] },
+    { activationAfter: [] },
   ]) assert.throws(() => assertIndependent({ ...fixture, ...change }));
 });
 
@@ -124,6 +129,7 @@ test("evaluated native Linux role is independent and forces its system derivatio
       sshKeys = c.sops.age.sshKeyPaths;
       checkoutSync = c.systemd.services.nixos-upgrade.serviceConfig.ExecStartPre;
       runtimeApply = c.systemd.services.nixos-upgrade.serviceConfig.ExecStartPost;
+      activationAfter = c.systemd.services.home-manager-bdsqqq.after;
       drv = c.system.build.toplevel.drvPath;
     }`,
   ], { cwd: root, encoding: "utf8", timeout: 180_000 }));
