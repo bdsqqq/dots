@@ -1,0 +1,6 @@
+# Depot registers these managed runners with GitHub's self-hosted runner interface.
+# https://depot.dev/docs/github-actions/runner-types
+self-hosted-runner:
+  labels:
+    - depot-ubuntu-24.04
+    - depot-ubuntu-24.04-arm

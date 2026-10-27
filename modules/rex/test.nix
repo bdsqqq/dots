@@ -17,6 +17,18 @@ let
     assert cfg.sops.secrets.rex_netrc.owner == "root";
     assert cfg.sops.secrets.rex_netrc.mode == "0400";
     assert cfg.nix.settings.netrc-file == cfg.sops.secrets.rex_netrc.path;
+    assert cfg.programs.nix-ld.enable;
+    assert cfg.systemd.services.rex-login-server.environment.NIX_LD == "/run/current-system/sw/share/nix-ld/lib/ld.so";
+    assert builtins.elem "rex-install.service" cfg.systemd.services.rex-login-server.requires;
+    assert lib.hasInfix "[ ! -e /usr/local/bin/rex ] && [ ! -L /usr/local/bin/rex ]" cfg.systemd.services.rex-install.script;
+    assert lib.hasInfix "--apply-only" cfg.systemd.services.rex-install.script;
+    assert lib.hasInfix (builtins.unsafeDiscardStringContext (toString flake.inputs.rex.packages.x86_64-linux.rex.src)) cfg.systemd.services.rex-install.script;
+    assert !(lib.hasInfix (builtins.unsafeDiscardStringContext "${flake.inputs.rex.packages.x86_64-linux.rex}/bin/rex") cfg.systemd.services.rex-install.script);
+    assert lib.hasInfix "/bin/ln \"$seed/rex\" /usr/local/bin/rex" cfg.systemd.services.rex-install.script;
+    assert cfg.systemd.timers.rex-update.timerConfig.OnUnitInactiveSec == "15min";
+    assert cfg.systemd.paths.rex-apply.pathConfig.PathChanged == "/usr/local/bin/rex";
+    assert lib.hasInfix "--apply-only" cfg.systemd.services.rex-apply.serviceConfig.ExecStart;
+    assert cfg.systemd.services.rex-update.environment.NIX_LD_LIBRARY_PATH == "/run/current-system/sw/share/nix-ld/lib";
     assert lib.hasInfix "login-server" cfg.systemd.services.rex-login-server.serviceConfig.ExecStart;
     assert lib.hasInfix "--https=7297" cfg.systemd.services.rex-tailscale-serve.serviceConfig.ExecStart;
     true;
