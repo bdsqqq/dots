@@ -16,6 +16,10 @@ creation_rules:
       - age:
           - *user_bdsqqq
           - *ci_cloudflare
+  - path_regex: ^modules/depot/secrets\.yaml$
+    key_groups:
+      - age:
+          - *user_bdsqqq
   - path_regex: ^modules/(github|huggingface|artificial-analysis|rex)/secrets\.yaml$
     key_groups:
       - age:

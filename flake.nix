@@ -265,6 +265,7 @@
                 "axiom/personal_url"
                 "cloudflare_cert_pem"
                 "cookies"
+                "depot_org_token"
                 "gh_token"
                 "hf_token"
                 "parallel_api_key"
