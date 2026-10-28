@@ -71,6 +71,29 @@ test("grouped empty aggregates are not host rows, but actual group totals remain
   }
 });
 
+test("independent lab availability policy uses fresh uptime and never sends raw notifications", async () => {
+  const policies: (Rule & { notifierIds: string[] })[] = JSON.parse(readFileSync(new URL("../monitors.json", import.meta.url), "utf8"));
+  const policy = policies.find(p => p.name === "hosts: telemetry missing (htz-lab)");
+  assert.ok(policy);
+  assert.deepEqual(policy.notifierIds, []);
+  assert.equal(policy.rangeMinutes, 15);
+  const directory = mkdtempSync(join(tmpdir(), "lab-availability-"));
+  const rulesPath = join(directory, "rules.json");
+  writeFileSync(rulesPath, JSON.stringify([policy]));
+  try {
+    for (const present of [true, false]) {
+      const client = new Axiom({ query: "q", ingest: "i", org: "o" }, async () => Response.json({
+        series: present ? [{ tags: { "host.name": "htz-lab" }, start: now / 1000 - 30, resolution: 30, data: [123] }] : [],
+      }));
+      const result = await observations(client, { mounts: { "htz-lab": ["/"] }, rulesPath }, now);
+      assert.deepEqual(result.errors, []);
+      assert.equal(result.observations.length, 1);
+      assert.equal(result.observations[0].host, "htz-lab");
+      assert.equal(result.observations[0].status, present ? "healthy" : "bad");
+    }
+  } finally { rmSync(directory, { recursive: true }); }
+});
+
 function fixtureRules() {
   const directory = mkdtempSync(join(tmpdir(), "incident-adapter-"));
   const rulesPath = join(directory, "rules.json");
