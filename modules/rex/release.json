@@ -2,16 +2,16 @@
   "schemaVersion": 1,
   "product": "rex",
   "channel": "snapshot",
-  "version": "0.0.1793053203-g5f1511",
-  "commit": "5f1511e9b17313443acf57ab757dc5c2c55cb641",
+  "version": "0.0.1793204436-g5ebb3b",
+  "commit": "5ebb3bd60b0a8be7dace16739555e93134129cb8",
   "artifacts": {
     "x64": {
-      "url": "https://blob.superlogical.com/download/rex/snapshot/5f1511e9b17313443acf57ab757dc5c2c55cb641/rex-linux-amd64.tar.gz",
-      "sha256": "26cb97ad41981ccf6ed34d46bda8677b9218f52b6af394c6215856168a30e402"
+      "url": "https://blob.superlogical.com/download/rex/snapshot/5ebb3bd60b0a8be7dace16739555e93134129cb8/rex-linux-amd64.tar.gz",
+      "sha256": "de8bbcd69f31cc7f4aa71194a7acfd1ae31f36bb6dac743bc0a4cfe5948d267b"
     },
     "arm64": {
-      "url": "https://blob.superlogical.com/download/rex/snapshot/5f1511e9b17313443acf57ab757dc5c2c55cb641/rex-linux-arm64.tar.gz",
-      "sha256": "5573d5267baa32dac2e58d856dc795996f20e4cdf7dd2ddd34f4a3847d3a2d2f"
+      "url": "https://blob.superlogical.com/download/rex/snapshot/5ebb3bd60b0a8be7dace16739555e93134129cb8/rex-linux-arm64.tar.gz",
+      "sha256": "60f3562bb4a609f1bd5351974ce17cb30abef5e3582b51e58c9b05a6403caece"
     }
   }
 }
