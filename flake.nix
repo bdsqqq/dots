@@ -267,6 +267,7 @@
                 "gh_token"
                 "hf_token"
                 "parallel_api_key"
+                "rex_netrc"
                 "tailscale_auth_key"
               ];
               mbp-m2 = [

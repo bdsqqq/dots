@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -9,7 +9,7 @@ import { applyInstalled, update } from "./update.ts";
 import { parseRelease } from "./release.ts";
 
 // Exercise the actual workflow's final shell gate, not a second implementation.
-const workflow = readFileSync(new URL("../../.github/workflows/rex-update.yml", import.meta.url), "utf8");
+const workflow = readFileSync(new URL("../../.depot/workflows/rex-update.yml", import.meta.url), "utf8");
 const body = workflow.split("      - name: publish tested release record\n")[1]?.split("        run: |\n")[1];
 assert.ok(body, "publisher shell step must remain discoverable");
 const script = body.trimEnd().split("\n").map(line => line.slice(10)).join("\n");
@@ -44,6 +44,20 @@ function fixture(t: { after: (callback: () => void) => void }) {
     publish: () => spawnSync("bash", ["-c", script], { cwd: work, env: { ...env, TESTED_BASE: base }, encoding: "utf8" }) };
 }
 
+test("only Depot CI owns the schedule and manual runs default to read-only validation", () => {
+  assert.equal(existsSync(new URL("../../.github/workflows/rex-update.yml", import.meta.url)), false);
+  assert.match(workflow, /publish:\n\s+description:[^\n]+\n\s+type: boolean\n\s+default: false/);
+  const checkGuard = (source: string) => {
+    const guard = source.match(/^  publish:\n[\s\S]*?\n    if: ([^\n]+)/m)?.[1];
+    assert.ok(guard);
+    assert.match(guard, /github\.ref == 'refs\/heads\/main'/);
+    assert.match(guard, /github\.event_name == 'schedule' \|\| inputs\.publish == true/);
+  };
+  checkGuard(workflow);
+  assert.throws(() => checkGuard(workflow.replace("github.ref == 'refs/heads/main' && ", "")));
+  assert.match(workflow, /ref: \$\{\{[^\n]+\|\| github\.sha \}\}/);
+});
+
 test("publisher pushes only the tested release record directly to main", t => {
   const f = fixture(t), result = f.publish();
   assert.equal(result.status, 0, result.stderr);
@@ -67,7 +81,7 @@ test("moving main rejects the stale candidate without force/rebase or losing the
   assert.equal(f.git(f.work, "rev-parse", "HEAD"), f.base);
 });
 
-test("a committed pin reaches three isolated hosts, including offline catch-up", t => {
+test("a committed pin reaches isolated consumers, including offline catch-up", t => {
   const f = fixture(t), archive = "approved fixture archive", commit = "b".repeat(40);
   const sha256 = createHash("sha256").update(archive).digest("hex");
   const release = parseRelease({ schemaVersion: 1, product: "rex", channel: "snapshot", version: "0.0.200-gbbbbbb", commit,
@@ -78,14 +92,14 @@ test("a committed pin reaches three isolated hosts, including offline catch-up",
   assert.equal(f.publish().status, 0);
   const publishedCommit = f.git(f.remote, "rev-parse", "main");
   let offline = true;
-  const hosts = ["lgo-z2e", "htz-relay", "htz-xfs-lab"].map(name => {
+  const hosts = ["online-a", "offline", "online-b"].map(name => {
     const root = join(f.root, name), binary = join(root, "usr/local/bin/rex");
     mkdirSync(join(root, "usr/local/bin"), { recursive: true });
     writeFileSync(binary, "0.0.100-gaaaaaa");
     const run = (command: string, args: string[]) => {
       if (command === "systemctl") return "";
       if (command === "curl") {
-        if (name === "htz-relay" && offline) throw new Error("host offline");
+        if (name === "offline" && offline) throw new Error("host offline");
         if (!args.includes("--output")) return f.git(f.remote, "show", "main:modules/rex/release.json");
         writeFileSync(args[args.indexOf("--output") + 1], archive);
         return "";
@@ -102,7 +116,7 @@ test("a committed pin reaches three isolated hosts, including offline catch-up",
     return { name, root, binary, options };
   });
   for (const host of hosts) {
-    if (host.name === "htz-relay") {
+    if (host.name === "offline") {
       assert.throws(() => update(host.options), /offline/);
       assert.equal(readFileSync(host.binary, "utf8"), "0.0.100-gaaaaaa");
     } else assert.match(update(host.options), /updated to/);
