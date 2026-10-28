@@ -6,13 +6,14 @@ independently chase the moving upstream channel.
 
 ## publisher
 
-`.github/workflows/rex-update.yml` runs every 15 minutes or on manual dispatch:
+`.depot/workflows/rex-update.yml` runs on Depot CI every 15 minutes. manual
+runs default to validation only; publication requires `publish=true` on `main`.
 
 1. check out `main`, run the helper tests, and prepare `release.json` from the
    upstream snapshot feed. unchanged/older releases do not create a commit;
    changed hashes for an already pinned version fail closed.
 2. freeze that candidate as one workflow artifact. native x64 and arm64 linux
-   Depot GitHub Actions runners download its exact archives, verify sha256, and
+   Depot CI sandboxes download its exact archives, verify sha256, and
    check `--help`, exact version, and commit. neither validator refetches the
    moving channel.
 3. only after both pass, a write-scoped job commits **only** `release.json` and
@@ -27,27 +28,28 @@ fallback, and bootstrap archive; it is not the runtime release authority.
 the publisher needs no pre-release token: upstream's release feed and binary
 artifacts are public. only its final job gets the repository's `GITHUB_TOKEN`
 write permission. git remains the distribution boundary, so the publisher could
-move to a designated local host without changing host consumers. github's
+move to a designated local host without changing host consumers. the Depot CI
 schedule is best effort, not a 15-minute delivery guarantee.
 
-### depot runner connection
+### depot connection
 
-validation uses `depot-ubuntu-24.04` and `depot-ubuntu-24.04-arm`; preparation and
-publication stay on GitHub-hosted runners. connect `bdsqqq/dots` to the personal
-**bedesqui** Depot organization before enabling the schedule on main. the
-organization token belongs only in `modules/depot/secrets.yaml` for local
-management; managed runners do not need it copied into workflow secrets.
+this personal GitHub repository uses **Depot CI**, not Depot's GitHub Actions
+runner product, which requires a GitHub organization. the Depot Code Access app
+must have access to `bdsqqq/dots` under the personal **bedesqui** Depot organization.
+all jobs use native Linux CI sandboxes (`depot-ubuntu-24.04` and its arm variant).
+the organization token remains in `modules/depot/secrets.yaml` for local
+management; it is not copied into workflow secrets.
 
-this is a public repository, so the Depot GitHub App/runner group must permit
-this repository and public-repository jobs. a zero-length runner listing does
-not prove that ephemeral runners are unconfigured. verify enrollment with the
-organization API/dashboard and an actual validation run, not just a YAML label.
-Depot's macOS runners are available for future Darwin build workflows; this
-pilot publishes Linux server artifacts only.
+there is no GitHub-scheduled copy of this publisher: running both would create
+two independent writers. a local `depot ci run` tests the working tree with
+publication disabled by default. only a schedule on main, or explicit
+`publish=true` dispatch on main, can request the write-scoped publish job.
+Depot CI does not provide macOS sandboxes; future Darwin CI needs a separate
+supported execution route. this pilot publishes Linux server artifacts only.
 
 ## host apply
 
-on all three linux hosts, `rex-update.timer` polls the **published main record**
+on every configured linux host, `rex-update.timer` polls the **published main record**
 two minutes after boot and every 15 minutes after its last run finishes. it
 checks the archive hash and exact build again before installing and restarting
 a running login server. it does not wait for a host rebuild or modify git.
@@ -77,8 +79,13 @@ not proof that every existing account server is already on the new version.
 ## observe and catch up
 
 ```bash
-# manually run the central publisher (after the workflow is merged)
-gh workflow run rex-update.yml --ref main
+# validate the working tree on Depot CI, without a publishing job
+depot-org ci run --org jh98292fq5 --repo bdsqqq/dots --forge github \
+  --workflow .depot/workflows/rex-update.yml --job prepare --job validate
+
+# manually publish a verified candidate after the workflow is merged
+depot-org ci dispatch --org jh98292fq5 --repo bdsqqq/dots \
+  --workflow rex-update.yml --ref main --input publish=true
 
 # on each activated linux host
 sudo systemctl start rex-update.service

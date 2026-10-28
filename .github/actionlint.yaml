@@ -1,5 +1,5 @@
-# Depot registers these managed runners with GitHub's self-hosted runner interface.
-# https://depot.dev/docs/github-actions/runner-types
+# Depot CI sandbox labels in the GitHub-compatible workflow syntax.
+# https://depot.dev/docs/ci/overview#depot-ci-sandboxes
 self-hosted-runner:
   labels:
     - depot-ubuntu-24.04

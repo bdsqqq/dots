@@ -1,11 +1,12 @@
 { flake }:
 let
   lib = flake.inputs.nixpkgs.lib;
-  linuxHosts = [ "lgo-z2e" "htz-relay" "htz-xfs-lab" ];
+  linuxHosts = builtins.attrNames flake.nixosConfigurations;
   checkLinux = name:
     let
       cfg = flake.nixosConfigurations.${name}.config;
       login = cfg.services.rex.loginServer;
+      bootstrap = flake.inputs.rex.packages.${cfg.nixpkgs.hostPlatform.system}.rex;
     in
     assert login.enable && !cfg.services.rex.enable;
     assert !login.allowAnonymous;
@@ -22,8 +23,8 @@ let
     assert builtins.elem "rex-install.service" cfg.systemd.services.rex-login-server.requires;
     assert lib.hasInfix "[ ! -e /usr/local/bin/rex ] && [ ! -L /usr/local/bin/rex ]" cfg.systemd.services.rex-install.script;
     assert lib.hasInfix "--apply-only" cfg.systemd.services.rex-install.script;
-    assert lib.hasInfix (builtins.unsafeDiscardStringContext (toString flake.inputs.rex.packages.x86_64-linux.rex.src)) cfg.systemd.services.rex-install.script;
-    assert !(lib.hasInfix (builtins.unsafeDiscardStringContext "${flake.inputs.rex.packages.x86_64-linux.rex}/bin/rex") cfg.systemd.services.rex-install.script);
+    assert lib.hasInfix (builtins.unsafeDiscardStringContext (toString bootstrap.src)) cfg.systemd.services.rex-install.script;
+    assert !(lib.hasInfix (builtins.unsafeDiscardStringContext "${bootstrap}/bin/rex") cfg.systemd.services.rex-install.script);
     assert lib.hasInfix "/bin/ln \"$seed/rex\" /usr/local/bin/rex" cfg.systemd.services.rex-install.script;
     assert cfg.systemd.timers.rex-update.timerConfig.OnUnitInactiveSec == "15min";
     assert cfg.systemd.paths.rex-apply.pathConfig.PathChanged == "/usr/local/bin/rex";

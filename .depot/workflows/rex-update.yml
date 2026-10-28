@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '*/15 * * * *'
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Commit a verified update to main (false runs validation only)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -14,7 +19,7 @@ concurrency:
 
 jobs:
   prepare:
-    runs-on: ubuntu-24.04
+    runs-on: depot-ubuntu-24.04
     timeout-minutes: 10
     outputs:
       base: ${{ steps.candidate.outputs.base }}
@@ -22,7 +27,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          # Local/manual dry runs validate their trigger commit, never write main.
+          ref: ${{ (github.event_name == 'schedule' || inputs.publish == true) && 'main' || github.sha }}
           persist-credentials: false
 
       - uses: actions/setup-node@v4
@@ -61,7 +67,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Requires the personal bedesqui org's Depot GitHub App connection.
+          # Depot CI sandboxes work with personal GitHub repositories.
           - arch: x64
             runner: depot-ubuntu-24.04
           - arch: arm64
@@ -89,8 +95,8 @@ jobs:
 
   publish:
     needs: [prepare, validate]
-    if: needs.prepare.outputs.changed == 'true'
-    runs-on: ubuntu-24.04
+    if: needs.prepare.outputs.changed == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish == true)
+    runs-on: depot-ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
@@ -121,7 +127,7 @@ jobs:
             exit 1
           fi
 
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git config user.name 'depot-ci[bot]'
+          git config user.email 'depot-ci[bot]@users.noreply.github.com'
           git commit -m 'chore(rex): update release manifest'
           git push origin HEAD:main
