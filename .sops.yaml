@@ -5,6 +5,7 @@ keys:
   - &host_r56 age1wzdqusx4v0wpn7lgda4x4tw3qkd4jlcyy89pxrh4g679m0ajadtsh49e6t
   - &host_lgo_z2e age1qepnuljqzftv5sg72nj4wt0njcnezvnlhsq0dg8zqls5e2twzuwsyxklww
   - &host_htz_xfs_lab age17jh6jw9nq0fk9ytkm0jntrsma7wnp4mw0nlze8ftz6rawtkhhscq5pkwd0
+  - &host_htz_lab age18hhyzgsu3jjc4zk0ufxs25s58gw6tw0sx5kvmlykfvlvlxzk3v9qwu6qy5
   - &ci_cloudflare age1fu7gc5eh56a5yl4wyk2l6ycc3valq8rzyypn3wjgzmt5x5l8j9mqdty6j0
 creation_rules:
   - path_regex: ^config/infra-secrets\.yaml$
@@ -27,12 +28,14 @@ creation_rules:
           - *host_htz_relay
           - *host_lgo_z2e
           - *host_htz_xfs_lab
+          - *host_htz_lab
   - path_regex: ^modules/jev/secrets\.yaml$
     key_groups:
       - age:
           - *user_bdsqqq
           - *host_lgo_z2e
           - *host_htz_xfs_lab
+          - *host_htz_lab
   - path_regex: ^modules/tailscale/secrets\.yaml$
     key_groups:
       - age:
@@ -60,6 +63,16 @@ creation_rules:
     key_groups:
       - age:
           - *user_bdsqqq
+  - path_regex: ^modules/(o11y|pi/packages/extensions/web-search)/secrets\.yaml$
+    key_groups:
+      - age:
+          - *user_bdsqqq
+          - *host_mbp_m2
+          - *host_htz_relay
+          - *host_r56
+          - *host_lgo_z2e
+          - *host_htz_xfs_lab
+          - *host_htz_lab
   - path_regex: (^|/)secrets\.yaml$
     key_groups:
       - age:
@@ -96,3 +109,4 @@ creation_rules:
           - *host_r56
           - *host_lgo_z2e
           - *host_htz_xfs_lab
+          - *host_htz_lab
