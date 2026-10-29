@@ -12,7 +12,7 @@
     "notifyByGroup": true,
     "notifyEveryRun": false,
     "alertOnNoData": false,
-    "notifierIds": ["30TjNRHCYvwJAtRswZ", "41gINsomuIbnxt4G7k"]
+    "notifierIds": []
   },
   {
     "name": "hosts: low disk headroom (below 8 GiB)",
@@ -27,7 +27,7 @@
     "notifyByGroup": true,
     "notifyEveryRun": false,
     "alertOnNoData": false,
-    "notifierIds": ["30TjNRHCYvwJAtRswZ", "41gINsomuIbnxt4G7k"]
+    "notifierIds": []
   },
   {
     "name": "hosts: filesystem nearly full (below 10% free)",
@@ -42,7 +42,7 @@
     "notifyByGroup": true,
     "notifyEveryRun": false,
     "alertOnNoData": false,
-    "notifierIds": ["30TjNRHCYvwJAtRswZ", "41gINsomuIbnxt4G7k"]
+    "notifierIds": []
   },
   {
     "name": "hosts: storage guard unhealthy (htz-xfs)",
@@ -58,7 +58,7 @@
     "notifyByGroup": true,
     "notifyEveryRun": false,
     "alertOnNoData": true,
-    "notifierIds": ["30TjNRHCYvwJAtRswZ", "41gINsomuIbnxt4G7k"]
+    "notifierIds": []
   },
   {
     "name": "hosts: kernel killed a process for lack of memory",
@@ -74,7 +74,7 @@
     "notifyByGroup": true,
     "notifyEveryRun": false,
     "alertOnNoData": false,
-    "notifierIds": ["30TjNRHCYvwJAtRswZ", "41gINsomuIbnxt4G7k"]
+    "notifierIds": []
   },
   {
     "name": "hosts: telemetry missing (htz-relay)",
@@ -89,7 +89,22 @@
     "notifyByGroup": false,
     "notifyEveryRun": false,
     "alertOnNoData": true,
-    "notifierIds": ["30TjNRHCYvwJAtRswZ", "41gINsomuIbnxt4G7k"]
+    "notifierIds": []
+  },
+  {
+    "name": "hosts: telemetry missing (htz-lab)",
+    "description": "No host-metrics uptime samples for 15 minutes from the independent always-on agent host. The persistent incident ledger owns notifications through both email and webhook; this raw evaluator stays notification-free.",
+    "type": "Threshold",
+    "mplQuery": "`host-metrics`:`system.uptime` | where `host.name` == \"htz-lab\" | group using max | align using count",
+    "operator": "Below",
+    "threshold": 1,
+    "intervalMinutes": 5,
+    "rangeMinutes": 15,
+    "triggerFromNRuns": 1,
+    "notifyByGroup": false,
+    "notifyEveryRun": false,
+    "alertOnNoData": true,
+    "notifierIds": []
   },
   {
     "name": "hosts: telemetry missing (htz-xfs-lab)",
@@ -104,7 +119,7 @@
     "notifyByGroup": false,
     "notifyEveryRun": false,
     "alertOnNoData": true,
-    "notifierIds": ["30TjNRHCYvwJAtRswZ", "41gINsomuIbnxt4G7k"]
+    "notifierIds": []
   },
   {
     "name": "hosts: telemetry missing (mmn-m4)",
@@ -119,6 +134,41 @@
     "notifyByGroup": false,
     "notifyEveryRun": false,
     "alertOnNoData": true,
-    "notifierIds": ["30TjNRHCYvwJAtRswZ", "41gINsomuIbnxt4G7k"]
+    "notifierIds": []
+  },
+  {
+    "name": "hosts: persistent incident lifecycle",
+    "description": "Canonical start/recovery events from the relay's persistent incident ledger. Missing/stale/error observations never resolve incidents; recovery requires ten minutes of advancing healthy samples. Critical and warning conditions remain distinct. Event and incident IDs support at-least-once, reordered delivery.",
+    "type": "MatchEvent",
+    "aplQuery": "['papertrail'] | where source == 'host-incidents' | project title, action, incidentId, eventId, host, mountpoint, condition, timestamp, sampleAt, evidenceJson, groupKeys, groupValues",
+    "intervalMinutes": 1,
+    "rangeMinutes": 1,
+    "notifyEveryRun": false,
+    "skipResolved": true,
+    "resolvable": false,
+    "notifierIds": [
+      "30TjNRHCYvwJAtRswZ",
+      "JMLdIJ9hgv4s3BxKtK"
+    ]
+  },
+  {
+    "name": "hosts: incident evaluator stalled",
+    "description": "The independent dead-man check for the relay incident evaluator: no completed, healthy evaluation/delivery cycle for fifteen minutes. Always returns a numeric count, including zero; no missing-series resolution semantics. Query failures or an ambiguous/backlogged notification older than fifteen minutes stop healthy heartbeats.",
+    "type": "Threshold",
+    "aplQuery": "['papertrail'] | where source == 'host-incidents-heartbeat' and healthy == true | summarize successful_cycles = count()",
+    "columnName": "successful_cycles",
+    "operator": "Below",
+    "threshold": 1,
+    "intervalMinutes": 1,
+    "rangeMinutes": 15,
+    "triggerFromNRuns": 1,
+    "notifyByGroup": false,
+    "notifyEveryRun": false,
+    "skipResolved": false,
+    "alertOnNoData": false,
+    "notifierIds": [
+      "30TjNRHCYvwJAtRswZ",
+      "XFAwoJTnVMLZHJfZ7C"
+    ]
   }
 ]

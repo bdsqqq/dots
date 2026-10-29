@@ -1,0 +1,133 @@
+name: update rex release
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Commit a verified update to main (false runs validation only)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rex-release-publisher
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: depot-ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      base: ${{ steps.candidate.outputs.base }}
+      changed: ${{ steps.candidate.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Local/manual dry runs validate their trigger commit, never write main.
+          ref: ${{ (github.event_name == 'schedule' || inputs.publish == true) && 'main' || github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: test release helpers
+        run: node --test modules/rex/*.test.ts
+
+      - name: prepare candidate
+        id: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git ls-files --error-unmatch modules/rex/release.json > /dev/null
+          echo "base=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          node modules/rex/release.ts prepare modules/rex/release.json
+          if git diff --quiet -- modules/rex/release.json; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: steps.candidate.outputs.changed == 'true'
+        with:
+          name: rex-release-candidate
+          path: modules/rex/release.json
+          if-no-files-found: error
+          retention-days: 1
+
+  validate:
+    needs: prepare
+    if: needs.prepare.outputs.changed == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Depot CI sandboxes work with personal GitHub repositories.
+          - arch: x64
+            runner: depot-ubuntu-24.04
+          - arch: arm64
+            runner: depot-ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.base }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # Both native runners consume the same immutable artifact; never prepare again.
+      - uses: actions/download-artifact@v4
+        with:
+          name: rex-release-candidate
+          path: modules/rex
+
+      - name: verify archive and native runtime
+        run: node modules/rex/release.ts verify modules/rex/release.json ${{ matrix.arch }}
+
+  publish:
+    needs: [prepare, validate]
+    if: needs.prepare.outputs.changed == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish == true)
+    runs-on: depot-ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.base }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: rex-release-candidate
+          path: modules/rex
+
+      - name: publish tested release record
+        shell: bash
+        env:
+          TESTED_BASE: ${{ needs.prepare.outputs.base }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TESTED_BASE"
+          git add -- modules/rex/release.json
+          test "$(git diff --cached --name-only)" = 'modules/rex/release.json'
+
+          # A moving main needs a fresh preparation and both runtime checks.
+          git fetch --no-tags origin main
+          if [[ "$(git rev-parse FETCH_HEAD)" != "$TESTED_BASE" ]]; then
+            echo 'main moved after preparation; the next run must retry' >&2
+            exit 1
+          fi
+
+          git config user.name 'depot-ci[bot]'
+          git config user.email 'depot-ci[bot]@users.noreply.github.com'
+          git commit -m 'chore(rex): update release manifest'
+          git push origin HEAD:main

@@ -5,10 +5,8 @@ let
 in
 lib.optionalAttrs isDarwin {
   homebrew = {
-    taps = [ "depot/tap" ];
     brews = [
       "cloudflared"
-      "depot"
     ];
   };
 

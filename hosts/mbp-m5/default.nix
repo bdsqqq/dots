@@ -23,6 +23,7 @@ in
     ../../modules/fonts
     ../../modules/homebrew
     ../../modules/homebrew/environment.nix
+    ../../modules/depot
     ../../modules/homebrew/best-effort.nix
     ../../modules/macos-defaults
     ../../modules/sleepless

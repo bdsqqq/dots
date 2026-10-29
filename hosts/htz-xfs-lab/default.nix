@@ -63,6 +63,7 @@ in
     ../../modules/nix
     ../../modules/nix/nix-ld.nix
     ../../modules/tailscale
+    ../../modules/rex
     ../../modules/tailnet-registry
     ../../modules/core-cli
     ../../modules/shell

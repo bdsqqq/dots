@@ -61,6 +61,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    rex = {
+      url = "https://pkgs.superlogical.com/rex/nix/snapshot.tar.gz";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     hunk = {
       url = "github:modem-dev/hunk";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -247,8 +252,24 @@
               lgo-z2e = builtins.attrNames self.nixosConfigurations.lgo-z2e.config.sops.secrets;
               htz-relay = builtins.attrNames self.nixosConfigurations.htz-relay.config.sops.secrets;
               htz-xfs-lab = builtins.attrNames self.nixosConfigurations.htz-xfs-lab.config.sops.secrets;
+              htz-lab = builtins.attrNames self.nixosConfigurations.htz-lab.config.sops.secrets;
             };
             expected = {
+              htz-lab = [
+                "TYPESAFE_API_KEY"
+                "artificial_analysis_api_key"
+                "axiom.toml"
+                "axiom/host_metrics_token"
+                "axiom/papertrail_token"
+                "axiom/personal_org_id"
+                "axiom/personal_token"
+                "axiom/personal_url"
+                "gh_token"
+                "hf_token"
+                "parallel_api_key"
+                "rex_netrc"
+                "tailscale_auth_key"
+              ];
               mbp-m2 = [
                 "TYPESAFE_API_KEY"
                 "annas_archive_key"
@@ -261,10 +282,12 @@
                 "axiom/personal_url"
                 "cloudflare_cert_pem"
                 "cookies"
+                "depot_org_token"
                 "gh_token"
                 "hf_token"
                 "parallel_api_key"
                 "restic_ssd_01_password"
+                "rex_netrc"
                 "syncthing_gui_password"
               ];
               mbp-m5 = [
@@ -280,6 +303,7 @@
                 "gh_token"
                 "hf_token"
                 "parallel_api_key"
+                "rex_netrc"
                 "syncthing_gui_password"
               ];
               mmn-m4 = [
@@ -293,6 +317,7 @@
                 "gh_token"
                 "hf_token"
                 "restic_ssd_01_password"
+                "rex_netrc"
                 "syncthing_gui_password"
               ];
               lgo-z2e = [
@@ -308,6 +333,7 @@
                 "gh_token"
                 "hf_token"
                 "parallel_api_key"
+                "rex_netrc"
                 "syncthing_gui_password"
                 "tailscale_auth_key"
               ];
@@ -327,6 +353,7 @@
                 "cloudflare-tunnel-money"
                 "cloudflare-tunnel-photos"
                 "cloudflare-tunnel-t3"
+                "rex_netrc"
                 "syncthing_gui_password"
                 "tailscale_auth_key"
               ];
@@ -344,6 +371,7 @@
                 "gog_oauth_client"
                 "hf_token"
                 "parallel_api_key"
+                "rex_netrc"
                 "tailscale_auth_key"
               ];
             };
@@ -412,6 +440,28 @@
                 };
               }
               ./hosts/htz-xfs-lab/default.nix
+            ];
+          };
+
+          "htz-lab" = inputs.nixpkgs.lib.nixosSystem {
+            specialArgs = {
+              inherit inputs tailnetApps;
+              hostSystem = "x86_64-linux";
+              headMode = "headless";
+            };
+            modules = nixosObservabilityModules ++ [
+              inputs.disko.nixosModules.disko
+              inputs.home-manager.nixosModules.home-manager
+              {
+                nixpkgs = {
+                  config.allowUnfree = true;
+                  overlays = [
+                    (import ./overlays/unstable.nix inputs)
+                    (import ./modules/zmx).overlay
+                  ];
+                };
+              }
+              ./hosts/htz-lab/default.nix
             ];
           };
 

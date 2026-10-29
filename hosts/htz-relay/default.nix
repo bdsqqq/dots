@@ -38,12 +38,14 @@ in
     ../../modules/ssh
     ../../modules/ssh/authorized-keys.nix
     ../../modules/tailscale
+    ../../modules/rex
     ../../modules/tailnet-registry
     ../../modules/cloudflare-ingress
     ../../modules/secrets
     ../../modules/nix/auto-upgrade.nix
     ../../modules/syncthing
     ../../modules/o11y/hwmon.nix
+    ../../modules/o11y/incidents
     # Service modules own their runtimes; the relay has no agent/developer setup.
     ../../modules/syncthing/automerge
     ./apps-container.nix
@@ -104,6 +106,7 @@ in
     };
   };
   services.hwmon-metrics.enable = true;
+  services.axiom-incidents.enable = true;
 
   boot.kernelPackages = pkgs.unstable.linuxPackages_latest;
 
