@@ -94,7 +94,7 @@ resource "hcloud_server" "this" {
 
 resource "hcloud_volume" "storage" {
   name              = "storage-01"
-  size              = 50
+  size              = 64
   location          = "nbg1"
   server_id         = hcloud_server.this.id
   automount         = false
