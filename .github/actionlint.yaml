@@ -1,0 +1,6 @@
+# Depot CI sandbox labels in the GitHub-compatible workflow syntax.
+# https://depot.dev/docs/ci/overview#depot-ci-sandboxes
+self-hosted-runner:
+  labels:
+    - depot-ubuntu-24.04
+    - depot-ubuntu-24.04-arm

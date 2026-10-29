@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "product": "rex",
+  "channel": "snapshot",
+  "version": "0.0.1793231964-ga3e149",
+  "commit": "a3e1494fc8a6144a799c52899f0537744f54f0e9",
+  "artifacts": {
+    "x64": {
+      "url": "https://blob.superlogical.com/download/rex/snapshot/a3e1494fc8a6144a799c52899f0537744f54f0e9/rex-linux-amd64.tar.gz",
+      "sha256": "19aa96d0c1c1ce4320188983ef4f95c90110e75eb61856f92e536518de266f79"
+    },
+    "arm64": {
+      "url": "https://blob.superlogical.com/download/rex/snapshot/a3e1494fc8a6144a799c52899f0537744f54f0e9/rex-linux-arm64.tar.gz",
+      "sha256": "b6d2bb70d8b075b0736fee1bd6e60504ec20c79b1b069f169279b41c07136c93"
+    }
+  }
+}
