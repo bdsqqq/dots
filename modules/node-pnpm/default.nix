@@ -17,6 +17,12 @@ in
       # and losing their upstream binary-cache matches.
       nodejs = pkgs.nodejs_latest;
       pnpm = pkgs.pnpm_12;
+      # native -g uses separate install groups, not our tracked manifest.
+      # route it to the live project so normal pnpm edits remain tracked without
+      # a rebuild. keep the launcher, bin PATH and activation on the same source.
+      pnpmLauncher = pkgs.writeShellScriptBin "pnpm" ''
+        exec "${nodejs}/bin/node" "${toolsDir}/pnpm.mts" "${pnpm}/bin/pnpm" "$@"
+      '';
       vpHome = "${config.home.homeDirectory}/.vite-plus";
       vpInstaller = pkgs.fetchurl {
         url = "https://raw.githubusercontent.com/voidzero-dev/vite-plus/afbe4a285b4ac6ffac498eae71b10ff63069a029/packages/cli/install.sh";
@@ -43,6 +49,10 @@ in
     {
       custom.path.segments = [
         {
+          order = 70;
+          value = "${pnpmLauncher}/bin";
+        }
+        {
           order = 90;
           value = "${vpHome}/bin";
         }
@@ -54,6 +64,7 @@ in
 
       home.packages = [
         nodejs
+        (lib.hiPrio pnpmLauncher)
         pnpm
         pkgs.unzip
       ];
