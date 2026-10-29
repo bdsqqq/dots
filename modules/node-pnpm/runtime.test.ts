@@ -16,6 +16,9 @@ type RuntimeFixture = {
   configuredGhostty: string;
   pnpm: string;
   homePackages: string[];
+  launcher: string;
+  launcherScript: string;
+  pathSegments: { order: number; value: string }[];
   installScript: string;
   graphicalLinux: Desktop;
   headlessLinux: Desktop;
@@ -58,6 +61,16 @@ test("our CLI still installs current Node and pnpm 12 explicitly", () => {
   assert.ok(current.homePackages.includes(current.latestNode));
   assert.ok(current.homePackages.includes(current.pnpm));
   assert.notEqual(current.latestNode, current.stockNode, "fixture must exercise distinct Node releases");
+});
+
+test("shells and scripts get an executable adapter delegating to the selected upstream pnpm", () => {
+  assert.ok(current.homePackages.includes(current.launcher));
+  assert.ok(current.launcherScript.includes(`exec "${current.latestNode}/bin/node"`));
+  assert.ok(current.launcherScript.includes('"/fixture/commonplace/01_files/nix/modules/node-pnpm/pnpm.mts"'));
+  assert.ok(current.launcherScript.includes(`"${current.pnpm}/bin/pnpm" "$@"`));
+  const adapterPath = current.pathSegments.find((segment) => segment.value === `${current.launcher}/bin`);
+  const toolsPath = current.pathSegments.find((segment) => segment.value.endsWith("node_modules/.bin"));
+  assert.ok(adapterPath && toolsPath && adapterPath.order < toolsPath.order);
 });
 
 test("dependency installation uses the selected runtime and package manager", () => {

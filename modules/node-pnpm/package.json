@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
+    "@aredotna/cli": "^0.12.0",
     "@bdsqqq/pi-cli": "workspace:*",
     "@openai/codex": "^0.163.0",
     "@tobilu/qmd": "^2.8.3",

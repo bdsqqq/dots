@@ -23,6 +23,7 @@ let
     # Inspect the generated script without running an activation DAG.
     lib = stock.lib // { hm.dag.entryAfter = _: script: script; };
   };
+  launcher = builtins.head (builtins.filter (package: package.name == "pnpm") home.home.packages);
   desktop = headMode: isDarwin:
     let
       pkgs = configured // {
@@ -54,6 +55,9 @@ in
   configuredGhostty = configured.ghostty.outPath;
   pnpm = configured.pnpm_12.outPath;
   homePackages = map (package: package.outPath) home.home.packages;
+  launcher = launcher.outPath;
+  launcherScript = launcher.text;
+  pathSegments = home.custom.path.segments;
   installScript = home.home.activation.installPnpmTools;
   graphicalLinux = desktop "graphical" false;
   headlessLinux = desktop "headless" false;
