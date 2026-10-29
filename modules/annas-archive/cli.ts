@@ -1,22 +1,37 @@
 #!/usr/bin/env node
 import { isMain, privateFile } from "../tool-auth/process.ts";
+import { responseJson } from "./http.ts";
+import { defaultPreferencesFile, loadPreferences, renderSearch, search, SearchError } from "./search.ts";
 
 export interface Config {
   enabled: boolean;
   apiKeyFile: string;
   baseUrl: string;
+  preferencesFile?: string;
 }
 
 type Request = { action: "resolve" | "ready"; md5: string; pathIndex?: number; domainIndex?: number };
-type Command = Request | { action: "help" } | { action: "doctor" };
+type SearchCommand = {
+  action: "search"; query: string; preferencesFile?: string;
+  language?: string; format?: string; pages: number; limit: number; all: boolean; json: boolean;
+};
+type Command = Request | SearchCommand | { action: "help" } | { action: "doctor" };
 class AnnaError extends Error {}
 
-const help = `anna — Anna's Archive member download URLs
+const help = `anna — Anna’s Archive index search and member download URLs
 
 usage:
+  anna search QUERY [--json] [--all]
+                    [--language 'en, pt-BR > pt > *'] [--format 'pdf > epub > * > mobi']
+                    [--preferences FILE] [--pages 1..5] [--limit 1..100]
   anna doctor
   anna resolve MD5 [--path-index N] [--domain-index N]
   anna ready MD5 [--path-index N] [--domain-index N]
+
+search signs into the configured Anna origin and reads its index HTML. results
+include file MD5s; no download endpoint is called. defaults: 2 pages, 20 displayed
+results. preferences are read live; secondary matches are faded.
+--all exposes hidden fallback results. NO_COLOR disables ANSI; FORCE_COLOR=1 enables it.
 
 resolve prints JSON containing download_url; treat the URL as private.
 ready makes the same request but discards the URL. both may consume your
@@ -38,10 +53,11 @@ function origin(baseUrl: string): URL {
 
 function parse(args: string[]): Command {
   if (args.length === 0 || (args.length === 1 && ["help", "--help", "-h"].includes(args[0]))) return { action: "help" };
+  if (args[0] === "search") return parseSearch(args.slice(1));
   const [action, md5, ...flags] = args;
   if (action === "doctor" && args.length === 1) return { action };
   if ((action !== "resolve" && action !== "ready") || !md5 || !/^[a-f0-9]{32}$/i.test(md5)) {
-    throw new AnnaError("anna: expected doctor, or resolve/ready followed by a 32-character hexadecimal MD5; use --help");
+    throw new AnnaError("anna: expected search QUERY, doctor, or resolve/ready followed by a 32-character hexadecimal MD5; use --help");
   }
   const request: Request = { action, md5: md5.toLowerCase() };
   for (let i = 0; i < flags.length; i += 2) {
@@ -56,6 +72,32 @@ function parse(args: string[]): Command {
   return request;
 }
 
+function parseSearch(args: string[]): SearchCommand {
+  const command: SearchCommand = { action: "search", query: "", pages: 2, limit: 20, all: false, json: false };
+  const words: string[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < args.length; i++) {
+    const flag = args[i];
+    if (flag === "--") { words.push(...args.slice(i + 1)); break; }
+    if (!flag.startsWith("--")) { words.push(flag); continue; }
+    if (seen.has(flag)) throw new AnnaError("anna: duplicate search option; use --help");
+    seen.add(flag);
+    if (flag === "--all") { command.all = true; continue; }
+    if (flag === "--json") { command.json = true; continue; }
+    const value = args[++i];
+    if (!value || value.startsWith("--")) throw new AnnaError("anna: search option requires a value; use --help");
+    if (flag === "--language") command.language = value;
+    else if (flag === "--format") command.format = value;
+    else if (flag === "--preferences") command.preferencesFile = value;
+    else if ((flag === "--pages" || flag === "--limit") && /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value))) {
+      if (flag === "--pages") command.pages = Number(value);
+      else command.limit = Number(value);
+    } else throw new AnnaError("anna: invalid search option or value; use --help");
+  }
+  command.query = words.join(" ").trim();
+  return command;
+}
+
 function credential(cfg: Config): string {
   if (!cfg.enabled) throw new AnnaError("anna: integration disabled; enable my.annasArchive and provision its credential first");
   origin(cfg.baseUrl);
@@ -65,26 +107,6 @@ function credential(cfg: Config): string {
     return key;
   } catch {
     throw new AnnaError("anna: credential is missing or unsafe; provide a nonempty private runtime key file outside the Nix store");
-  }
-}
-
-/** Bound response memory as well as request time; never surface remote error bodies. */
-async function responseJson(response: Response): Promise<unknown> {
-  if (!response.body) throw new Error();
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > 64 * 1024) throw new Error();
-      chunks.push(value);
-    }
-    return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
-  } finally {
-    await reader.cancel().catch(() => {});
   }
 }
 
@@ -125,6 +147,7 @@ export function configFromEnv(env: NodeJS.ProcessEnv): Config {
     enabled: env.ANNAS_ARCHIVE_ENABLED === "1",
     apiKeyFile: env.ANNAS_ARCHIVE_KEY_FILE ?? "",
     baseUrl: env.ANNAS_ARCHIVE_BASE_URL ?? "https://annas-archive.gl",
+    preferencesFile: env.ANNAS_ARCHIVE_PREFERENCES_FILE ?? defaultPreferencesFile,
   };
 }
 
@@ -133,7 +156,14 @@ export async function run(args: string[], cfg: Config, fetcher: typeof fetch = f
   if (command.action === "help") return help;
   if (command.action === "doctor") {
     credential(cfg);
-    return "anna: local configuration and private credential file are valid; remote membership access is unverified";
+    loadPreferences(cfg.preferencesFile ?? defaultPreferencesFile);
+    return "anna: local configuration, preferences, and private credential file are valid; remote membership access is unverified";
+  }
+  if (command.action === "search") {
+    const preferences = loadPreferences(command.preferencesFile ?? cfg.preferencesFile ?? defaultPreferencesFile, command);
+    const result = await search({ ...command, preferences, annaBaseUrl: origin(cfg.baseUrl).href }, credential(cfg), fetcher);
+    const color = process.env.NO_COLOR === undefined && (process.env.FORCE_COLOR === "1" || !!process.stdout.isTTY);
+    return command.json ? JSON.stringify(result, null, 2) : renderSearch(result, color);
   }
   const downloadUrl = await resolveFile(cfg, command, fetcher);
   return command.action === "ready"
@@ -145,7 +175,7 @@ if (isMain(import.meta.url)) {
   try {
     console.log(await run(process.argv.slice(2), configFromEnv(process.env)));
   } catch (error) {
-    console.error(error instanceof AnnaError ? error.message : "anna: operation failed; private error details suppressed");
+    console.error(error instanceof AnnaError || error instanceof SearchError ? error.message : "anna: operation failed; private error details suppressed");
     process.exitCode = 1;
   }
 }

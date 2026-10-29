@@ -71,6 +71,9 @@ let
   };
 in
 assert valid dormant && dormant.sops.secrets == { };
+assert
+  dormant.my.annasArchive.preferencesFile
+  == "/fixture/live/01_files/nix/modules/annas-archive/preferences.conf";
 assert !(valid missing) && missing.sops.secrets == { };
 assert valid external && external.sops.secrets == { };
 assert valid otherConsumer;
