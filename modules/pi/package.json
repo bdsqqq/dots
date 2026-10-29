@@ -85,6 +85,7 @@
       "./dist/extensions/github.js",
       "./dist/extensions/librarian.js",
       "./dist/extensions/look-at.js",
+      "./dist/extensions/mymind.js",
       "./dist/extensions/nested-agents.js",
       "./dist/extensions/oracle.js",
       "./dist/extensions/read.js",
