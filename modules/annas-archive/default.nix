@@ -8,7 +8,7 @@ let
       config.sops.secrets.annas_archive_key.path
     else
       null;
-  live = "${config.my.paths.commonplace}/01_files/nix/modules/annas-archive/cli.ts";
+  directory = "${config.my.paths.commonplace}/01_files/nix/modules/annas-archive";
 in
 {
   imports = [ ./credential.nix ];
@@ -24,6 +24,11 @@ in
       type = lib.types.str;
       default = "https://annas-archive.gl";
       description = "Explicitly trusted HTTPS origin; credentials are never forwarded across redirects.";
+    };
+    preferencesFile = lib.mkOption {
+      type = lib.types.str;
+      default = "${directory}/preferences.conf";
+      description = "Editable live preference file, read on every search invocation.";
     };
   };
 
@@ -47,15 +52,38 @@ in
       }
     ];
 
-    home-manager.users.bdsqqq = { pkgs, ... }: {
-      home.packages = [
-        (pkgs.writeShellScriptBin "anna" ''
-          export ANNAS_ARCHIVE_ENABLED=${if cfg.enable then "1" else "0"}
-          export ANNAS_ARCHIVE_KEY_FILE=${lib.escapeShellArg (if apiKeyFile == null then "" else apiKeyFile)}
-          export ANNAS_ARCHIVE_BASE_URL=${lib.escapeShellArg cfg.baseUrl}
-          exec ${pkgs.nodejs_24}/bin/node --experimental-strip-types ${lib.escapeShellArg live} "$@"
-        '')
-      ];
-    };
+    home-manager.users.bdsqqq =
+      {
+        pkgs,
+        lib,
+        config,
+        ...
+      }:
+      {
+        # Install from the same live manifest that Node resolves at runtime.
+        home.activation.installAnnaDependencies = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+          set -euo pipefail
+          export CI=true
+          export XDG_CONFIG_HOME=${lib.escapeShellArg config.xdg.configHome}
+          export XDG_DATA_HOME=${lib.escapeShellArg config.xdg.dataHome}
+          export XDG_CACHE_HOME=${lib.escapeShellArg config.xdg.cacheHome}
+          export PATH="${
+            lib.makeBinPath [
+              pkgs.nodejs_24
+              pkgs.pnpm_12
+            ]
+          }:$PATH"
+          ${pkgs.pnpm_12}/bin/pnpm install --dir ${lib.escapeShellArg directory} --frozen-lockfile
+        '';
+        home.packages = [
+          (pkgs.writeShellScriptBin "anna" ''
+            export ANNAS_ARCHIVE_ENABLED=${if cfg.enable then "1" else "0"}
+            export ANNAS_ARCHIVE_KEY_FILE=${lib.escapeShellArg (if apiKeyFile == null then "" else apiKeyFile)}
+            export ANNAS_ARCHIVE_BASE_URL=${lib.escapeShellArg cfg.baseUrl}
+            export ANNAS_ARCHIVE_PREFERENCES_FILE=${lib.escapeShellArg cfg.preferencesFile}
+            exec ${pkgs.nodejs_24}/bin/node --experimental-strip-types ${lib.escapeShellArg "${directory}/cli.ts"} "$@"
+          '')
+        ];
+      };
   };
 }

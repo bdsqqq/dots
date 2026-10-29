@@ -1,4 +1,5 @@
 {
   "extends": "../tool-auth/tsconfig.json",
+  "compilerOptions": { "skipLibCheck": true },
   "include": ["./*.ts", "../tool-auth/process.ts"]
 }
