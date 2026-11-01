@@ -61,6 +61,7 @@ in
     ../../modules/xurl
     ../../modules/weather
     ../../modules/remindctl
+    ../../modules/agent-desktop
     ../../modules/company-money
     ../../modules/node-pnpm
     ../../modules/mise

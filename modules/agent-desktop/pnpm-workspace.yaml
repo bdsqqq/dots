@@ -1,0 +1,8 @@
+# Keep the native executable and helper at unversioned live paths. This does
+# not confer a stable code-signing identity or bypass macOS permission checks.
+nodeLinker: hoisted
+
+# The archive contains native binaries; our Nix launcher selects the matching
+# pair directly. No upstream postinstall downloads, relinking or prompts.
+allowBuilds:
+  agent-desktop: false

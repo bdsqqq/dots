@@ -1,0 +1,1 @@
+../../../agent-desktop/SKILL.md

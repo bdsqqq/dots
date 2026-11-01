@@ -1,0 +1,8 @@
+{
+  "name": "@bdsqqq/agent-desktop",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "agent-desktop": "1.0.2"
+  }
+}
