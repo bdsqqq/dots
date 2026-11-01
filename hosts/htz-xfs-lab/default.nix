@@ -63,6 +63,7 @@ in
     ../../modules/nix
     ../../modules/nix/nix-ld.nix
     ../../modules/tailscale
+    ../../modules/tailscale/private-ingress.nix
     ../../modules/rex
     ../../modules/tailnet-registry
     ../../modules/core-cli
@@ -148,7 +149,6 @@ in
   networking = {
     hostName = "htz-xfs-lab";
     useDHCP = lib.mkDefault true;
-    firewall.allowedTCPPorts = [ 22 ];
   };
 
   boot = {
