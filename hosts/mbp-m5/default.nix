@@ -50,6 +50,7 @@ in
     ../../modules/xurl
     ../../modules/weather
     ../../modules/remindctl
+    ../../modules/agent-desktop
     ../../modules/node-pnpm
     ../../modules/mise
     ../../modules/syncthing
