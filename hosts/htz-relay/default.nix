@@ -38,6 +38,7 @@ in
     ../../modules/ssh
     ../../modules/ssh/authorized-keys.nix
     ../../modules/tailscale
+    ../../modules/tailscale/private-ingress.nix
     ../../modules/rex
     ../../modules/tailnet-registry
     ../../modules/cloudflare-ingress
@@ -129,11 +130,6 @@ in
   };
 
   networking.firewall = {
-    enable = true;
-    allowPing = false;
-    trustedInterfaces = [ "tailscale0" ];
-    allowedTCPPorts = [ ];
-    allowedUDPPorts = [ ];
     interfaces.tailscale0.allowedTCPPorts = [
       22
       22000
@@ -141,7 +137,6 @@ in
       3923
     ];
     interfaces.tailscale0.allowedUDPPorts = [ 22000 ];
-    checkReversePath = "loose";
   };
 
   services.openssh = {
