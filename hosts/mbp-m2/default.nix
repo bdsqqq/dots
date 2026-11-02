@@ -248,6 +248,7 @@ in
               kindle = syncthing.folderFor "kindle" config.home.homeDirectory true [
                 "kindle"
                 "mmn-m4"
+                "iph16"
               ]
                 { };
             };
