@@ -269,13 +269,8 @@ else {
             "fill"
           ];
         }
-        # quickshell and lisgd-niri run as systemd user services for auto-restart on config change
-        {
-          argv = [
-            "${inputs.vicinae.packages.${hostSystem}.default}/bin/vicinae"
-            "server"
-          ];
-        }
+        # quickshell, lisgd-niri and Vicinae have systemd user services. A second
+        # Vicinae server here survives service upgrades and blocks the new instance.
         { argv = [ "${pkgs.xwayland-satellite}/bin/xwayland-satellite" ":0" ]; }
       ];
 
