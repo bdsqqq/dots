@@ -87,10 +87,10 @@ in
           UMask = "0077";
         };
       };
+      # Path units precede paths.target/basic.target; waiting for an ordinary
+      # service here creates a cycle. The triggered service owns seed ordering.
       systemd.paths.rex-apply = {
         wantedBy = [ "multi-user.target" ];
-        after = [ "rex-install.service" ];
-        requires = [ "rex-install.service" ];
         pathConfig.PathChanged = "/usr/local/bin/rex";
       };
 

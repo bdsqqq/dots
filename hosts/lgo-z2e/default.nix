@@ -260,6 +260,20 @@ in
 
   hardware.steam-hardware.enable = true;
 
+  # Activation installs live mise/pnpm tools. Wait for networking to recover
+  # during a switch and allow cold downloads beyond Home Manager’s five minutes.
+  systemd.services.home-manager-bdsqqq = {
+    wants = [ "network-online.target" ];
+    # The target can already be active during a switch; order directly after
+    # the NetworkManager restart/wait jobs as well.
+    after = [
+      "network-online.target"
+      "NetworkManager.service"
+      "NetworkManager-wait-online.service"
+    ];
+    serviceConfig.TimeoutStartSec = lib.mkForce "30min";
+  };
+
   home-manager = {
     useGlobalPkgs = true;
     useUserPackages = true;

@@ -28,6 +28,10 @@ let
     assert lib.hasInfix "/bin/ln \"$seed/rex\" /usr/local/bin/rex" cfg.systemd.services.rex-install.script;
     assert cfg.systemd.timers.rex-update.timerConfig.OnUnitInactiveSec == "15min";
     assert cfg.systemd.paths.rex-apply.pathConfig.PathChanged == "/usr/local/bin/rex";
+    assert !(builtins.elem "rex-install.service" cfg.systemd.paths.rex-apply.after);
+    assert !(builtins.elem "rex-install.service" cfg.systemd.paths.rex-apply.requires);
+    assert builtins.elem "rex-install.service" cfg.systemd.services.rex-apply.after;
+    assert builtins.elem "rex-install.service" cfg.systemd.services.rex-apply.requires;
     assert lib.hasInfix "--apply-only" cfg.systemd.services.rex-apply.serviceConfig.ExecStart;
     assert cfg.systemd.services.rex-update.environment.NIX_LD_LIBRARY_PATH == "/run/current-system/sw/share/nix-ld/lib";
     assert lib.hasInfix "login-server" cfg.systemd.services.rex-login-server.serviceConfig.ExecStart;
