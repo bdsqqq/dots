@@ -51,7 +51,7 @@ test("verifier rejects public ports, public trust, and tailscaled's independent 
   ]) assert.throws(() => assertPrivate({ ...fixture, ...change }));
 });
 
-test("all Hetzner hosts evaluate with private ingress and force their system derivations", {
+test("all Linux hosts evaluate with private ingress and force their system derivations", {
   skip: process.platform !== "linux" || process.arch !== "x64",
 }, () => {
   const root = process.env.PRIVATE_INGRESS_FLAKE ?? fileURLToPath(new URL("../../", import.meta.url));
@@ -77,7 +77,7 @@ test("all Hetzner hosts evaluate with private ingress and force their system der
       drv = c.system.build.toplevel.drvPath;
     };
   in builtins.listToAttrs (map (host: { name = host; value = inspect host; })
-    [ "htz-relay" "htz-lab" "htz-xfs-lab" ])`;
+    (builtins.attrNames flake.nixosConfigurations))`;
   const result = execFileSync("nix", ["eval", "--impure", "--json", "--no-write-lock-file", "--expr", expression], {
     encoding: "utf8", timeout: 240_000, maxBuffer: 4 * 1024 * 1024,
   });
