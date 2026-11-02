@@ -420,7 +420,11 @@
           "mmn-m4" = mkDarwinSystem { } ./hosts/mmn-m4/default.nix;
         };
 
-        nixosConfigurations = {
+        # Wrap the output set, not a per-host import list: new Linux hosts get
+        # the diagnostic even if they omit the shared Tailscale module entirely.
+        nixosConfigurations = builtins.mapAttrs (_: system: system.extendModules {
+          modules = [ ./modules/tailscale/private-ingress-warning.nix ];
+        }) {
           "htz-xfs-lab" = inputs.nixpkgs.lib.nixosSystem {
             specialArgs = {
               inherit inputs tailnetApps;
@@ -519,7 +523,6 @@
                   (import ./overlays/unstable.nix inputs)
                   (import ./modules/zmx).overlay
                   (import ./overlays/quickshell.nix inputs)
-                  inputs.niri.overlays.niri
                 ];
                 system.configurationRevision = flakeRevision;
 

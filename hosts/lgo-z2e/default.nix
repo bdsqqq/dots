@@ -86,6 +86,7 @@ in
     ../../modules/ssh
     ../../modules/ssh/authorized-keys.nix
     ../../modules/tailscale
+    ../../modules/tailscale/private-ingress.nix
     ../../modules/rex
     ../../modules/tailnet-registry
     ../../modules/secrets
@@ -253,8 +254,8 @@ in
   # steam with handheld-appropriate scaling
   programs.steam = {
     enable = true;
-    remotePlay.openFirewall = true;
-    dedicatedServer.openFirewall = true;
+    remotePlay.openFirewall = false;
+    dedicatedServer.openFirewall = false;
   };
 
   hardware.steam-hardware.enable = true;

@@ -2,7 +2,9 @@
   imports = [ ../login ];
 
   programs.niri.enable = true;
-  programs.niri.package = pkgs.niri-unstable;
+  # nixpkgs carries 26.04 with the matching libdisplay-info ABI; the pinned
+  # niri-flake builder still requires removed 0.2 packaging. Keep its settings module.
+  programs.niri.package = pkgs.niri;
   programs.dconf.enable = true;
 
   boot.kernelModules = lib.mkIf (config.networking.hostName == "lgo-z2e") [ "uinput" ];

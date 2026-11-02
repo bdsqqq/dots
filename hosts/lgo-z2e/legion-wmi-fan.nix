@@ -24,9 +24,15 @@ let
 
     installPhase = ''
       runHook preInstall
-      install -Dm444 lenovo-legion-wmi-fan.ko \
+      install -Dm644 lenovo-legion-wmi-fan.ko \
         $out/lib/modules/${kernel.modDirVersion}/extra/lenovo-legion-wmi-fan.ko
       runHook postInstall
+    '';
+
+    # Manual installation bypasses Kbuild signing. Sign after stripping so the
+    # module aggregator gets a certificate for the final module bytes.
+    postFixup = ''
+      ${pkgs.lib.getExe pkgs.kmodigest} "$out/lib/modules/${kernel.modDirVersion}/extra/lenovo-legion-wmi-fan.ko"
     '';
 
     meta = {
