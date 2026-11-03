@@ -1,0 +1,138 @@
+Tue Nov  3 03:20:00 AM UTC 2026
+8d787d81-0a7b-454b-9b41-e1b79d7ee8fe
+/nix/store/vk3ywr8gir2w62r6yx7ijv25yln0zkd3-nixos-system-htz-relay-26.11.20261020.02c087f
+Id=syncthing.service
+ActiveState=active
+SubState=running
+UnitFileState=enabled
+TimeoutStopUSec=1min 30s
+Result=success
+SendSIGKILL=yes
+
+Id=syncthing-init.service
+ActiveState=active
+SubState=exited
+UnitFileState=enabled
+TimeoutStopUSec=1min 30s
+Result=success
+SendSIGKILL=yes
+
+Id=syncthing-automerge.service
+ActiveState=active
+SubState=running
+UnitFileState=enabled
+TimeoutStopUSec=1min 30s
+Result=success
+SendSIGKILL=yes
+
+Id=copyparty.service
+ActiveState=active
+SubState=running
+UnitFileState=enabled
+TimeoutStopUSec=1min 30s
+Result=success
+SendSIGKILL=yes
+
+Id=container@apps.service
+ActiveState=active
+SubState=running
+UnitFileState=enabled
+TimeoutStopUSec=1min 30s
+Result=success
+SendSIGKILL=yes
+
+Id=axiom-incidents.service
+ActiveState=inactive
+SubState=dead
+UnitFileState=linked
+TimeoutStopUSec=1min 30s
+Result=success
+SendSIGKILL=yes
+
+Id=axiom-incidents.timer
+ActiveState=active
+SubState=waiting
+UnitFileState=enabled
+Result=success
+
+Id=nixos-upgrade.service
+ActiveState=inactive
+SubState=dead
+UnitFileState=linked
+TimeoutStopUSec=1min 30s
+Result=success
+SendSIGKILL=yes
+
+Id=nixos-upgrade.timer
+ActiveState=active
+SubState=waiting
+UnitFileState=enabled
+Result=success
+
+Id=home-manager-bdsqqq.service
+ActiveState=active
+SubState=exited
+UnitFileState=enabled
+TimeoutStopUSec=1min 30s
+Result=success
+SendSIGKILL=yes
+
+Id=systemd-tmpfiles-setup.service
+ActiveState=active
+SubState=exited
+UnitFileState=enabled
+TimeoutStopUSec=1min 30s
+Result=success
+SendSIGKILL=yes
+
+Id=systemd-tmpfiles-clean.service
+ActiveState=inactive
+SubState=dead
+UnitFileState=linked
+TimeoutStopUSec=1min 30s
+Result=success
+SendSIGKILL=yes
+
+Id=systemd-tmpfiles-clean.timer
+ActiveState=active
+SubState=waiting
+UnitFileState=enabled
+Result=success
+Id=html-stuff.service
+ActiveState=active
+SubState=running
+UnitFileState=enabled
+TimeoutStopUSec=1min 30s
+Result=success
+SendSIGKILL=yes
+
+Id=company-money-portal.service
+ActiveState=active
+SubState=running
+UnitFileState=enabled
+TimeoutStopUSec=1min 30s
+Result=success
+SendSIGKILL=yes
+
+Id=files-browser.service
+ActiveState=active
+SubState=running
+UnitFileState=enabled
+TimeoutStopUSec=1min 30s
+Result=success
+SendSIGKILL=yes
+NEXT                          LEFT LAST                              PASSED UNIT                         ACTIVATES
+Tue 2026-11-03 03:20:27 GMT    26s Tue 2026-11-03 03:19:57 GMT       3s ago hwmon-metrics-sample.timer   hwmon-metrics-sample.service
+Tue 2026-11-03 03:20:41 GMT    40s Tue 2026-11-03 03:19:41 GMT      19s ago axiom-incidents.timer        axiom-incidents.service
+Tue 2026-11-03 03:30:23 GMT  10min Tue 2026-11-03 03:15:21 GMT 4min 39s ago rex-update.timer             rex-update.service
+Tue 2026-11-03 03:45:56 GMT  25min Mon 2026-11-02 04:02:24 GMT      23h ago nix-optimise.timer           nix-optimise.service
+Tue 2026-11-03 04:00:00 GMT  39min Tue 2026-11-03 03:00:00 GMT    20min ago logrotate.timer              logrotate.service
+Tue 2026-11-03 04:00:00 GMT  39min Tue 2026-11-03 03:00:00 GMT    20min ago nixos-upgrade.timer          nixos-upgrade.service
+Wed 2026-11-04 00:00:00 GMT    20h Tue 2026-11-03 00:00:03 GMT 3h 19min ago nix-gc.timer                 nix-gc.service
+Wed 2026-11-04 02:59:55 GMT    23h Tue 2026-11-03 02:59:55 GMT    20min ago systemd-tmpfiles-clean.timer systemd-tmpfiles-clean.service
+Mon 2026-11-09 00:11:01 GMT 5 days Mon 2026-11-02 01:01:56 GMT 1 day 2h ago fstrim.timer                 fstrim.service
+
+9 timers listed.
+TARGET          SOURCE   FSTYPE OPTIONS
+/mnt/storage-01 /dev/sdb ext4   rw,relatime,discard
+/dev/disk/by-id/scsi-0HC_Volume_104047902: UUID="b22860a5-6334-4b4f-bcd7-035389e6390e" BLOCK_SIZE="4096" TYPE="ext4"
