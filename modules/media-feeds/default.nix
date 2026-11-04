@@ -1,6 +1,7 @@
 { config, lib, pkgs, ... }:
 let
   cfg = config.my.mediaFeeds;
+  flexget = pkgs.callPackage ./flexget.nix { };
   moduleSource = "${config.my.paths.commonplace}/01_files/nix/modules/media-feeds";
   configSource = "${moduleSource}/config.yml";
   pollerSource = "${moduleSource}/poll.sh";
@@ -71,7 +72,7 @@ in
 
   config = lib.mkIf cfg.enable {
     home-manager.users.bdsqqq = { config, lib, ... }: {
-      home.packages = [ pkgs.flexget pkgs.transmission_4 ];
+      home.packages = [ flexget pkgs.transmission_4 ];
 
       home.file.".config/transmission-daemon/settings.json" = {
         source = config.lib.file.mkOutOfStoreSymlink transmissionSettingsSource;
@@ -146,7 +147,7 @@ in
           ProgramArguments = [
             "${pkgs.bash}/bin/bash"
             pollerSource
-            "${pkgs.flexget}/bin/flexget"
+            "${flexget}/bin/flexget"
             configPath
             variablesPath
             onePieceKindleDirectory
