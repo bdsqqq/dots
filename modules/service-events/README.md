@@ -34,10 +34,13 @@ existing host/container journal and launchd-file collection transports stdout.
 JSON or a JSON event nested inside journald `MESSAGE`, while retaining legacy
 records. Event IDs support deduplication after transport retries.
 
-existing virtual fields retain their registration positions on update. Keep
-legacy-field dependencies valid in that order, not just the fresh-install order.
-The service, operation, and severity projections inline envelope decoding because
-references to the newly registered event fields did not resolve in live queries.
+event projections are additive. Existing `normalized_service`,
+`normalized_operation`, and `normalized_severity` retain their legacy semantics;
+use `normalized_event_service`, `normalized_event_operation`, and
+`normalized_event_severity` for completion events, or coalesce each event field
+with its legacy counterpart. Updating the shared fields to depend on the new
+decoder failed in live Axiom queries; preserving them keeps existing consumers
+working.
 
 publishing these virtual-field definitions, deploying new packaged services,
 changing health aggregation, and enabling notifications are separate operations.
@@ -45,7 +48,7 @@ none happens by running the tests below. Structured readiness events alone do
 not fix Bluetooth hardware/permission failures or add missing service alerts.
 
 once the projections are installed, a usage-oriented query can filter
-`normalized_traffic == 'browser'`, group by `normalized_service` and
+`normalized_traffic == 'browser'`, group by `normalized_event_service` and
 `normalized_context.route`, and deduplicate `normalized_event_id`. That counts
 request completions—not people. Repetitive polls/retries may be summarized;
 use `normalized_context.observationCount` when present rather than treating
@@ -81,4 +84,7 @@ query-capable deployment and at least one source row in the last hour:
 SERVICE_EVENTS_AXIOM_DEPLOYMENT=personal node --experimental-strip-types --test modules/service-events/projections.test.ts
 ```
 
-this does not ingest fixture events or update virtual fields.
+this does not ingest fixture events or update virtual fields. After publishing,
+add `SERVICE_EVENTS_AXIOM_VERIFY_INSTALLED=1` to verify that the actual installed
+fields resolve by name. That check also confirms that an absent field is rejected;
+fixture evaluation alone does not validate installed virtual-field resolution.
