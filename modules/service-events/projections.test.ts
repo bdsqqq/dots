@@ -44,6 +44,13 @@ test("installed Axiom projections resolve by name; a missing field fails verific
   const result = spawnSync("axiom", args, { encoding: "utf8", timeout: 30_000 });
   assert.equal(result.status, 0, result.stderr);
   assert.ok(result.stdout.trim() && result.stdout.trim() !== "[]", "installed-field verification requires a recent completion event");
+  const row = JSON.parse(result.stdout.trim().split("\n")[0]);
+  assert.ok(row.normalized_event_service && row.normalized_event_operation, "installed event identity must be populated");
+  assert.equal(row.normalized_event_service, row.normalized_event.service);
+  assert.equal(row.normalized_event_operation, row.normalized_event.operation);
+  const severities = new Map([["failed", "error"], ["degraded", "warn"], ["succeeded", "info"], ["skipped", "info"]]);
+  assert.ok(severities.has(row.normalized_outcome));
+  assert.equal(row.normalized_event_severity, severities.get(row.normalized_outcome));
   args[3] = "['papertrail'] | project __service_events_expected_missing_projection__ | take 1";
   const missing = spawnSync("axiom", args, { encoding: "utf8", timeout: 30_000 });
   assert.notEqual(missing.status, 0, "missing projection must fail verification");
