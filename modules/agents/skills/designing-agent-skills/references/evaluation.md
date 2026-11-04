@@ -28,6 +28,13 @@ read/tool result. a model saying “i used the skill” is insufficient.
 
 ## behavioral comparison
 
+separate teaching examples from evaluation evidence. a bad/good pair in the body
+shows what to produce; it does not prove the model produces it. keep at least one
+held-out task with different names/domain so copying the example cannot pass.
+for a procedure, inspect executed steps and resulting state; for pattern teaching,
+inspect the produced code/prose and whether its behavior survived; for a review,
+trace findings and attempted counterexamples. don't grade by headings or vocabulary.
+
 1. freeze the task, base revision, fixture, model/settings, tools, and budget.
 2. run baseline and candidate with the same acceptance criteria in isolated
    workspaces. keep prompts ordinary; evaluate after the candidate finishes.
