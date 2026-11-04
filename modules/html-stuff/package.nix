@@ -1,7 +1,10 @@
 { pkgs }:
 
 let
-  source = pkgs.writeText "html-stuff-server.ts" (builtins.readFile ./server.ts);
+  source = pkgs.writeText "html-stuff-server.ts" (builtins.replaceStrings
+    [ "../service-events/events.ts" ]
+    [ "${../service-events/events.ts}" ]
+    (builtins.readFile ./server.ts));
 in
 pkgs.writeShellApplication {
   name = "html-stuff-server";

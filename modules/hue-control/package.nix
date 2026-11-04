@@ -42,6 +42,12 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     pnpmConfigHook
   ];
 
+  # The shared logger is outside this package's source root; esbuild must bundle the store copy.
+  postPatch = ''
+    substituteInPlace events.ts runtime.ts server.ts hue-control-main.ts \
+      --replace-fail '../service-events/events.ts' '${../service-events/events.ts}'
+  '';
+
   buildPhase = ''
     runHook preBuild
 

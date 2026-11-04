@@ -393,6 +393,8 @@
 
         checks.wikiman-logging = import ./modules/wikiman/logging-check.nix { inherit pkgs; };
 
+        checks.service-events = import ./modules/service-events/check.nix { inherit pkgs; };
+
         checks.tailnet-artifacts = pkgs.runCommand "tailnet-artifacts-check" { } ''
           ${config.packages.tailnet-artifact-generator}/bin/generate-tailnet-artifacts \
             --check \
@@ -404,11 +406,12 @@
           {
             nativeBuildInputs = [ pkgs.bun ];
           } ''
-          mkdir source
-          cp ${./modules/tailnet-registry/tailnet-registry.ts} source/tailnet-registry.ts
-          cp ${./modules/tailnet-registry/tailnet-registry.test.ts} source/tailnet-registry.test.ts
-          cd source
-          bun test tailnet-registry.test.ts
+          mkdir -p source/modules/tailnet-registry source/modules/service-events
+          cp ${./modules/service-events/events.ts} source/modules/service-events/events.ts
+          cp ${./modules/tailnet-registry/tailnet-registry.ts} source/modules/tailnet-registry/tailnet-registry.ts
+          cp ${./modules/tailnet-registry/tailnet-registry.test.ts} source/modules/tailnet-registry/tailnet-registry.test.ts
+          cd source/modules/tailnet-registry
+          bun test ./tailnet-registry.test.ts
           touch "$out"
         '';
       };

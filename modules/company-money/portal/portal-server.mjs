@@ -3,6 +3,18 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readTally } from "./tally.ts";
+import { createEventLogger, classifyHttpTraffic, safeErrorCode } from "../../service-events/events.ts";
+
+const events = createEventLogger("company-money-portal");
+
+function routeCategory(pathname) {
+  if (pathname === "/") return "index";
+  if (pathname === "/api/tally") return "ledger";
+  if (pathname === "/portal.css") return "stylesheet";
+  if (pathname === "/portal.js") return "script";
+  if (pathname === "/healthz") return "healthz";
+  return "not_found";
+}
 
 const SECURITY_HEADERS = {
   "cache-control": "private, no-store",
@@ -74,62 +86,100 @@ function send(response, requestMethod, status, contentType, body, headers = {}) 
 export function portalServer(assets, tally = async () => { throw new Error("unavailable"); }) {
   return createServer(async (request, response) => {
     const method = request.method ?? "GET";
-    if (method !== "GET" && method !== "HEAD") {
-      send(response, method, 405, "text/plain; charset=utf-8", "method not allowed\n", {
-        allow: "GET, HEAD",
-        "cache-control": "no-store",
+    const context = {
+      method: ["GET", "HEAD", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "CONNECT", "TRACE"].includes(method) ? method : "OTHER",
+      route: "not_found",
+    };
+    // Complete on response finish/close rather than when an async ledger read starts.
+    let operation;
+    let completed = false;
+    const complete = (aborted = false) => {
+      if (completed) return;
+      completed = true;
+      operation?.finish(aborted || response.statusCode >= 400 ? "failed" : "succeeded", {
+        ...context,
+        ...(aborted ? { reasonCode: "response_aborted" } : { statusCode: response.statusCode }),
       });
-      return;
-    }
-    const url = new URL(request.url ?? "/", "http://portal.local");
-    if (url.pathname === "/api/tally") {
-      try {
-        send(response, method, 200, "application/json", JSON.stringify(await tally()));
-      } catch {
-        send(response, method, 503, "application/json", '{"error":"ledger unavailable"}');
+    };
+    response.once("finish", () => complete());
+    response.once("close", () => complete(!response.writableFinished));
+    try {
+      const url = new URL(request.url ?? "/", "http://portal.local");
+      context.route = routeCategory(url.pathname);
+      operation = events.begin("http.request", classifyHttpTraffic(request.headers["user-agent"], context.route), context);
+      if (method !== "GET" && method !== "HEAD") {
+        send(response, method, 405, "text/plain; charset=utf-8", "method not allowed\n", {
+          allow: "GET, HEAD",
+          "cache-control": "no-store",
+        });
+        return;
       }
-      return;
-    }
-    if (url.pathname === "/") {
-      send(response, method, 200, "text/html; charset=utf-8", assets.html);
-      return;
-    }
-    if (url.pathname === "/portal.css") {
-      send(response, method, 200, "text/css; charset=utf-8", assets.css);
-      return;
-    }
-    if (url.pathname === "/portal.js") {
-      send(response, method, 200, "text/javascript; charset=utf-8", assets.js);
-      return;
-    }
-    if (url.pathname === "/healthz") {
-      send(response, method, 200, "text/plain; charset=utf-8", "ok\n", {
+      if (context.route === "ledger") {
+        try {
+          send(response, method, 200, "application/json", JSON.stringify(await tally()));
+        } catch (error) {
+          context.errorCode = safeErrorCode(error);
+          context.reasonCode = "ledger_unavailable";
+          send(response, method, 503, "application/json", '{"error":"ledger unavailable"}');
+        }
+        return;
+      }
+      if (context.route === "index") {
+        send(response, method, 200, "text/html; charset=utf-8", assets.html);
+        return;
+      }
+      if (context.route === "stylesheet") {
+        send(response, method, 200, "text/css; charset=utf-8", assets.css);
+        return;
+      }
+      if (context.route === "script") {
+        send(response, method, 200, "text/javascript; charset=utf-8", assets.js);
+        return;
+      }
+      if (context.route === "healthz") {
+        send(response, method, 200, "text/plain; charset=utf-8", "ok\n", {
+          "cache-control": "no-store",
+        });
+        return;
+      }
+      send(response, method, 404, "text/plain; charset=utf-8", "not found\n", {
         "cache-control": "no-store",
       });
-      return;
+    } catch (error) {
+      operation ??= events.begin("http.request", classifyHttpTraffic(request.headers["user-agent"], context.route), context);
+      context.errorCode = safeErrorCode(error);
+      context.reasonCode = "request_failed";
+      if (!response.headersSent) send(response, method, 500, "text/plain; charset=utf-8", "internal server error\n");
+      else response.destroy();
     }
-    send(response, method, 404, "text/plain; charset=utf-8", "not found\n", {
-      "cache-control": "no-store",
-    });
   });
 }
 
 async function main() {
-  const config = parseArgs(process.argv.slice(2));
-  const assets = {
-    html: await readFile(config.html, "utf8"),
-    css: await readFile(config.css, "utf8"),
-    js: await readFile(config.js, "utf8"),
-  };
-  const server = portalServer(assets, () => readTally(config.root));
-  server.listen(config.port, config.host, () => {
-    process.stdout.write(`company-money portal listening on ${config.host}:${config.port}\n`);
-  });
+  const startup = events.begin("service.start", "background");
+  try {
+    const config = parseArgs(process.argv.slice(2));
+    const assets = {
+      html: await readFile(config.html, "utf8"),
+      css: await readFile(config.css, "utf8"),
+      js: await readFile(config.js, "utf8"),
+    };
+    const server = portalServer(assets, () => readTally(config.root));
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(config.port, config.host, resolve);
+    });
+    // Listening confirms the HTTP shell, not ledger availability; healthz stays liveness-only.
+    startup.finish("succeeded", { ready: true, readiness: "http_listening" });
+    server.on("error", (error) => {
+      events.begin("service.failure", "background").finish("failed", { ready: false, errorCode: safeErrorCode(error) });
+    });
+  } catch (error) {
+    startup.finish("failed", { ready: false, errorCode: safeErrorCode(error) });
+    process.exitCode = 1;
+  }
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  main().catch(() => {
-    process.stderr.write("company-money portal failed\n");
-    process.exitCode = 1;
-  });
+  await main();
 }

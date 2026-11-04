@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+
+import { createEventLogger } from "../service-events/events.ts";
+import type { ServiceEvent } from "../service-events/events.ts";
 
 import type { HueBleAdapter, HueBleConnection, HueDevice } from "./ble-adapter.ts";
 import { HUE_CHARACTERISTICS } from "./hue-protocol.ts";
@@ -19,6 +22,7 @@ class FakeConnection implements HueBleConnection {
     [HUE_CHARACTERISTICS.name, new TextEncoder().encode("desk")],
   ]);
   failWrites = false;
+  failDisconnect = false;
   disconnected = false;
 
   async read(characteristic: string): Promise<Uint8Array> {
@@ -42,6 +46,7 @@ class FakeConnection implements HueBleConnection {
   }
 
   async disconnect(): Promise<void> {
+    if (this.failDisconnect) throw new Error("private-disconnect-failure");
     this.disconnected = true;
   }
 }
@@ -50,6 +55,7 @@ class FakeAdapter implements HueBleAdapter {
   readonly connection = new FakeConnection();
   readonly connectedIds: string[] = [];
   failConnect = false;
+  connectError: Error | null = null;
   lost: (() => void) | null = null;
 
   async discover(): Promise<HueDevice> {
@@ -59,6 +65,7 @@ class FakeAdapter implements HueBleAdapter {
   async connect(deviceId: string, disconnected: () => void): Promise<HueBleConnection> {
     this.connectedIds.push(deviceId);
     this.lost = disconnected;
+    if (this.connectError) throw this.connectError;
     if (this.failConnect) throw new Error("bulb not found");
     return this.connection;
   }
@@ -120,6 +127,204 @@ test("runtime restores identity and clears stale state after transport failure",
     await runtime.stop();
   } finally {
     await first.stop();
+    await rm(directory, { recursive: true });
+  }
+});
+
+function captureEvents() {
+  const lines: string[] = [];
+  const events = createEventLogger("hue-control", {
+    host: "test-host", sink: (event) => lines.push(JSON.stringify(event)),
+  });
+  return { events, lines, emitted: (): ServiceEvent[] => lines.map((line) => JSON.parse(line)) };
+}
+
+test("runtime JSON events explain commands and readiness without disclosing device state", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "hue-private-path-"));
+  const adapter = new FakeAdapter();
+  const capture = captureEvents();
+  const runtime = new HueRuntime(adapter, join(directory, "private-state.json"), capture);
+  try {
+    await runtime.start();
+    assert.equal(capture.emitted()[0].outcome, "degraded");
+    assert.equal(capture.emitted()[0].context.enrolled, false);
+    await runtime.reconnect();
+    assert.equal(capture.emitted().at(-1)?.outcome, "skipped");
+    await runtime.discover();
+    await runtime.enroll("private-device-id");
+    assert.equal((await runtime.setBrightness(42)).ok, true);
+    assert.equal((await runtime.setBrightness(Infinity)).ok, false);
+    adapter.connection.failWrites = true;
+    assert.equal((await runtime.setPower(false)).ok, false);
+    assert.equal(runtime.snapshot().lastError, "radio disappeared");
+    await runtime.stop();
+
+    const emitted = capture.emitted();
+    const commands = emitted.filter((event) => event.operation === "runtime.command");
+    assert.deepEqual(commands.map((event) => [event.outcome, event.context.action, event.context.reasonCode]), [
+      ["succeeded", "brightness", undefined],
+      ["failed", "brightness", "invalid-command"],
+      ["failed", "power", "unavailable"],
+    ]);
+    const lost = emitted.find((event) => event.context.toState === "unavailable")!;
+    assert.equal(lost.outcome, "degraded");
+    assert.equal(lost.context.fromState, "available");
+    assert.equal(lost.context.reasonCode, "command_unavailable");
+    assert.equal(lost.context.retryInMs, 1000);
+    assert.equal(lost.context.enrolled, true);
+    assert.equal(lost.context.ready, false);
+    assert.ok(emitted.some((event) => event.operation === "ble.connect" && event.outcome === "succeeded"));
+    assert.equal(emitted.at(-1)?.operation, "runtime.stop");
+    assert.equal(emitted.at(-1)?.context.ready, false);
+    assert.equal(emitted.at(-1)?.context.readiness, "stopped");
+    assert.equal(emitted.at(-1)?.context.toState, "stopped");
+    assert.equal(new Set(emitted.map((event) => event.operationId)).size, emitted.length);
+    for (const event of emitted) {
+      assert.match(event.eventId, /^[0-9a-f-]{36}$/);
+      assert.match(event.operationId, /^[0-9a-f-]{36}$/);
+      assert.match(event.timestamp, /Z$/);
+      assert.equal(event.host, "test-host");
+      assert.ok(event.durationMs >= 0);
+    }
+    assert.doesNotMatch(capture.lines.join("\n"), /private-device-id|private-state|hue-private-path|corebluetooth-id|desk|LCA011|radio disappeared|deviceId|lastError|colorXy/);
+  } finally {
+    await runtime.stop();
+    await rm(directory, { recursive: true });
+  }
+});
+
+test("identical BLE failures are counted, capped to one summary/minute, and flushed on recovery/stop", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "hue-retry-"));
+  const adapter = new FakeAdapter();
+  adapter.connectError = Object.assign(new Error("private-radio-device-secret"), { code: "BLUETOOTH_UNAVAILABLE" });
+  const capture = captureEvents();
+  let clock = 0;
+  const runtime = new HueRuntime(adapter, join(directory, "state.json"), { ...capture, now: () => clock });
+  const connections = () => capture.emitted().filter((event) => ["ble.connect", "ble.retry_summary"].includes(event.operation));
+  try {
+    await runtime.enroll("private-enrolled-id");
+    assert.equal(runtime.snapshot().status, "unavailable");
+    assert.equal(runtime.snapshot().lastError, "private-radio-device-secret");
+    assert.equal(capture.emitted().find((event) => event.operation === "runtime.enroll")?.outcome, "degraded");
+    assert.equal(connections().length, 1);
+    assert.equal(connections()[0].context.reasonCode, "bluetooth_unavailable");
+    assert.equal(connections()[0].context.retryInMs, 1000);
+    for (let i = 0; i < 10; i++) await runtime.reconnect();
+    assert.equal(connections().length, 1, "no new log for every identical retry");
+    assert.equal(capture.emitted().filter((event) => event.operation === "runtime.readiness").length, 2);
+    clock = 60_000;
+    await runtime.reconnect();
+    assert.equal(connections().length, 2);
+    assert.equal(connections()[1].operation, "ble.retry_summary");
+    assert.equal(connections()[1].context.observationCount, 11);
+    assert.equal(connections()[1].context.retryInMs, 30_000);
+
+    // A changed failure category is meaningful immediately, even inside the rate-limit window.
+    await runtime.reconnect();
+    adapter.connectError = Object.assign(new Error("private-timeout"), { code: "ETIMEDOUT" });
+    await runtime.reconnect();
+    assert.equal(connections().length, 4);
+    assert.equal(connections()[2].context.observationCount, 1);
+    assert.equal(connections()[3].context.errorCode, "ETIMEDOUT");
+    assert.equal(connections()[3].context.reasonCode, "bluetooth_connection_failed");
+    await runtime.reconnect();
+    adapter.connectError = null;
+    await runtime.reconnect();
+    assert.equal(connections().at(-2)?.context.readiness, "unavailable");
+    assert.equal(connections().at(-1)?.outcome, "succeeded");
+    assert.equal(connections().at(-1)?.context.ready, true);
+    const recovered = capture.emitted().filter((event) => event.operation === "runtime.readiness").at(-1)!;
+    assert.equal(recovered.context.fromState, "unavailable");
+    assert.equal(recovered.context.toState, "available");
+
+    adapter.connectError = Object.assign(new Error("private-radio-device-secret"), { code: "BLUETOOTH_UNAVAILABLE" });
+    await runtime.reconnect();
+    await runtime.reconnect();
+    const beforeStop = connections().length;
+    await runtime.stop();
+    assert.equal(connections().length, beforeStop + 1);
+    assert.equal(connections().reduce((count, event) => count + event.context.observationCount!, 0), adapter.connectedIds.length);
+    assert.doesNotMatch(capture.lines.join("\n"), /private-radio|private-timeout|private-enrolled|deviceId|lastError/);
+  } finally {
+    await runtime.stop();
+    await rm(directory, { recursive: true });
+  }
+});
+
+test("automatic BLE retry keeps exponential delay and emits only bounded completion summaries", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+  const directory = await mkdtemp(join(tmpdir(), "hue-auto-retry-"));
+  const adapter = new FakeAdapter();
+  adapter.failConnect = true;
+  const capture = captureEvents();
+  const runtime = new HueRuntime(adapter, join(directory, "state.json"), capture);
+  try {
+    await runtime.enroll("private-id");
+    assert.equal(adapter.connectedIds.length, 1);
+    t.mock.timers.tick(1000);
+    await runtime.reconnect(); // joins the attempt started by the timer
+    assert.equal(adapter.connectedIds.length, 2);
+    t.mock.timers.tick(1999);
+    assert.equal(adapter.connectedIds.length, 2);
+    t.mock.timers.tick(1);
+    await runtime.reconnect();
+    assert.equal(adapter.connectedIds.length, 3);
+    assert.equal(capture.emitted().filter((event) => event.operation === "ble.connect").length, 1);
+    await runtime.stop();
+    const summary = capture.emitted().filter((event) => event.operation === "ble.retry_summary").at(-1)!;
+    assert.equal(summary.context.observationCount, 2);
+    assert.equal(summary.context.retryInMs, 4000);
+    t.mock.timers.tick(60_000);
+    assert.equal(adapter.connectedIds.length, 3, "stop cancels the pending retry");
+  } finally {
+    await runtime.stop();
+    t.mock.timers.reset();
+    await rm(directory, { recursive: true });
+  }
+});
+
+test("initialization and persisted-state failures emit bounded categories without changing error results", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "hue-state-failure-"));
+  const path = join(directory, "state.json");
+  const adapter = new FakeAdapter();
+  const capture = captureEvents();
+  const runtime = new HueRuntime(adapter, path, capture);
+  try {
+    await writeFile(path, "private-invalid-json");
+    await assert.rejects(runtime.start(), SyntaxError);
+    assert.equal(capture.emitted()[0].operation, "runtime.start");
+    assert.equal(capture.emitted()[0].outcome, "failed");
+    assert.equal(capture.emitted()[0].context.errorCode, "UNEXPECTED_ERROR");
+    adapter.connection.values.delete(HUE_CHARACTERISTICS.power);
+    await runtime.enroll("private-device");
+    const failed = capture.emitted().find((event) => event.operation === "ble.connect")!;
+    assert.equal(failed.outcome, "failed");
+    assert.equal(failed.context.reasonCode, "initialization_failed");
+    assert.equal(failed.context.ready, false);
+    assert.doesNotMatch(capture.lines.join("\n"), /private-invalid-json|private-device|missing|932c32bd/);
+  } finally {
+    await runtime.stop();
+    await rm(directory, { recursive: true });
+  }
+});
+
+test("recording cleanup failures preserves reconnect rejection rather than silently retrying", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "hue-disconnect-failure-"));
+  const adapter = new FakeAdapter();
+  const capture = captureEvents();
+  const runtime = new HueRuntime(adapter, join(directory, "state.json"), capture);
+  try {
+    await runtime.enroll("private-device");
+    adapter.connection.failDisconnect = true;
+    await assert.rejects(runtime.reconnect(), /private-disconnect-failure/);
+    const failed = capture.emitted().filter((event) => event.operation === "ble.connect").at(-1)!;
+    assert.equal(failed.outcome, "failed");
+    assert.equal(failed.context.reasonCode, "disconnect_failed");
+    assert.equal(adapter.connectedIds.length, 1);
+    assert.doesNotMatch(capture.lines.join("\n"), /private-device|private-disconnect-failure/);
+  } finally {
+    adapter.connection.failDisconnect = false;
+    await runtime.stop();
     await rm(directory, { recursive: true });
   }
 });

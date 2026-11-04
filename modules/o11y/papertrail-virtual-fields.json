@@ -7,6 +7,48 @@
   },
   {
     "dataset": "papertrail",
+    "name": "normalized_event",
+    "description": "Context-rich service completion event, either direct file JSON or nested in a journald MESSAGE. Non-event records remain null.",
+    "expression": "case(tolong(normalized_payload.schemaVersion) == 1 and isnotempty(tostring(normalized_payload.eventId)) and isnotempty(tostring(normalized_payload.operationId)), normalized_payload, tolong(parse_json(tostring(normalized_payload.MESSAGE)).schemaVersion) == 1 and isnotempty(tostring(parse_json(tostring(normalized_payload.MESSAGE)).eventId)) and isnotempty(tostring(parse_json(tostring(normalized_payload.MESSAGE)).operationId)), parse_json(tostring(normalized_payload.MESSAGE)), dynamic(null))"
+  },
+  {
+    "dataset": "papertrail",
+    "name": "normalized_event_id",
+    "description": "Locally generated completion event ID; use for deduplication, not request attribution.",
+    "expression": "tostring(normalized_event.eventId)"
+  },
+  {
+    "dataset": "papertrail",
+    "name": "normalized_operation_id",
+    "description": "Locally generated significant-operation ID.",
+    "expression": "tostring(normalized_event.operationId)"
+  },
+  {
+    "dataset": "papertrail",
+    "name": "normalized_outcome",
+    "description": "Service operation outcome, separate from HTTP status or host reachability.",
+    "expression": "tostring(normalized_event.outcome)"
+  },
+  {
+    "dataset": "papertrail",
+    "name": "normalized_traffic",
+    "description": "Browser-like, probe, background, or unknown; browser is a user-agent hint, not proof of a person.",
+    "expression": "tostring(normalized_event.traffic)"
+  },
+  {
+    "dataset": "papertrail",
+    "name": "normalized_duration_ms",
+    "description": "Significant-operation duration measured with a monotonic clock.",
+    "expression": "todouble(normalized_event.durationMs)"
+  },
+  {
+    "dataset": "papertrail",
+    "name": "normalized_context",
+    "description": "Allowlisted operation metadata; no raw paths, request bodies, credentials, or exception text.",
+    "expression": "normalized_event.context"
+  },
+  {
+    "dataset": "papertrail",
     "name": "normalized_host",
     "description": "Stable short host name across OTLP resources, legacy events, and journald payloads.",
     "expression": "trim_end_regex(\"[.]local$\", coalesce(tostring(['resource.host.name']), tostring(host), tostring(normalized_payload._HOSTNAME)))"
@@ -21,7 +63,7 @@
     "dataset": "papertrail",
     "name": "normalized_service",
     "description": "Service identity across structured events, OTLP resources, journald, and file logs.",
-    "expression": "coalesce(tostring(['attributes.service']), tostring(['service.name']), tostring(normalized_payload.SYSLOG_IDENTIFIER), tostring(normalized_payload._SYSTEMD_UNIT), tostring(['attributes.app']), tostring(['attributes.log.file.name']))"
+    "expression": "coalesce(tostring(normalized_event.service), tostring(['attributes.service']), tostring(['service.name']), tostring(normalized_payload.SYSLOG_IDENTIFIER), tostring(normalized_payload._SYSTEMD_UNIT), tostring(['attributes.app']), tostring(['attributes.log.file.name']))"
   },
   {
     "dataset": "papertrail",
@@ -39,13 +81,13 @@
     "dataset": "papertrail",
     "name": "normalized_operation",
     "description": "Wide-event operation name when present.",
-    "expression": "coalesce(tostring(['attributes.operation']), tostring(normalized_payload.operation))"
+    "expression": "coalesce(tostring(normalized_event.operation), tostring(['attributes.operation']), tostring(normalized_payload.operation))"
   },
   {
     "dataset": "papertrail",
     "name": "normalized_severity",
     "description": "Normalized severity from structured levels, application text markers, and journald priority.",
-    "expression": "case(isnotempty(tostring(['attributes.level'])), tolower(tostring(['attributes.level'])), isnotempty(tostring(normalized_payload.level)), tolower(tostring(normalized_payload.level)), tostring(normalized_message) contains \"<Fault>\" or tostring(normalized_message) contains \" FTL \", \"fatal\", tostring(normalized_message) contains \"<Error>\" or tostring(normalized_message) contains \" ERR \" or tostring(normalized_message) contains \"EADDRINUSE\", \"error\", tostring(normalized_message) contains \"<Warning>\" or tostring(normalized_message) contains \" WRN \", \"warn\", tostring(normalized_message) contains \"<Notice>\" or tostring(normalized_message) contains \"<Info>\" or tostring(normalized_message) contains \" INF \", \"info\", tostring(normalized_message) contains \"<Debug>\" or tostring(normalized_message) contains \" DBG \", \"debug\", isnotempty(tostring(normalized_payload.PRIORITY)) and toint(normalized_payload.PRIORITY) <= 2, \"fatal\", isnotempty(tostring(normalized_payload.PRIORITY)) and toint(normalized_payload.PRIORITY) == 3, \"error\", isnotempty(tostring(normalized_payload.PRIORITY)) and toint(normalized_payload.PRIORITY) == 4, \"warn\", isnotempty(tostring(normalized_payload.PRIORITY)) and toint(normalized_payload.PRIORITY) <= 6, \"info\", isnotempty(tostring(normalized_payload.PRIORITY)) and toint(normalized_payload.PRIORITY) == 7, \"debug\", \"unknown\")"
+    "expression": "case(normalized_outcome == \"failed\", \"error\", normalized_outcome == \"degraded\", \"warn\", normalized_outcome in (\"succeeded\", \"skipped\"), \"info\", isnotempty(tostring(['attributes.level'])), tolower(tostring(['attributes.level'])), isnotempty(tostring(normalized_payload.level)), tolower(tostring(normalized_payload.level)), tostring(normalized_message) contains \"<Fault>\" or tostring(normalized_message) contains \" FTL \", \"fatal\", tostring(normalized_message) contains \"<Error>\" or tostring(normalized_message) contains \" ERR \" or tostring(normalized_message) contains \"EADDRINUSE\", \"error\", tostring(normalized_message) contains \"<Warning>\" or tostring(normalized_message) contains \" WRN \", \"warn\", tostring(normalized_message) contains \"<Notice>\" or tostring(normalized_message) contains \"<Info>\" or tostring(normalized_message) contains \" INF \", \"info\", tostring(normalized_message) contains \"<Debug>\" or tostring(normalized_message) contains \" DBG \", \"debug\", isnotempty(tostring(normalized_payload.PRIORITY)) and toint(normalized_payload.PRIORITY) <= 2, \"fatal\", isnotempty(tostring(normalized_payload.PRIORITY)) and toint(normalized_payload.PRIORITY) == 3, \"error\", isnotempty(tostring(normalized_payload.PRIORITY)) and toint(normalized_payload.PRIORITY) == 4, \"warn\", isnotempty(tostring(normalized_payload.PRIORITY)) and toint(normalized_payload.PRIORITY) <= 6, \"info\", isnotempty(tostring(normalized_payload.PRIORITY)) and toint(normalized_payload.PRIORITY) == 7, \"debug\", \"unknown\")"
   },
   {
     "dataset": "papertrail",

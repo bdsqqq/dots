@@ -5,7 +5,7 @@
     "noEmit": false,
     "outDir": "dist",
     "rewriteRelativeImportExtensions": true,
-    "rootDir": ".",
+    "rootDir": "..",
     "sourceMap": true
   },
   "exclude": ["*.test.ts"]

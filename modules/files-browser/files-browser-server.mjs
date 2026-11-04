@@ -15,6 +15,21 @@ import {
 } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
+import { createEventLogger, classifyHttpTraffic, safeErrorCode } from "../service-events/events.ts";
+
+const events = createEventLogger("files-browser");
+
+// Categories, not request targets or identities, are the HTTP event contract.
+function observeRequest(incoming, outgoing, route) {
+  const method = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"].includes(incoming.method)
+    ? incoming.method : "OTHER";
+  const operation = events.begin("http.request", classifyHttpTraffic(incoming.headers["user-agent"], route), { method, route });
+  outgoing.once("finish", () => operation.finish(outgoing.statusCode >= 400 ? "failed" : "succeeded", { statusCode: outgoing.statusCode }));
+  outgoing.once("close", () => {
+    if (!outgoing.writableFinished) operation.finish("failed", { reasonCode: "CLIENT_ABORTED" });
+  });
+  return operation;
+}
 
 const FOLDER_ID = "sqz7z-a6tfg";
 const REFRESH_INTERVAL_MS = 15_000;
@@ -127,9 +142,12 @@ export async function waitForPublication(
   refresh,
   publicationReady,
   retryIntervalMs = REFRESH_INTERVAL_MS,
-  reportError = console.error
+  reportError = () => {}
 ) {
+  const operation = events.begin("publication.wait");
+  let attempt = 0;
   while (!publicationReady()) {
+    attempt += 1;
     try {
       await refresh();
     } catch (error) {
@@ -139,6 +157,7 @@ export async function waitForPublication(
       await new Promise((resolvePromise) => setTimeout(resolvePromise, retryIntervalMs));
     }
   }
+  operation.finish("succeeded", { ready: true, attempt });
 }
 
 async function publishItem(sourceRoot, snapshotRoot, item) {
@@ -186,6 +205,18 @@ async function publishItem(sourceRoot, snapshotRoot, item) {
 }
 
 export async function materializeSnapshot(sourceRoot, snapshotsRoot, entries) {
+  const operation = events.begin("publication.materialize");
+  try {
+    const result = await buildSnapshot(sourceRoot, snapshotsRoot, entries);
+    operation.finish("succeeded", { itemCount: result.itemCount });
+    return result;
+  } catch (error) {
+    operation.finish("failed", { errorCode: safeErrorCode(error) });
+    throw error;
+  }
+}
+
+async function buildSnapshot(sourceRoot, snapshotsRoot, entries) {
   const items = flattenModel(entries);
   const signature = manifestSignature(items);
   const temporary = join(snapshotsRoot, `.next-${randomUUID()}`);
@@ -208,6 +239,17 @@ export async function materializeSnapshot(sourceRoot, snapshotsRoot, entries) {
 }
 
 export async function waitForBackend(backend) {
+  const operation = events.begin("backend.ready", "background", { generation: backend.generation });
+  try {
+    await pollBackend(backend);
+    operation.finish("succeeded", { ready: true });
+  } catch (error) {
+    operation.finish("failed", { ready: false, errorCode: safeErrorCode(error) });
+    throw error;
+  }
+}
+
+async function pollBackend(backend) {
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     assertBackendLive(backend);
@@ -238,6 +280,7 @@ export function assertBackendLive(backend) {
 export function startBackend(config, generation, snapshot, spawnProcess = spawn) {
   const port = 13_925 + generation;
   const history = join(config.state, "history", String(generation));
+  const operation = events.begin("backend.start", "background", { generation });
   const child = spawnProcess(
     config.copyparty,
     [
@@ -262,10 +305,13 @@ export function startBackend(config, generation, snapshot, spawnProcess = spawn)
   );
   const closed = new Promise((resolvePromise) => child.once("close", resolvePromise));
   const backend = { child, closed, failure: null, generation, history, inflight: 0, port, snapshot };
+  child.once("spawn", () => operation.finish("succeeded"));
   child.once("error", (error) => {
+    operation.finish("failed", { errorCode: safeErrorCode(error) });
     backend.failure = error;
   });
   child.once("exit", (code, signal) => {
+    events.begin("backend.exit", "background", { generation }).finish(backend.stopping ? "succeeded" : "failed", { reasonCode: backend.stopping ? "EXPECTED_EXIT" : "UNEXPECTED_EXIT" });
     backend.failure ??= new Error(`Copyparty exited with ${signal ?? `code ${code}`}`);
     backend.onExit?.();
   });
@@ -274,6 +320,7 @@ export function startBackend(config, generation, snapshot, spawnProcess = spawn)
 
 export async function stopBackend(backend) {
   if (backend.stopping) return backend.stopping;
+  const operation = events.begin("backend.stop", "background", { generation: backend.generation });
   backend.stopping = (async () => {
     if (backend.child.pid !== undefined && backend.child.exitCode === null) {
       backend.child.kill("SIGTERM");
@@ -281,7 +328,10 @@ export async function stopBackend(backend) {
     await backend.closed;
     await rm(backend.snapshot, { recursive: true, force: true });
     await rm(backend.history, { recursive: true, force: true });
-  })();
+  })().then(() => { operation.finish("succeeded"); }, (error) => {
+    operation.finish("failed", { errorCode: safeErrorCode(error) });
+    throw error;
+  });
   return backend.stopping;
 }
 
@@ -291,15 +341,19 @@ function drainBackend(backend, backends) {
     clearInterval(timer);
     stopBackend(backend)
       .then(() => backends.delete(backend))
-      .catch((error) => console.error("failed to stop old backend", error));
+      .catch(() => {}); // backend.stop carries the safe failure context.
   }, 250);
   timer.unref();
 }
 
-function proxyServer(activeBackend) {
+export function proxyServer(activeBackend) {
   const server = createServer((incoming, outgoing) => {
+    const path = (incoming.url ?? "/").split("?", 1)[0];
+    const route = ["/health", "/healthz"].includes(path) ? "health" : path === "/" ? "index" : "content";
+    const operation = observeRequest(incoming, outgoing, route);
     const backend = activeBackend();
     if (!backend) {
+      operation.finish("failed", { statusCode: 503, ready: false, reasonCode: "BACKEND_UNAVAILABLE" });
       outgoing.writeHead(503).end("files browser is starting\n");
       return;
     }
@@ -315,6 +369,10 @@ function proxyServer(activeBackend) {
       },
       (response) => {
         outgoing.writeHead(response.statusCode ?? 502, response.headers);
+        response.once("error", (error) => {
+          operation.finish("failed", { reasonCode: "UPSTREAM_INTERRUPTED", errorCode: safeErrorCode(error) });
+          outgoing.destroy();
+        });
         response.pipe(outgoing);
       }
     );
@@ -323,17 +381,29 @@ function proxyServer(activeBackend) {
     };
     outgoing.once("close", done);
     proxied.once("error", (error) => {
+      operation.finish("failed", { statusCode: outgoing.headersSent ? outgoing.statusCode : 502, reasonCode: "PROXY_FAILED", errorCode: safeErrorCode(error) });
       if (!outgoing.headersSent) outgoing.writeHead(502);
       outgoing.end(`backend unavailable: ${error.message}\n`);
     });
+    incoming.once("aborted", () => {
+      operation.finish("failed", { reasonCode: "CLIENT_ABORTED" });
+      proxied.destroy();
+    });
+    outgoing.once("close", () => { if (!outgoing.writableFinished) proxied.destroy(); });
     incoming.pipe(proxied);
   });
 
   server.on("upgrade", (request, socket, head) => {
+    const operation = events.begin("http.upgrade", classifyHttpTraffic(request.headers["user-agent"], "upgrade"), { route: "upgrade" });
     const backend = activeBackend();
-    if (!backend) return socket.destroy();
+    if (!backend) {
+      operation.finish("failed", { reasonCode: "BACKEND_UNAVAILABLE" });
+      return socket.destroy();
+    }
+    let connected = false;
     backend.inflight += 1;
     const upstream = connectTcp(backend.port, "127.0.0.1", () => {
+      connected = true;
       const headers = Object.entries(request.headers)
         .map(([name, value]) => `${name}: ${value}`)
         .join("\r\n");
@@ -344,21 +414,25 @@ function proxyServer(activeBackend) {
     const done = () => {
       backend.inflight = Math.max(0, backend.inflight - 1);
     };
-    socket.once("close", done);
-    upstream.once("error", () => socket.destroy());
+    socket.once("close", () => {
+      done();
+      operation.finish(connected && !socket.errored ? "succeeded" : "failed", { connected });
+      upstream.destroy();
+    });
+    socket.once("error", (error) => {
+      operation.finish("failed", { reasonCode: "CLIENT_ABORTED", errorCode: safeErrorCode(error) });
+      upstream.destroy();
+    });
+    upstream.once("error", (error) => {
+      operation.finish("failed", { reasonCode: "PROXY_FAILED", errorCode: safeErrorCode(error) });
+      socket.destroy();
+    });
   });
 
   return server;
 }
 
-async function main() {
-  const config = parseArgs(process.argv.slice(2));
-  await access(config.source);
-  await mkdir(config.state, { recursive: true });
-  const snapshotsRoot = join(config.state, "snapshots");
-  await rm(snapshotsRoot, { recursive: true, force: true });
-  await rm(join(config.state, "history"), { recursive: true, force: true });
-  await mkdir(snapshotsRoot, { recursive: true });
+export function createPublicationManager(config, snapshotsRoot) {
   let active = null;
   let generation = 0;
   let lastModelToken = null;
@@ -368,15 +442,22 @@ async function main() {
   const refresh = async () => {
     if (refreshing) return;
     refreshing = true;
+    const operation = events.begin("publication.refresh");
     try {
       config.apiKey ??= apiKeyFromConfig(await readFile(config.syncthingConfig, "utf8"));
       const status = await syncthingRequest(
         config,
         `/rest/db/status?folder=${encodeURIComponent(FOLDER_ID)}`
       );
-      if (!folderReady(status)) return;
+      if (!folderReady(status)) {
+        operation.finish("skipped", { reasonCode: "SOURCE_SYNCING", ready: active !== null });
+        return;
+      }
       const token = modelToken(status);
-      if (active && token === lastModelToken) return;
+      if (active && token === lastModelToken) {
+        operation.finish("skipped", { reasonCode: "UNCHANGED", ready: true, generation });
+        return;
+      }
 
       const entries = await syncthingRequest(
         config,
@@ -389,6 +470,7 @@ async function main() {
       );
       if (!folderReady(statusAfter) || modelToken(statusAfter) !== token) {
         await rm(publication.snapshot, { recursive: true, force: true });
+        operation.finish("skipped", { reasonCode: "SOURCE_CHANGED", ready: active !== null });
         return;
       }
 
@@ -397,14 +479,14 @@ async function main() {
       backend.signature = publication.signature;
       backends.add(backend);
       backend.onExit = () => {
-        if (active !== backend) return;
+        if (active !== backend || backend.stopping) return;
         active = null;
         lastModelToken = null;
         stopBackend(backend)
           .then(() => backends.delete(backend))
-          .catch((error) => console.error("failed to clean up dead backend", error));
+          .catch(() => {}); // backend.stop already records cleanup failures.
         setTimeout(() => {
-          refresh().catch((error) => console.error("backend recovery failed", error));
+          refresh().catch(() => {}); // publication.refresh records failures.
         }, 1_000);
       };
       try {
@@ -419,42 +501,56 @@ async function main() {
       const previous = active;
       active = backend;
       lastModelToken = token;
-      console.log(
-        `published ${publication.itemCount} Syncthing-indexed items as ${publication.signature}`
-      );
+      operation.finish("succeeded", { itemCount: publication.itemCount, generation, ready: true, changed: true });
       if (previous) {
         drainBackend(previous, backends);
       }
+    } catch (error) {
+      operation.finish("failed", { errorCode: safeErrorCode(error), ready: active !== null, generation });
+      throw error;
     } finally {
       refreshing = false;
     }
   };
 
-  await waitForPublication(refresh, () => active !== null);
+  return { refresh, backends, get active() { return active; } };
+}
 
-  const server = proxyServer(() => active);
+async function main(startup) {
+  const config = parseArgs(process.argv.slice(2));
+  await access(config.source);
+  await mkdir(config.state, { recursive: true });
+  const snapshotsRoot = join(config.state, "snapshots");
+  await rm(snapshotsRoot, { recursive: true, force: true });
+  await rm(join(config.state, "history"), { recursive: true, force: true });
+  await mkdir(snapshotsRoot, { recursive: true });
+  const publication = createPublicationManager(config, snapshotsRoot);
+  await waitForPublication(publication.refresh, () => publication.active !== null);
+
+  const server = proxyServer(() => publication.active);
   await new Promise((resolvePromise, reject) => {
     server.once("error", reject);
     server.listen(config.port, config.host, resolvePromise);
   });
-  console.log(`files browser listening on http://${config.host}:${config.port}`);
+  startup.finish("succeeded", { readiness: "listening" });
 
   const timer = setInterval(() => {
-    refresh().catch((error) => console.error("publication refresh failed", error));
+    publication.refresh().catch(() => {});
   }, REFRESH_INTERVAL_MS);
 
   const shutdown = async () => {
     clearInterval(timer);
     await new Promise((resolvePromise) => server.close(resolvePromise));
-    await Promise.all([...backends].map(stopBackend));
+    await Promise.all([...publication.backends].map(stopBackend));
   };
   process.once("SIGTERM", () => shutdown().finally(() => process.exit(0)));
   process.once("SIGINT", () => shutdown().finally(() => process.exit(130)));
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch((error) => {
-    console.error(error);
+  const startup = events.begin("service.start");
+  main(startup).catch((error) => {
+    startup.finish("failed", { errorCode: safeErrorCode(error) });
     process.exit(1);
   });
 }
