@@ -63,6 +63,20 @@
     "expectedBehavior": "Inspect the existing contract and change its selection boundary with reviewed cases. Distinguish static checks from actual model selection, and do not install or publish."
   },
   {
+    "id": "designing-pattern-example",
+    "prompt": "Our refactoring skill says 'keep behavior together', but agents still create separate global schema, contract, and handler folders. Revise the skill to show the code shape I want. Keep it focused; don't refactor application code.",
+    "expectedSkills": ["designing-agent-skills"],
+    "forbiddenSkills": [],
+    "expectedBehavior": "Treat this as pattern teaching: add a concrete bad/good code or file-layout pair from the correction, not more abstract rules or an evaluation plan in place of an example. Keep the essential pair in the body, preserve application files, and distinguish static discovery from unrun behavioral evaluation."
+  },
+  {
+    "id": "designing-procedure-compression",
+    "prompt": "Shorten our release-check skill. It runs three known commands and reports failures, but it has grown a long essay and lots of repetitive examples. Keep the commands, prerequisites, and failure handling intact.",
+    "expectedSkills": ["designing-agent-skills"],
+    "forbiddenSkills": [],
+    "expectedBehavior": "Treat this as a known procedure: preserve executable steps, prerequisites, failure/stop paths, and only examples needed for ambiguous edges. Remove repeated rationale without imposing a universal token ceiling, deleting necessary behavior, or inventing extra examples just to satisfy a taxonomy. Do not release anything."
+  },
+  {
     "id": "designing-not-execution",
     "prompt": "Use the existing buying-stuff skill to compare three quiet keyboards under $150. Research only; do not buy anything.",
     "expectedSkills": ["buying-stuff"],
@@ -75,6 +89,55 @@
     "expectedSkills": [],
     "forbiddenSkills": ["designing-agent-skills", "dig", "review"],
     "expectedBehavior": "Provide a concise checklist in the response only. Do not create a reusable skill or persist memory."
+  },
+  {
+    "id": "operations-shared-cli-http",
+    "prompt": "Our publish-note route works. Add a CLI so I can publish the same notes from a terminal, keeping revision conflicts and authorization intact. Use the existing storage and CLI parser.",
+    "expectedSkills": ["designing-invocable-operations"],
+    "forbiddenSkills": [],
+    "expectedBehavior": "Extract one callable publish operation with explicit dependencies and failure semantics. Both adapters exercise the same implementation against temporary storage; a stale revision preserves content, returns HTTP conflict, and exits nonzero in the CLI. Do not invent a procedure framework or duplicate mutation logic."
+  },
+  {
+    "id": "operations-generated-interface",
+    "prompt": "We have procedure definitions for node list and describe. Generate a CLI from them so future operations don't need to be wired twice, while keeping the public package importable by the browser.",
+    "expectedSkills": ["designing-invocable-operations"],
+    "forbiddenSkills": [],
+    "expectedBehavior": "Inspect existing procedure and adapter tools; project the same definitions into CLI commands. Keep Node-only execution out of public imports. Exercise actual generated help and invocation, then a third operation without an independent command catalog. Colocate behavior instead of introducing horizontal schema/contract/handler directories."
+  },
+  {
+    "id": "operations-session-tools",
+    "prompt": "Make session listing and branch reading available both as direct functions and agent tools. A caller may already have a loaded snapshot; don't read it again.",
+    "expectedSkills": ["designing-invocable-operations"],
+    "forbiddenSkills": [],
+    "expectedBehavior": "Use shared handlers with explicit identity, branch selection, dependencies, and structured results. Verify direct/tool outcomes and supplied snapshots after deleting only their isolated backing fixtures. Do not introduce model-powered history wrappers or another session database."
+  },
+  {
+    "id": "operations-not-component-slot",
+    "prompt": "Let consumers replace the signup submit button without taking over validation or submission. Keep the data and transport behavior unchanged.",
+    "expectedSkills": ["designing-progressive-apis"],
+    "forbiddenSkills": ["designing-invocable-operations"],
+    "expectedBehavior": "Expose a behavioral render slot using the component API workflow. Do not extract an application service or operation registry for a markup-only customization."
+  },
+  {
+    "id": "operations-not-data-only",
+    "prompt": "Reuse the read-only member list in a tooltip. The caller already has all members, so don't fetch them again. No actions or mutations are needed.",
+    "expectedSkills": ["composing-data-driven-ui"],
+    "forbiddenSkills": ["designing-invocable-operations"],
+    "expectedBehavior": "Make supplied-data ownership and shell composition explicit, without adding callable mutation capabilities or a procedure framework."
+  },
+  {
+    "id": "operations-not-single-health-route",
+    "prompt": "Add a GET /health route that returns the existing process readiness value. No new clients, generated commands, or reusable capability layer are wanted.",
+    "expectedSkills": [],
+    "forbiddenSkills": ["designing-invocable-operations"],
+    "expectedBehavior": "Implement ordinary route wiring within the existing server; do not manufacture contracts, a domain package, or interface-generation infrastructure."
+  },
+  {
+    "id": "operations-ui-capability-overlap",
+    "prompt": "Move the note editor into a drawer, and make its publish action callable from our CLI too. Keep drafts on conflict and close the drawer only after the note really saves.",
+    "expectedSkills": ["composing-data-driven-ui", "designing-invocable-operations"],
+    "forbiddenSkills": [],
+    "expectedBehavior": "Combine caller-owned shell/draft outcomes with a shared independently callable publish operation. CLI and UI use the same failure semantics; a resolved conflict neither dismisses the editor nor exits successfully. Preserve existing cache and mutation effects."
   },
   {
     "id": "animated-bottom-up-intuition",

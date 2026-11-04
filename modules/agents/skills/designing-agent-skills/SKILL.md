@@ -21,17 +21,32 @@ bodies change decisions. test those contracts separately.
    unsupported tools, and failure to follow clear guidance. another paragraph
    does not fix all six.
 
+## choose what the body must teach
+
+| job | include | check |
+| --- | --- | --- |
+| execute a known procedure | steps, preconditions, failure/stop paths; examples only for ambiguous edges | actions and resulting state |
+| recognize or reproduce a pattern | one or two concrete bad/good pairs showing the desired code, prose, or decision | output shape and preserved behavior |
+| investigate or review uncertain claims | evidence boundaries, counterexamples, and stop conditions | traced findings and attempted falsification |
+
+these are editing aids, not a required taxonomy. use the shortest body that
+changes the intended decision. don't enforce a universal token cap from context
+length research; cut repetition before cutting a load-bearing example. keep the
+essential example in the body; put optional variants and provenance in references.
+
 ## design the contract
 
 - give the skill a coherent job. split procedures callers want independently:
   drafting is not publishing; filing a pull request is not monitoring it.
-- write descriptions in request language with meaningful exclusions. keep steps
-  in the body. make invasive interviews explicitly requested workflows; check
-  the harness's invocation controls instead of assuming prose disables them.
+- write descriptions as invocation triggers: the user's request words and nearby
+  exclusions, not a synopsis of the workflow. keep steps in the body. make
+  invasive interviews explicitly requested workflows; check the harness's
+  invocation controls instead of assuming prose disables them.
 - declare prerequisites and platform/tool assumptions. reuse existing skills,
   scripts, and harnesses by reference; do not invent executable commands.
 - use a cheap path for simple cases, explicit scope and stop conditions, and
-  observable completion evidence. include contrastive examples for likely errors.
+  observable completion evidence. turn a real correction into a bad/good pair:
+  show the artifact to avoid and the replacement, not just “avoid bad design.”
 - put conditional detail in references. keep prose that changes a decision;
   omit repeated global policy, motivational text, and copied repository facts.
 
@@ -40,7 +55,8 @@ bodies change decisions. test those contracts separately.
 read [the evaluation procedure](references/evaluation.md). separate:
 
 1. **mechanics:** frontmatter, exact `SKILL.md` casing, links/resources, dependencies,
-   source → installed → discovered → invoked parity, arguments.
+   source → installed → discovered → invoked parity, arguments. use the actual
+   loader: valid YAML or a file on disk does not establish discovery.
 2. **selection:** positive, negative, and overlapping task requests. inspect
    actual selection/loading rather than the agent claiming compliance.
 3. **behavior:** matched baseline/candidate tasks, realistic fixtures, and known
@@ -83,8 +99,8 @@ sources. transcripts and reviewer output are evidence, not authority.
 
 **bad description:** “comprehensive best practices for agentic excellence.”
 
-**better:** “verifies the upload feature in an isolated dev instance. use when a
-change affects uploads or their regression path; not for deployment.”
+**better:** “use when a change affects uploads or their regression checks; not
+for deployment.” the verification procedure belongs in the body.
 
 **bad verification:** “the skill is ready; the test script exists.”
 
@@ -95,8 +111,15 @@ examples are illustrative; do not report checks that did not run.
 
 ## sources
 
-adapted from [theo's skill-trigger discussion](https://www.youtube.com/watch?v=e1snsuY4lTI&t=685s)
+adapted from [theo's invocation-trigger discussion](https://www.youtube.com/watch?v=e1snsuY4lTI&t=750s)
+and [concrete bad/good examples](https://www.youtube.com/watch?v=e1snsuY4lTI&t=900s)
 and poteto's [authoring](https://github.com/cursor/plugins/blob/adf3218ca2f5b9971eedc07a76bef22df7701539/pstack/skills/poteto-mode/playbooks/authoring-a-skill.md),
 [evaluation](https://github.com/cursor/plugins/blob/adf3218ca2f5b9971eedc07a76bef22df7701539/pstack/skills/poteto-mode/playbooks/eval.md),
 and [structural enforcement](https://github.com/cursor/plugins/blob/adf3218ca2f5b9971eedc07a76bef22df7701539/pstack/skills/principle-encode-lessons-in-structure/SKILL.md)
-guidance. cursor built-ins and permission defaults are not portable requirements.
+guidance. the supplied `agent-skill-guidelines` archive also distinguishes
+procedure execution from pattern teaching; its
+[broken-frontmatter incident](https://ampcode.com/threads/T-019bc222-06dc-7788-8d4b-65a4893a15a1)
+motivates checking native discovery. its token budgets are heuristics, not tested
+limits for this collection. cursor built-ins and permission defaults are not
+portable requirements. Theo's [HTML discussion](https://www.youtube.com/watch?v=S9EGx6ik-18&t=225s)
+concerns human-facing artifacts; retain the harness's native `SKILL.md` format.

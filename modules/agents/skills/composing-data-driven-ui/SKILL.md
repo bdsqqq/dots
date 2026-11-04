@@ -60,7 +60,7 @@ same editor, different reactions to saving. the drawer closes; the page shows a 
 
 a resolved `{ status: 'conflict', current: member }` is still a failed save. show feedback and allow retry; don't call `onSuccess`. HTTP and CLI callers can handle the same result differently. don't turn unexpected exceptions into success or empty data.
 
-reuse does not bypass runtime or authorization boundaries. a browser can call a server capability through a client adapter; it must not import the database code. designing that capability layer is outside this skill.
+reuse does not bypass runtime or authorization boundaries. a browser can call a server capability through a client adapter; it must not import the database code. for that capability layer and its CLI/API/tool adapters, use [designing-invocable-operations](../designing-invocable-operations/SKILL.md).
 
 ## pass the identity in
 
