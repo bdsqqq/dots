@@ -92,18 +92,11 @@ resource "hcloud_server" "this" {
   }
 }
 
-# Keep maintenance detachment in desired state so another apply cannot reattach it.
-variable "storage_detached" {
-  description = "Leave storage-01 detached during provider maintenance; reattach before boot."
-  type        = bool
-  default     = false
-}
-
 resource "hcloud_volume" "storage" {
   name              = "storage-01"
   size              = 64
   location          = "nbg1"
-  server_id         = var.storage_detached ? 0 : hcloud_server.this.id
+  server_id         = hcloud_server.this.id
   automount         = false
   delete_protection = true
 
