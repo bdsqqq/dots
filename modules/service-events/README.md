@@ -34,6 +34,11 @@ existing host/container journal and launchd-file collection transports stdout.
 JSON or a JSON event nested inside journald `MESSAGE`, while retaining legacy
 records. Event IDs support deduplication after transport retries.
 
+existing virtual fields retain their registration positions on update. Keep
+legacy-field dependencies valid in that order, not just the fresh-install order.
+The service, operation, and severity projections inline envelope decoding because
+references to the newly registered event fields did not resolve in live queries.
+
 publishing these virtual-field definitions, deploying new packaged services,
 changing health aggregation, and enabling notifications are separate operations.
 none happens by running the tests below. Structured readiness events alone do
