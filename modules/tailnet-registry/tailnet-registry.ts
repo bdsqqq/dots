@@ -9,6 +9,15 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import {
+  classifyHttpTraffic,
+  createEventLogger,
+  safeErrorCode,
+  type EventContext,
+} from "../service-events/events.ts";
+
+type EventLogger = ReturnType<typeof createEventLogger>;
+const events = createEventLogger("tailnet-registry");
 
 const MAX_MANIFEST_BYTES = 256 * 1024;
 const SERVICE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -159,11 +168,6 @@ interface CommandResult {
   exitCode: number;
   stdout: string;
   stderr: string;
-}
-
-function log(level: "info" | "warn" | "error", message: string): void {
-  const output = `${new Date().toISOString()} ${level.toUpperCase()} ${message}\n`;
-  (level === "info" ? process.stdout : process.stderr).write(output);
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -353,6 +357,7 @@ function offCommand(route: Route): string[] {
 }
 
 interface ReconcilerDependencies {
+  logger?: EventLogger;
   status: () => Record<string, unknown>;
   execute: (args: string[]) => CommandResult;
 }
@@ -404,6 +409,21 @@ export class ServeReconciler {
   }
 
   reconcile(): void {
+    const event = (this.dependencies.logger ?? events).begin("serve.reconcile", "background");
+    // Count successful mutation commands, including rollback; changed also covers ownership transfers.
+    const context: EventContext = { itemCount: this.desired.size, changedCount: 0, changed: false };
+    try {
+      this.reconcileAttempt(context);
+      context.changed ||= Boolean(context.changedCount);
+      event.finish(context.changed ? "succeeded" : "skipped", { ...context, ready: true });
+    } catch (error) {
+      context.changed ||= Boolean(context.changedCount);
+      event.finish("failed", { ...context, ready: false, errorCode: safeErrorCode(error) });
+      throw error;
+    }
+  }
+
+  private reconcileAttempt(context: EventContext): void {
     const observed = routesFromStatus(this.dependencies.status());
     const owned = this.loadOwned();
     const conflicts: string[] = [];
@@ -436,7 +456,11 @@ export class ServeReconciler {
         );
       }
     }
-    if (conflicts.length) throw new Error(conflicts.join("; "));
+    if (conflicts.length) {
+      context.reasonCode = "ownership_conflict";
+      context.missingCount = conflicts.length;
+      throw new Error(conflicts.join("; "));
+    }
 
     const nextOwned = new Map(owned);
     for (const [key, previous] of owned) {
@@ -444,21 +468,21 @@ export class ServeReconciler {
       if (desired && routeMatches(previous, desired)) continue;
       const current = observed.get(previous.port);
       if (!current) {
+        context.changed = true;
+        context.reasonCode = "stale_ownership_removed";
         nextOwned.delete(key);
         this.saveOwned(nextOwned);
         continue;
       }
       if (current.sharedPort || !routeMatches(current, previous)) {
-        log(
-          "warn",
-          `not removing changed route on ${previous.port}; it is no longer ours`,
-        );
+        context.reasonCode = "ownership_relinquished";
+        context.changed = true;
         nextOwned.delete(key);
         this.saveOwned(nextOwned);
         continue;
       }
-      log("info", `removing stale route ${key} on ${previous.port}`);
       this.dependencies.execute(offCommand(previous));
+      context.changedCount!++;
       observed.delete(previous.port);
       nextOwned.delete(key);
       this.saveOwned(nextOwned);
@@ -467,6 +491,10 @@ export class ServeReconciler {
     for (const [key, desired] of this.desired) {
       const current = observed.get(desired.port);
       if (current && routeMatches(current, desired)) {
+        if (!owned.has(key)) {
+          context.changed = true;
+          context.reasonCode = "existing_route_adopted";
+        }
         nextOwned.set(key, desired);
         this.saveOwned(nextOwned);
         continue;
@@ -474,25 +502,25 @@ export class ServeReconciler {
 
       const previous = owned.get(key);
       if (current && previous && routeMatches(current, previous)) {
-        log("info", `replacing route ${key} on ${desired.port}`);
         this.dependencies.execute(offCommand(previous));
+        context.changedCount!++;
         observed.delete(previous.port);
         nextOwned.delete(key);
         this.saveOwned(nextOwned);
       }
 
-      log(
-        "info",
-        `publishing ${key} on ${desired.scheme}:${desired.port} -> ${desired.target}`,
-      );
       nextOwned.set(key, desired);
       this.saveOwned(nextOwned);
       try {
         this.dependencies.execute(onCommand(desired));
+        context.changedCount!++;
       } catch (error) {
+        context.reasonCode = "publish_failed";
         if (previous) {
-          log("error", `replacement failed; restoring ${key}`);
+          context.reasonCode = "rollback_failed";
           this.dependencies.execute(onCommand(previous));
+          context.changedCount!++;
+          context.reasonCode = "previous_route_restored";
           nextOwned.set(key, previous);
         } else {
           nextOwned.delete(key);
@@ -602,6 +630,7 @@ function nativeOnCommand(endpoint: NativeEndpoint): string[] {
 }
 
 interface NativeReconcilerDependencies {
+  logger?: EventLogger;
   status: () => Record<string, unknown>;
   execute: (args: string[]) => CommandResult;
 }
@@ -657,7 +686,25 @@ export class NativeServiceReconciler {
   }
 
   reconcile(): void {
-    if (this.desired.size === 0 && !existsSync(this.statePath)) return;
+    const event = (this.dependencies.logger ?? events).begin("native_service.reconcile", "background");
+    // Count successful mutation commands, including rollback; changed also covers ownership transfers.
+    const context: EventContext = { itemCount: this.desired.size, changedCount: 0, changed: false };
+    try {
+      this.reconcileAttempt(context);
+      context.changed ||= Boolean(context.changedCount);
+      event.finish(context.changed ? "succeeded" : "skipped", { ...context, ready: true });
+    } catch (error) {
+      context.changed ||= Boolean(context.changedCount);
+      event.finish("failed", { ...context, ready: false, errorCode: safeErrorCode(error) });
+      throw error;
+    }
+  }
+
+  private reconcileAttempt(context: EventContext): void {
+    if (this.desired.size === 0 && !existsSync(this.statePath)) {
+      context.reasonCode = "not_configured";
+      return;
+    }
     const observed = nativeEndpointsFromConfig(this.dependencies.status());
     const owned = this.loadOwned();
     const conflicts: string[] = [];
@@ -687,7 +734,11 @@ export class NativeServiceReconciler {
         );
       }
     }
-    if (conflicts.length) throw new Error(conflicts.join("; "));
+    if (conflicts.length) {
+      context.reasonCode = "ownership_conflict";
+      context.missingCount = conflicts.length;
+      throw new Error(conflicts.join("; "));
+    }
 
     const nextOwned = new Map(owned);
     for (const [service, previous] of owned) {
@@ -695,13 +746,15 @@ export class NativeServiceReconciler {
       if (desired) continue;
       const current = observed.get(service);
       if (!current || !nativeEndpointMatches(current, previous)) {
+        context.changed = true;
+        context.reasonCode = "ownership_relinquished";
         nextOwned.delete(service);
         this.saveOwned(nextOwned);
         continue;
       }
       if (previous.advertised === false && current.advertised === false) continue;
-      log("info", `draining stale native service ${service}`);
       this.dependencies.execute(["tailscale", "serve", "drain", service]);
+      context.changedCount!++;
       nextOwned.set(service, { ...previous, advertised: false });
       this.saveOwned(nextOwned);
     }
@@ -709,6 +762,10 @@ export class NativeServiceReconciler {
     for (const [service, desired] of this.desired) {
       const current = observed.get(service);
       if (current && nativeEndpointMatches(current, desired)) {
+        if (!owned.has(service)) {
+          context.changed = true;
+          context.reasonCode = "existing_endpoint_adopted";
+        }
         if (current.advertised === false) {
           this.dependencies.execute([
             "tailscale",
@@ -716,6 +773,7 @@ export class NativeServiceReconciler {
             "advertise",
             service,
           ]);
+          context.changedCount!++;
         }
         nextOwned.set(service, desired);
         this.saveOwned(nextOwned);
@@ -729,17 +787,18 @@ export class NativeServiceReconciler {
         nativeEndpointMatches(current, previous);
       if (replacingOwned) {
         this.dependencies.execute(["tailscale", "serve", "drain", service]);
+        context.changedCount!++;
       }
-      log(
-        "info",
-        `publishing native service ${service} on https:${desired.port} -> ${desired.target}`,
-      );
       try {
         this.dependencies.execute(nativeOnCommand(desired));
+        context.changedCount!++;
       } catch (error) {
+        context.reasonCode = "publish_failed";
         if (replacingOwned && previous) {
-          log("error", `native service replacement failed; restoring ${service}`);
+          context.reasonCode = "rollback_failed";
           this.dependencies.execute(nativeOnCommand(previous));
+          context.changedCount!++;
+          context.reasonCode = "previous_endpoint_restored";
         }
         throw error;
       }
@@ -1100,8 +1159,8 @@ export async function probe(url: string): Promise<Health> {
       status: response.status >= 200 && response.status < 300 ? "up" : "down",
       ...result,
     };
-  } catch (error) {
-    log("warn", `health probe failed: ${error instanceof Error ? error.message : String(error)}`);
+  } catch {
+    // The refresh operation reports aggregate readiness; individual healthy probes stay quiet.
     return { status: "down" };
   }
 }
@@ -1165,7 +1224,9 @@ function failedSyncthingReport(
 
 export async function collectSyncthingReport(
   config: SyncthingCheckConfig,
+  logger: EventLogger = events,
 ): Promise<SyncthingReport> {
+  const event = logger.begin("host_checks.refresh", "background");
   const checkedAt = new Date().toISOString();
   try {
     if (!config.configFile) throw new Error("Syncthing config file is missing");
@@ -1221,7 +1282,7 @@ export async function collectSyncthingReport(
     if (!connections) throw new Error("invalid Syncthing connection list");
     const caughtUpFolders = folders.filter((folder) => folder.caughtUp).length;
     const errorFolders = folders.filter((folder) => folder.hasError).length;
-    return {
+    const report: SyncthingReport = {
       status:
         errorFolders > 0
           ? "error"
@@ -1245,11 +1306,20 @@ export async function collectSyncthingReport(
         (connection) => asRecord(connection)?.connected === true,
       ).length,
     };
+    event.finish(report.status === "caught-up" ? "succeeded" : "degraded", {
+      readiness: report.status,
+      ready: report.status === "caught-up",
+      itemCount: report.monitoredFolders,
+      missingCount: report.errorFolders,
+      connected: report.connectedPeers > 0,
+    });
+    return report;
   } catch (error) {
-    log(
-      "warn",
-      `Syncthing health check failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    event.finish("failed", {
+      ready: false,
+      reasonCode: error instanceof SyncthingConnectionError ? "api_unreachable" : "report_unavailable",
+      errorCode: safeErrorCode(error),
+    });
     return failedSyncthingReport(
       error instanceof SyncthingConnectionError ? "unreachable" : "error",
       checkedAt,
@@ -1260,33 +1330,61 @@ export async function collectSyncthingReport(
 export async function refreshHostChecks(
   config: RegistryConfig,
   manifest: PublicManifest,
+  logger: EventLogger = events,
 ): Promise<void> {
   if (!config.hostChecks?.syncthing.enable) return;
   manifest.host.checks = {
     ...manifest.host.checks,
-    syncthing: await collectSyncthingReport(config.hostChecks.syncthing),
+    syncthing: await collectSyncthingReport(config.hostChecks.syncthing, logger),
   };
 }
 
 export async function refreshManifestHealth(
   config: RegistryConfig,
   manifest: PublicManifest,
+  logger: EventLogger = events,
 ): Promise<void> {
-  await mapLimit(Object.entries(manifest.services), 8, async ([id, service]) => {
-    const declared = config.services[id];
-    const target = id === "service-directory"
-      ? `http://127.0.0.1:${config.directory.backendPort}`
-      : declared?.target;
-    const healthPath = id === "service-directory"
-      ? "/api/services"
-      : declared?.healthPath;
-    if (!target || !healthPath) return;
-    service.health = {
-      ...(await probe(new URL(healthPath, target).toString())),
-      checkedAt: new Date().toISOString(),
-    };
-  });
-  manifest.reportedAt = new Date().toISOString();
+  const event = logger.begin("local_health.refresh", "background");
+  const observations: Health[] = [];
+  let missingCount = 0;
+  try {
+    await mapLimit(Object.entries(manifest.services), 8, async ([id, service]) => {
+      const declared = config.services[id];
+      const target = id === "service-directory"
+        ? `http://127.0.0.1:${config.directory.backendPort}`
+        : declared?.target;
+      const healthPath = id === "service-directory"
+        ? "/api/services"
+        : declared?.healthPath;
+      if (!target || !healthPath) {
+        missingCount++;
+        return;
+      }
+      service.health = {
+        ...(await probe(new URL(healthPath, target).toString())),
+        checkedAt: new Date().toISOString(),
+      };
+      observations.push(service.health);
+    });
+    manifest.reportedAt = new Date().toISOString();
+    const healthyProviderCount = observations.filter((health) => health.status === "up").length;
+    const uncertainCount = observations.filter((health) => health.status === "auth-required").length;
+    const unhealthyProviderCount = observations.length - healthyProviderCount - uncertainCount;
+    const ready = unhealthyProviderCount === 0 && uncertainCount === 0 && missingCount === 0;
+    event.finish(ready ? "succeeded" : "degraded", {
+      ready,
+      readiness: ready ? "healthy" : "incomplete",
+      providerCount: Object.keys(manifest.services).length,
+      observationCount: observations.length,
+      healthyProviderCount,
+      unhealthyProviderCount,
+      uncertainCount,
+      missingCount,
+    });
+  } catch (error) {
+    event.finish("failed", { ready: false, observationCount: observations.length, missingCount, errorCode: safeErrorCode(error) });
+    throw error;
+  }
 }
 
 async function mapLimit<T, R>(
@@ -1352,7 +1450,13 @@ export function manifestHealth(
   return health;
 }
 
-class Directory {
+interface DirectoryDependencies {
+  status: () => Record<string, unknown>;
+  fetchManifest: typeof fetchManifest;
+  logger?: EventLogger;
+}
+
+export class Directory {
   private snapshot: Snapshot;
   private readonly cachePath: string;
 
@@ -1360,6 +1464,7 @@ class Directory {
     private readonly config: RegistryConfig,
     private readonly localManifest: PublicManifest,
     stateDirectory: string,
+    private readonly dependencies: DirectoryDependencies = { status: tailscaleStatus, fetchManifest },
   ) {
     this.cachePath = join(stateDirectory, "directory-cache.json");
     this.snapshot = readJson<Snapshot>(this.cachePath, {
@@ -1373,7 +1478,20 @@ class Directory {
   }
 
   async refresh(): Promise<void> {
-    const status = tailscaleStatus();
+    const event = (this.dependencies.logger ?? events).begin("directory.refresh", "background");
+    const context: EventContext = { queryErrorCount: 0, sourceAvailable: false };
+    try {
+      await this.refreshAttempt(context);
+      event.finish(context.queryErrorCount || context.missingCount ? "degraded" : "succeeded", context);
+    } catch (error) {
+      event.finish("failed", { ...context, ready: false, errorCode: safeErrorCode(error) });
+      throw error;
+    }
+  }
+
+  private async refreshAttempt(context: EventContext): Promise<void> {
+    const status = this.dependencies.status();
+    context.sourceAvailable = true;
     const self = asRecord(status.Self);
     const peers = asRecord(status.Peer) ?? {};
     const nodes = [self, ...Object.values(peers)]
@@ -1384,6 +1502,7 @@ class Directory {
     );
     const selfId = typeof self?.ID === "string" ? self.ID : null;
 
+    context.candidateCount = nodes.length;
     const manifests = await mapLimit(nodes, 8, async (machine) => {
       if (machine.id === selfId) {
         return {
@@ -1400,12 +1519,13 @@ class Directory {
       }
       try {
         return {
-          manifest: await fetchManifest(
+          manifest: await this.dependencies.fetchManifest(
             `http://${machine.dnsName}:${this.config.manifest.port}/manifest.json`,
           ),
           fetchedAt: new Date().toISOString(),
         };
       } catch {
+        context.queryErrorCount!++;
         const cached = previous.get(machine.id);
         return {
           manifest: cached?.manifest,
@@ -1439,6 +1559,12 @@ class Directory {
       ),
     };
     atomicWriteJson(this.cachePath, this.snapshot);
+    context.itemCount = nodes.length;
+    context.missingCount = nodes.filter((machine) => !machine.manifest).length;
+    context.sourceAvailable = true;
+    // Collector readiness describes inventory completeness, not application health.
+    context.ready = context.queryErrorCount === 0 && context.missingCount === 0;
+    context.readiness = context.ready ? "inventory_complete" : "inventory_partial";
   }
 }
 
@@ -1740,6 +1866,66 @@ function jsonResponse(value: unknown): Response {
   });
 }
 
+function requestHandler(
+  routeFor: (path: string) => string,
+  respond: (request: Request) => Response,
+  logger: EventLogger,
+): (request: Request) => Response {
+  return (request) => {
+    const route = routeFor(new URL(request.url).pathname);
+    // Inventory JSON is machine-facing; /health is an HTML dashboard, not a liveness endpoint.
+    const traffic = classifyHttpTraffic(request.headers.get("user-agent"), route === "inventory" ? "manifest" : route);
+    const event = logger.begin("http.request", traffic, {
+      // Never copy arbitrary extension methods, paths, or client correlation IDs into events.
+      method: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"].includes(request.method) ? request.method : "OTHER",
+      route,
+    });
+    try {
+      const response = respond(request);
+      event.finish(response.status >= 400 ? "failed" : "succeeded", { statusCode: response.status });
+      return response;
+    } catch (error) {
+      event.finish("failed", { statusCode: 500, errorCode: safeErrorCode(error) });
+      return new Response("Internal Server Error", { status: 500 });
+    }
+  };
+}
+
+export function createManifestHandler(manifest: PublicManifest, logger: EventLogger = events) {
+  return requestHandler(
+    (path) => path === "/" || path === "/manifest.json" ? "manifest" : "not_found",
+    (request) => {
+      const path = new URL(request.url).pathname;
+      return path === "/" || path === "/manifest.json"
+        ? jsonResponse(manifest)
+        : new Response("not found\n", { status: 404 });
+    },
+    logger,
+  );
+}
+
+export function createDirectoryHandler(directory: Pick<Directory, "getSnapshot">, logger: EventLogger = events) {
+  return requestHandler(
+    (path) => path === "/api/services" ? "inventory" : path === "/health" ? "health_dashboard" : path === "/" || path === "/index.html" ? "dashboard" : "not_found",
+    (request) => {
+      const path = new URL(request.url).pathname;
+      const snapshot = directory.getSnapshot();
+      if (path === "/api/services") return jsonResponse(snapshot);
+      if (path !== "/health" && path !== "/" && path !== "/index.html") {
+        return new Response("not found\n", { status: 404 });
+      }
+      return new Response(path === "/health" ? renderHealth(snapshot) : renderDirectory(snapshot), {
+        headers: {
+          "cache-control": "no-store",
+          "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+          "content-type": "text/html; charset=utf-8",
+        },
+      });
+    },
+    logger,
+  );
+}
+
 function parseArguments(args: string[]): { config: string; stateDirectory: string } {
   const configIndex = args.indexOf("--config");
   const stateIndex = args.indexOf("--state-dir");
@@ -1752,7 +1938,7 @@ function parseArguments(args: string[]): { config: string; stateDirectory: strin
   };
 }
 
-async function main(): Promise<void> {
+async function main(startup: ReturnType<EventLogger["begin"]>): Promise<void> {
   const args = parseArguments(Bun.argv.slice(2));
   const config = JSON.parse(readFileSync(args.config, "utf8")) as RegistryConfig;
   const manifest = publicManifest(config);
@@ -1783,12 +1969,7 @@ async function main(): Promise<void> {
   const manifestServer = Bun.serve({
     hostname: "127.0.0.1",
     port: config.manifest.backendPort,
-    fetch(request) {
-      const path = new URL(request.url).pathname;
-      return path === "/" || path === "/manifest.json"
-        ? jsonResponse(manifest)
-        : new Response("not found\n", { status: 404 });
-    },
+    fetch: createManifestHandler(manifest),
   });
 
   const directory = config.directory.enable
@@ -1798,32 +1979,7 @@ async function main(): Promise<void> {
     ? Bun.serve({
         hostname: "127.0.0.1",
         port: config.directory.backendPort,
-        fetch(request) {
-          const path = new URL(request.url).pathname;
-          const snapshot = directory.getSnapshot();
-          if (path === "/api/services") return jsonResponse(snapshot);
-          if (path === "/health") {
-            return new Response(renderHealth(snapshot), {
-              headers: {
-                "cache-control": "no-store",
-                "content-security-policy":
-                  "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
-                "content-type": "text/html; charset=utf-8",
-              },
-            });
-          }
-          if (path !== "/" && path !== "/index.html") {
-            return new Response("not found\n", { status: 404 });
-          }
-          return new Response(renderDirectory(snapshot), {
-            headers: {
-              "cache-control": "no-store",
-              "content-security-policy":
-                "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
-              "content-type": "text/html; charset=utf-8",
-            },
-          });
-        },
+        fetch: createDirectoryHandler(directory),
       })
     : null;
 
@@ -1843,42 +1999,33 @@ async function main(): Promise<void> {
     config,
     args.stateDirectory,
   );
+  startup.finish("succeeded", { readiness: "listening", itemCount: Object.keys(manifest.services).length });
   let lastHealthRefresh = 0;
   let lastHostChecksRefresh = 0;
   let lastDirectoryRefresh = 0;
   while (true) {
     try {
       reconciler.reconcile();
-    } catch (error) {
-      log("error", `serve reconciliation failed: ${String(error)}`);
-    }
+    } catch { /* reconciliation records its own completion */ }
     try {
       nativeServiceReconciler.reconcile();
-    } catch (error) {
-      log("error", `native service reconciliation failed: ${String(error)}`);
-    }
+    } catch { /* reconciliation records its own completion */ }
     if (Date.now() - lastHealthRefresh >= 15_000) {
       try {
         await refreshManifestHealth(config, manifest);
-      } catch (error) {
-        log("error", `local health refresh failed: ${String(error)}`);
-      }
+      } catch { /* refresh records its own completion */ }
       lastHealthRefresh = Date.now();
     }
     if (Date.now() - lastHostChecksRefresh >= 60_000) {
       try {
         await refreshHostChecks(config, manifest);
-      } catch (error) {
-        log("error", `host checks refresh failed: ${String(error)}`);
-      }
+      } catch { /* refresh records its own completion */ }
       lastHostChecksRefresh = Date.now();
     }
     if (directory && Date.now() - lastDirectoryRefresh >= 30_000) {
       try {
         await directory.refresh();
-      } catch (error) {
-        log("error", `directory refresh failed: ${String(error)}`);
-      }
+      } catch { /* refresh records its own completion */ }
       lastDirectoryRefresh = Date.now();
     }
     await Bun.sleep(15_000);
@@ -1886,5 +2033,12 @@ async function main(): Promise<void> {
 }
 
 if (import.meta.main) {
-  await main();
+  const startup = events.begin("service.start", "background");
+  try {
+    await main(startup);
+  } catch (error) {
+    startup.finish("failed", { ready: false, errorCode: safeErrorCode(error) });
+    // A partially started listener must not keep a failed startup alive.
+    process.exit(1);
+  }
 }

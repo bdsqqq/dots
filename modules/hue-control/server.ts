@@ -1,5 +1,10 @@
 import { createServer, IncomingMessage, Server, ServerResponse } from "node:http";
 
+import { classifyHttpTraffic, safeErrorCode } from "../service-events/events.ts";
+import type { EventContext, Outcome } from "../service-events/events.ts";
+import { hueEvents } from "./events.ts";
+import type { HueEvents } from "./events.ts";
+
 import type { HueDevice } from "./ble-adapter.ts";
 import type { HueResult, HueState } from "./hue-protocol.ts";
 import type { HueRuntimeSnapshot } from "./runtime.ts";
@@ -80,10 +85,88 @@ async function lightCommand(
   throw new RequestError("unknown or invalid light command");
 }
 
-export function createHueControlServer(runtime: HueRuntimeApi): Server {
-  return createServer(async (request, response) => {
+export interface HueServerOptions {
+  events?: HueEvents;
+  now?: () => number;
+}
+
+function routeCategory(pathname: string): string {
+  switch (pathname) {
+    case "/": return "ui";
+    case "/health": return "health";
+    case "/api/state": return "state";
+    case "/api/discover": return "discover";
+    case "/api/commission": return "commission";
+    case "/api/enroll": return "enroll";
+    case "/api/reconnect": return "reconnect";
+    case "/api/light": return "light";
+    default: return "not_found";
+  }
+}
+
+export function createHueControlServer(runtime: HueRuntimeApi, options: HueServerOptions = {}): Server {
+  const events = options.events ?? hueEvents;
+  const now = options.now ?? Date.now;
+  type Completion = { event: ReturnType<HueEvents["begin"]>; outcome: Outcome; context: EventContext };
+  const polls = new Map<string, {
+    signature: string; lastEmitted: number; pending?: Completion; count: number;
+  }>();
+  function flushPoll(poll: { pending?: Completion; count: number; lastEmitted: number }): void {
+    if (!poll.pending) return;
+    poll.pending.event.finish(poll.pending.outcome, { ...poll.pending.context, observationCount: poll.count });
+    poll.pending = undefined;
+    poll.count = 0;
+    poll.lastEmitted = now();
+  }
+  const server = createServer(async (request, response) => {
+    let url: URL | undefined;
+    let urlError: unknown;
+    try { url = new URL(request.url ?? "/", "http://localhost"); } catch (error) { urlError = error; }
+    const route = url ? routeCategory(url.pathname) : "not_found";
+    let errorCode: string | undefined;
+    let reasonCode: string | undefined;
+    let completed = false;
+    const method = ["GET", "POST", "HEAD", "OPTIONS", "PUT", "DELETE", "PATCH"].includes(request.method ?? "")
+      ? request.method! : "OTHER";
+    // Classification uses only a bounded category. Neither URL nor user agent enters an event.
+    const traffic = classifyHttpTraffic(request.headers["user-agent"], route);
+    const event = events.begin("http.request", traffic);
+    const complete = (aborted: boolean): void => {
+      if (completed) return;
+      completed = true;
+      const snapshot = runtime.snapshot();
+      const ready = snapshot.status === "available";
+      const readinessOperation = ["health", "state", "commission", "enroll", "reconnect"].includes(route);
+      const outcome: Outcome = aborted || response.statusCode >= 400 ? "failed"
+        : readinessOperation && !ready ? "degraded" : "succeeded";
+      const context: EventContext = {
+        method, route, ...(response.headersSent ? { statusCode: response.statusCode } : {}),
+        ready, readiness: snapshot.status, enrolled: snapshot.deviceId !== null,
+        ...(errorCode ? { errorCode } : {}), ...(reasonCode ? { reasonCode } : {}),
+        ...(aborted ? { reasonCode: "request_aborted" } : {}),
+      };
+      // The UI polls state every three seconds. Keep first observation and changes immediate,
+      // then summarize identical health/state polls per traffic class at most once/minute.
+      if (!aborted && method === "GET" && (route === "health" || route === "state")) {
+        const key = `${route}:${traffic}`;
+        const signature = JSON.stringify({ outcome, context });
+        const previous = polls.get(key);
+        if (!previous || previous.signature !== signature) {
+          if (previous) flushPoll(previous);
+          event.finish(outcome, { ...context, observationCount: 1 });
+          polls.set(key, { signature, lastEmitted: now(), count: 0 });
+        } else {
+          // Summary duration is an observation window, never a single-request latency.
+          previous.pending ??= { event: events.begin("http.poll_summary", traffic), outcome, context };
+          previous.count += 1;
+          if (now() - previous.lastEmitted >= 60_000) flushPoll(previous);
+        }
+      } else event.finish(outcome, context);
+    };
+    response.once("finish", () => complete(false));
+    response.once("close", () => complete(!response.writableFinished));
     try {
-      const url = new URL(request.url ?? "/", "http://localhost");
+      if (!url) throw urlError;
       if (request.method === "GET" && url.pathname === "/") {
         response.writeHead(200, {
           "cache-control": "no-store",
@@ -133,18 +216,24 @@ export function createHueControlServer(runtime: HueRuntimeApi): Server {
         return;
       }
       if (request.method === "POST" && url.pathname === "/api/light") {
-        result(response, await lightCommand(runtime, await body(request)));
+        const command = await lightCommand(runtime, await body(request));
+        if (!command.ok) reasonCode = command.error;
+        result(response, command);
         return;
       }
+      errorCode = "NOT_FOUND";
       json(response, 404, { error: "not-found", message: "route not found" });
     } catch (error) {
       const invalid = error instanceof RequestError;
+      errorCode = invalid ? "INVALID_REQUEST" : safeErrorCode(error);
       json(response, invalid ? 400 : 503, {
         error: invalid ? "invalid-request" : "unavailable",
         message: error instanceof Error ? error.message : String(error),
       });
     }
   });
+  server.once("close", () => { for (const poll of polls.values()) flushPoll(poll); });
+  return server;
 }
 
 export async function listen(server: Server, port: number): Promise<void> {

@@ -92,17 +92,16 @@ let
         { service = "http_status:404"; }
       ];
     });
-  originProbe = app: lib.escapeShellArgs [
+  originCheck = pkgs.writeText "cloudflare-origin-check.ts" (builtins.replaceStrings
+    [ "../service-events/events.ts" ]
+    [ "${../service-events/events.ts}" ]
+    (builtins.readFile ./origin-check.ts));
+  originProbe = name: app: lib.escapeShellArgs [
+    "${pkgs.nodejs_latest}/bin/node"
+    "--experimental-strip-types"
+    originCheck
+    name
     "${pkgs.curl}/bin/curl"
-    "--fail"
-    "--silent"
-    "--show-error"
-    "--connect-timeout"
-    "5"
-    "--max-time"
-    "10"
-    "--output"
-    "/dev/null"
     app.route.service
   ];
   cloudflaredCommand = name: app: lib.escapeShellArgs [
@@ -115,11 +114,10 @@ let
   cloudflaredWithOriginWatchdog = name: app:
     pkgs.writeShellScript "cloudflared-${name}-with-origin-watchdog" ''
       probe_origin() {
-        ${originProbe app}
+        ${originProbe name app}
       }
 
       if ! probe_origin; then
-        echo "origin probe failed; connector will remain withdrawn" >&2
         exit 1
       fi
 
@@ -142,7 +140,6 @@ let
       (
         while ${pkgs.coreutils}/bin/sleep 15; do
           if ! probe_origin; then
-            echo "origin probe failed; withdrawing connector" >&2
             kill "$connector_pid" 2>/dev/null || true
             exit 1
           fi

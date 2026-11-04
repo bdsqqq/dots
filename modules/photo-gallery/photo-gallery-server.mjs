@@ -3,6 +3,21 @@ import { createServer, request as httpRequest } from "node:http";
 import { access, mkdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { createEventLogger, classifyHttpTraffic, safeErrorCode } from "../service-events/events.ts";
+
+const events = createEventLogger("photo-gallery");
+
+// Categories, not request targets or identities, are the HTTP event contract.
+function observeRequest(incoming, outgoing, route) {
+  const method = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"].includes(incoming.method)
+    ? incoming.method : "OTHER";
+  const operation = events.begin("http.request", classifyHttpTraffic(incoming.headers["user-agent"], route), { method, route });
+  outgoing.once("finish", () => operation.finish(outgoing.statusCode >= 400 ? "failed" : "succeeded", { statusCode: outgoing.statusCode }));
+  outgoing.once("close", () => {
+    if (!outgoing.writableFinished) operation.finish("failed", { reasonCode: "CLIENT_ABORTED" });
+  });
+  return operation;
+}
 
 function required(options, name) {
   const value = options.get(name);
@@ -63,19 +78,29 @@ function send(outgoing, status, contentType, body, extraHeaders = {}) {
   outgoing.end(body);
 }
 
-function proxy(incoming, outgoing, target, path) {
+function proxy(incoming, outgoing, target, path, operation) {
   const headers = { ...incoming.headers, host: target.host };
   const proxied = httpRequest(
     { hostname: target.hostname, port: target.port, method: incoming.method, path, headers },
     (response) => {
       outgoing.writeHead(response.statusCode ?? 502, response.headers);
+      response.once("error", (error) => {
+        operation.finish("failed", { reasonCode: "UPSTREAM_INTERRUPTED", errorCode: safeErrorCode(error) });
+        outgoing.destroy();
+      });
       response.pipe(outgoing);
     }
   );
   proxied.once("error", (error) => {
+    operation.finish("failed", { statusCode: outgoing.headersSent ? outgoing.statusCode : 502, reasonCode: "PROXY_FAILED", errorCode: safeErrorCode(error) });
     if (!outgoing.headersSent) outgoing.writeHead(502);
     outgoing.end(`backend unavailable: ${error.message}\n`);
   });
+  incoming.once("aborted", () => {
+    operation.finish("failed", { reasonCode: "CLIENT_ABORTED" });
+    proxied.destroy();
+  });
+  outgoing.once("close", () => { if (!outgoing.writableFinished) proxied.destroy(); });
   incoming.pipe(proxied);
 }
 
@@ -83,8 +108,12 @@ export function galleryServer({ assets, backendPort, intelligenceUrl }) {
   return createServer((incoming, outgoing) => {
     const url = new URL(incoming.url, "http://gallery.local");
     const proxiedPath = backendPath(incoming.url);
+    const route = proxiedPath ? "media" : url.pathname === "/gallery/api/timeline" ? "timeline"
+      : url.pathname === "/" ? "redirect" : ["/gallery", "/gallery/"].includes(url.pathname) ? "gallery"
+      : ["/gallery/gallery.css", "/gallery/gallery.js"].includes(url.pathname) ? "asset" : "not_found";
+    const operation = observeRequest(incoming, outgoing, route);
     if (proxiedPath) {
-      return proxy(incoming, outgoing, new URL(`http://127.0.0.1:${backendPort}`), proxiedPath);
+      return proxy(incoming, outgoing, new URL(`http://127.0.0.1:${backendPort}`), proxiedPath, operation);
     }
 
     if (url.pathname === "/") {
@@ -107,13 +136,13 @@ export function galleryServer({ assets, backendPort, intelligenceUrl }) {
     }
     if (url.pathname === "/gallery/api/timeline") {
       const target = new URL("/timeline", intelligenceUrl);
-      return proxy(incoming, outgoing, target, `${target.pathname}${target.search}`);
+      return proxy(incoming, outgoing, target, `${target.pathname}${target.search}`, operation);
     }
     send(outgoing, 404, "text/plain; charset=utf-8", "not found\n");
   });
 }
 
-async function main() {
+async function main(startup) {
   const config = parseArgs(process.argv.slice(2));
   await Promise.all([access(config.source), mkdir(config.state, { recursive: true })]);
   const assets = {
@@ -122,6 +151,7 @@ async function main() {
     js: await readFile(config.js, "utf8"),
   };
 
+  const backendStart = events.begin("backend.start");
   const backend = spawn(
     config.copyparty,
     [
@@ -141,16 +171,34 @@ async function main() {
     ],
     { stdio: "inherit" }
   );
-  backend.once("error", (error) => console.error("failed to start copyparty", error));
+  await new Promise((resolvePromise, reject) => {
+    const failed = (error) => {
+      backendStart.finish("failed", { errorCode: safeErrorCode(error) });
+      reject(error);
+    };
+    backend.once("error", failed);
+    backend.once("spawn", () => {
+      backend.off("error", failed);
+      backendStart.finish("succeeded");
+      resolvePromise();
+    });
+  });
 
   const server = galleryServer({
     assets,
     backendPort: config.backendPort,
     intelligenceUrl: config.intelligenceUrl,
   });
-  server.listen(config.port, config.host, () => {
-    console.log(`photo gallery listening on http://${config.host}:${config.port}/gallery/`);
-  });
+  try {
+    await new Promise((resolvePromise, reject) => {
+      server.once("error", reject);
+      server.listen(config.port, config.host, resolvePromise);
+    });
+  } catch (error) {
+    backend.kill("SIGTERM");
+    throw error;
+  }
+  startup.finish("succeeded", { readiness: "listening" });
 
   const shutdown = () => {
     server.close();
@@ -159,17 +207,19 @@ async function main() {
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
   backend.once("exit", (code, signal) => {
-    if (code !== 0 && signal !== "SIGTERM") {
-      console.error(`copyparty exited with ${signal ?? `code ${code}`}`);
+    const expected = code === 0 || signal === "SIGTERM";
+    events.begin("backend.exit").finish(expected ? "succeeded" : "failed", { reasonCode: expected ? "EXPECTED_EXIT" : "UNEXPECTED_EXIT" });
+    if (!expected) {
       process.exitCode = 1;
       server.close();
     }
   });
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch((error) => {
-    console.error(error);
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const startup = events.begin("service.start");
+  main(startup).catch((error) => {
+    startup.finish("failed", { errorCode: safeErrorCode(error) });
     process.exitCode = 1;
   });
 }

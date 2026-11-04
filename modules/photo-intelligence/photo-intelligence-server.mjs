@@ -6,6 +6,24 @@ import { DatabaseSync } from "node:sqlite";
 import { extname, join, relative, resolve, sep } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
+import { createEventLogger, classifyHttpTraffic, safeErrorCode } from "../service-events/events.ts";
+
+const events = createEventLogger("photo-intelligence");
+
+// Categories, not request targets or identities, are the HTTP event contract.
+function observeRequest(incoming, outgoing, route, completion = () => ({})) {
+  const method = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"].includes(incoming.method)
+    ? incoming.method : "OTHER";
+  const operation = events.begin("http.request", classifyHttpTraffic(incoming.headers["user-agent"], route), { method, route });
+  outgoing.once("finish", () => {
+    const { outcome = outgoing.statusCode >= 400 ? "failed" : "succeeded", ...context } = completion();
+    operation.finish(outcome, { statusCode: outgoing.statusCode, ...context });
+  });
+  outgoing.once("close", () => {
+    if (!outgoing.writableFinished) operation.finish("failed", { reasonCode: "CLIENT_ABORTED" });
+  });
+  return operation;
+}
 
 const MEDIA_EXTENSIONS = new Set([
   ".3gp",
@@ -781,12 +799,23 @@ function json(outgoing, status, value) {
 
 export function intelligenceServer(catalog) {
   return createServer((incoming, outgoing) => {
-    if (incoming.method !== "GET") return json(outgoing, 405, { error: "method not allowed" });
     const path = new URL(incoming.url, "http://intelligence.local").pathname;
+    const route = ["/health/live", "/health/ready"].includes(path) ? "health"
+      : path === "/status" ? "status" : path === "/timeline" ? "timeline" : "not_found";
+    let completion = {};
+    observeRequest(incoming, outgoing, route, () => completion);
+    if (incoming.method !== "GET") return json(outgoing, 405, { error: "method not allowed" });
     if (path === "/health/live") return json(outgoing, 200, { status: "up" });
     if (path === "/health/ready") {
       const status = catalog.status();
       const ready = status.source.lastSuccessAt !== null;
+      // Preserve health policy: a degraded scan still serves the last good generation.
+      // Complete only on response finish so a client abort cannot be reported as ready.
+      completion = {
+        outcome: !ready ? "failed" : status.source.state === "ready" ? "succeeded" : "degraded",
+        ready, action: "ready",
+        readiness: ["ready", "scanning", "degraded"].includes(status.source.state) ? status.source.state : "starting",
+      };
       return json(outgoing, ready ? 200 : 503, { status: ready ? status.source.state : "starting" });
     }
     if (path === "/status") return json(outgoing, 200, catalog.status());
@@ -811,6 +840,7 @@ export async function scanLoop(config, catalog, signal, watcherFactory = watchFi
   let scanRunning = false;
   let rerunRequested = false;
   let currentScan = Promise.resolve();
+  let scanAttempt = 0;
 
   const clearTimer = (name) => {
     const timer = timers.get(name);
@@ -822,7 +852,7 @@ export async function scanLoop(config, catalog, signal, watcherFactory = watchFi
     clearTimer(name);
     timers.set(name, setTimeout(() => {
       timers.delete(name);
-      void requestScan();
+      void requestScan(name);
     }, delay));
   };
   const closeWatcher = () => {
@@ -831,33 +861,55 @@ export async function scanLoop(config, catalog, signal, watcherFactory = watchFi
   };
   const ensureWatcher = () => {
     if (watcher || signal.aborted) return;
-    watcher = watcherFactory(config.source, { recursive: true }, () => {
-      schedule("event", config.watchDebounceMs);
-    });
+    const attach = events.begin("source.watch");
+    try {
+      watcher = watcherFactory(config.source, { recursive: true }, () => {
+        schedule("event", config.watchDebounceMs);
+      });
+      attach.finish("succeeded", { connected: true });
+    } catch (error) {
+      attach.finish("failed", { errorCode: safeErrorCode(error), retryInMs: config.retryIntervalMs, connected: false });
+      throw error;
+    }
     watcher.once("error", (error) => {
-      console.error(`photo source watch failed: ${error.message}`);
+      events.begin("source.watch_failure").finish("failed", { errorCode: safeErrorCode(error), retryInMs: config.retryIntervalMs, connected: false });
       closeWatcher();
       schedule("retry", config.retryIntervalMs);
     });
   };
-  const scanOnce = async () => {
-    catalog.scanStarted();
+  const scanOnce = async (trigger) => {
+    const scan = events.begin("source.scan", "background", { trigger, attempt: ++scanAttempt });
     let result;
     try {
+      catalog.scanStarted();
       const entries = await discoverMedia(config.source, config.sentinel);
-      if (signal.aborted) return;
+      if (signal.aborted) {
+        scan.finish("skipped", { reasonCode: "ABORTED" });
+        return;
+      }
       result = catalog.reconcile(entries);
     } catch (error) {
       if (!signal.aborted) {
         catalog.scanFailed(error);
-        console.error(`photo source scan failed: ${error.message}`);
+        const errorCode = safeErrorCode(error);
+        scan.finish("failed", {
+          errorCode, reasonCode: errorCode === "ENOENT" ? "SOURCE_UNAVAILABLE" : "SCAN_FAILED",
+          readiness: "degraded", toState: "degraded", retryInMs: config.retryIntervalMs,
+          ...(errorCode === "ENOENT" ? { sourceAvailable: false } : {}),
+        });
         closeWatcher();
         clearTimer("periodic");
         schedule("retry", config.retryIntervalMs);
+      } else {
+        scan.finish("skipped", { reasonCode: "ABORTED" });
       }
       return;
     }
-    console.log(`scan ${result.generation}: ${result.present} present, ${result.candidates} settling, ${result.missing} missing`);
+    scan.finish("succeeded", {
+      generation: result.generation, itemCount: result.present, candidateCount: result.candidates,
+      missingCount: result.missing, sourceAvailable: true, readiness: "ready", toState: "ready",
+    });
+    scanAttempt = 0;
     clearTimer("retry");
     schedule("periodic", config.scanIntervalMs);
     if (result.candidates > 0) {
@@ -867,13 +919,13 @@ export async function scanLoop(config, catalog, signal, watcherFactory = watchFi
     }
     try {
       ensureWatcher();
-    } catch (error) {
-      console.error(`photo source watch failed: ${error.message}`);
+    } catch {
+      // source.watch already records this failure without a raw error dump.
       closeWatcher();
       schedule("retry", config.retryIntervalMs);
     }
   };
-  async function requestScan() {
+  async function requestScan(trigger = "startup") {
     if (scanRunning) {
       rerunRequested = true;
       return currentScan;
@@ -882,7 +934,7 @@ export async function scanLoop(config, catalog, signal, watcherFactory = watchFi
       scanRunning = true;
       do {
         rerunRequested = false;
-        await scanOnce();
+        await scanOnce(trigger);
       } while (rerunRequested && !signal.aborted);
       scanRunning = false;
     })();
@@ -900,23 +952,34 @@ export async function scanLoop(config, catalog, signal, watcherFactory = watchFi
   await currentScan;
 }
 
-async function jobLoop(catalog, signal) {
+export async function jobLoop(catalog, signal) {
   while (!signal.aborted) {
     const job = catalog.claimHashJob();
     if (!job) {
       if (!(await pause(500, signal))) break;
       continue;
     }
+    const attempt = Number(job.attempts) + 1;
+    const operation = events.begin("index.hash", "background", { attempt });
     try {
-      await runHashJob(catalog, job, signal);
+      const committed = await runHashJob(catalog, job, signal);
+      operation.finish(committed ? "succeeded" : "skipped", committed ? {} : { reasonCode: "STALE_INPUT_OR_LEASE" });
     } catch (error) {
-      if (signal.aborted && error.name === "AbortError") break;
-      catalog.failJob(job, error);
+      if (signal.aborted && error.name === "AbortError") {
+        operation.finish("skipped", { reasonCode: "ABORTED" });
+        break;
+      }
+      const retained = catalog.failJob(job, error);
+      operation.finish("failed", {
+        errorCode: safeErrorCode(error),
+        reasonCode: !retained ? "STALE_LEASE" : attempt >= MAX_JOB_ATTEMPTS ? "ATTEMPTS_EXHAUSTED" : "RETRY_SCHEDULED",
+        ...(retained && attempt < MAX_JOB_ATTEMPTS ? { retryInMs: Math.min(60 * 60 * 1000, 1000 * (2 ** attempt)) } : {}),
+      });
     }
   }
 }
 
-async function main() {
+async function main(startup) {
   process.umask(0o077);
   const config = parseArgs(process.argv.slice(2));
   await mkdir(config.state, { recursive: true, mode: 0o700 });
@@ -926,9 +989,16 @@ async function main() {
   await chmod(databasePath, 0o600);
   const abort = new AbortController();
   const server = intelligenceServer(catalog);
-  server.listen(config.port, config.host, () => {
-    console.log(`photo intelligence listening on http://${config.host}:${config.port}`);
-  });
+  try {
+    await new Promise((resolvePromise, reject) => {
+      server.once("error", reject);
+      server.listen(config.port, config.host, resolvePromise);
+    });
+  } catch (error) {
+    catalog.close();
+    throw error;
+  }
+  startup.finish("succeeded", { readiness: "listening" });
   const loops = [scanLoop(config, catalog, abort.signal), jobLoop(catalog, abort.signal)];
   let shuttingDown = false;
   const shutdown = async () => {
@@ -948,8 +1018,9 @@ async function main() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch((error) => {
-    console.error(error);
+  const startup = events.begin("service.start");
+  main(startup).catch((error) => {
+    startup.finish("failed", { errorCode: safeErrorCode(error) });
     process.exitCode = 1;
   });
 }

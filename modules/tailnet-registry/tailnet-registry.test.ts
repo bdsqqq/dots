@@ -2,8 +2,13 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createEventLogger, type ServiceEvent } from "../service-events/events.ts";
 import {
   collectSyncthingReport,
+  createDirectoryHandler,
+  createManifestHandler,
+  Directory,
   manifestHealth,
   nativeEndpointsFromConfig,
   NativeServiceReconciler,
@@ -128,6 +133,239 @@ function dependencies(current: Record<string, unknown>) {
     },
   };
 }
+
+function capturedEvents() {
+  const lines: string[] = [];
+  const logger = createEventLogger("tailnet-registry", {
+    sink: (event) => lines.push(JSON.stringify(event)),
+    host: "test-host",
+  });
+  return { logger, lines, records: () => lines.map((line) => JSON.parse(line) as ServiceEvent) };
+}
+
+function eventManifest() {
+  return sanitizeManifest({ schemaVersion: 1, host: { name: "private-host" }, services: {} });
+}
+
+describe("operation events", () => {
+  test("real HTTP handlers separate inventory/probes from browser hints without recording input", async () => {
+    const capture = capturedEvents();
+    const manifest = eventManifest();
+    const snapshot = { updatedAt: new Date().toISOString(), machines: [] };
+    const dashboard = createDirectoryHandler({ getSnapshot: () => snapshot }, capture.logger);
+    const manifestHandler = createManifestHandler(manifest, capture.logger);
+    const server = Bun.serve({
+      port: 0,
+      fetch: (request) => new URL(request.url).pathname.startsWith("/manifest")
+        ? manifestHandler(request) : dashboard(request),
+    });
+    servers.push(server);
+    const base = `http://127.0.0.1:${server.port}`;
+    for (const [path, ua, expectedStatus] of [
+      ["/?auth=secret-query", "Mozilla/5.0 secret-ua", 200],
+      ["/health", "Mozilla/5.0", 200],
+      ["/api/services", "tailnet-registry/1", 200],
+      ["/manifest.json?secret-query", "Mozilla/5.0", 200],
+      ["/", "cloudflare-origin-probe/1", 200],
+      ["/private-user/path?secret-query", "custom secret-ua", 404],
+    ] as const) {
+      const response = await fetch(base + path, { headers: { "user-agent": ua, authorization: "Bearer secret-auth", "x-request-id": "private-request-id" } });
+      expect(response.status).toBe(expectedStatus);
+      await response.body?.cancel();
+    }
+    const records = capture.records();
+    expect(records.map((record) => [record.context.route, record.traffic, record.outcome])).toEqual([
+      ["dashboard", "browser", "succeeded"],
+      ["health_dashboard", "browser", "succeeded"],
+      ["inventory", "probe", "succeeded"],
+      ["manifest", "probe", "succeeded"],
+      ["dashboard", "probe", "succeeded"],
+      ["not_found", "unknown", "failed"],
+    ]);
+    expect(new Set(records.map((record) => record.operationId)).size).toBe(6);
+    for (const record of records) {
+      expect(record.service).toBe("tailnet-registry");
+      expect(record.durationMs).toBeGreaterThanOrEqual(0);
+      expect(record.timestamp).toMatch(/Z$/);
+    }
+    expect(capture.lines.join("\n")).not.toMatch(/secret-|private-|Bearer|127\.0\.0\.1|Mozilla/);
+  });
+
+  test("request failure emits one sanitized completion and keeps the 500 response", () => {
+    const capture = capturedEvents();
+    const handler = createDirectoryHandler({
+      getSnapshot() { throw Object.assign(new Error("private-path secret-token"), { code: "EIO" }); },
+    }, capture.logger);
+    expect(handler(new Request("http://example.test/")).status).toBe(500);
+    expect(capture.records()).toHaveLength(1);
+    expect(capture.records()[0]).toMatchObject({ outcome: "failed", context: { errorCode: "EIO", statusCode: 500 } });
+    expect(capture.lines.join("")).not.toMatch(/private-path|secret-token/);
+  });
+
+  test("Serve reconciliation records actual mutations, noop and safe failures", () => {
+    const capture = capturedEvents();
+    const deps = dependencies({});
+    const reconciler = new ServeReconciler(config(), temporaryDirectory(), { ...deps.value, logger: capture.logger });
+    reconciler.reconcile();
+    expect(deps.commands).toHaveLength(1);
+    expect(capture.records()[0]).toMatchObject({ operation: "serve.reconcile", outcome: "succeeded", context: { changedCount: 1, itemCount: 1, ready: true } });
+
+    const noop = new ServeReconciler(config(), temporaryDirectory(), {
+      ...dependencies(status(["http", 5252, "http://127.0.0.1:15252"])).value,
+      logger: capture.logger,
+    });
+    seedState(noop, { __manifest: noop.desired.get("__manifest")! });
+    noop.reconcile();
+    expect(capture.records()[1]).toMatchObject({ outcome: "skipped", context: { changedCount: 0, ready: true } });
+
+    const failed = new ServeReconciler(config(), temporaryDirectory(), {
+      status() { throw Object.assign(new Error("secret-config /private/path"), { code: "ENOENT" }); },
+      execute: deps.value.execute,
+      logger: capture.logger,
+    });
+    expect(() => failed.reconcile()).toThrow();
+    expect(capture.records()[2]).toMatchObject({ outcome: "failed", context: { ready: false, errorCode: "ENOENT" } });
+    expect(capture.lines.join("")).not.toMatch(/secret-config|private\/path|127\.0\.0\.1/);
+    expect(capture.records()).toHaveLength(3);
+  });
+
+  test("explicit adoption is a successful ownership change even without Serve commands", () => {
+    const capture = capturedEvents();
+    const desired = config();
+    const deps = dependencies(status(["http", 5252, "http://127.0.0.1:15252"]));
+    const reconciler = new ServeReconciler(desired, temporaryDirectory(), { ...deps.value, logger: capture.logger });
+    reconciler.desired.get("__manifest")!.adoptExisting = true;
+    reconciler.reconcile();
+    expect(deps.commands).toEqual([]);
+    expect(capture.records()[0]).toMatchObject({ outcome: "succeeded", context: { changed: true, changedCount: 0, reasonCode: "existing_route_adopted" } });
+    expect(JSON.parse(readFileSync(reconciler.statePath, "utf8")).routes.__manifest.port).toBe(5252);
+  });
+
+  test("ownership conflict is summarized before any command and never leaks backend targets", () => {
+    const capture = capturedEvents();
+    const deps = dependencies(status(["http", 5252, "http://secret-backend/private?token=secret"]));
+    const reconciler = new ServeReconciler(config(), temporaryDirectory(), { ...deps.value, logger: capture.logger });
+    expect(() => reconciler.reconcile()).toThrow();
+    expect(deps.commands).toEqual([]);
+    expect(capture.records()).toHaveLength(1);
+    expect(capture.records()[0]).toMatchObject({ outcome: "failed", context: { reasonCode: "ownership_conflict", missingCount: 1, changedCount: 0 } });
+    expect(capture.lines.join("")).not.toMatch(/secret-backend|token|private/);
+  });
+
+  test("Serve rollback preserves state and emits one failed operation", () => {
+    const capture = capturedEvents();
+    const previous = { key: "__manifest", scheme: "http" as const, port: 5252, target: "http://127.0.0.1:9999" };
+    const commands: string[][] = [];
+    const reconciler = new ServeReconciler(config(), temporaryDirectory(), {
+      logger: capture.logger,
+      status: () => status(["http", 5252, previous.target]),
+      execute(args) {
+        commands.push(args);
+        if (args.at(-1) === "http://127.0.0.1:15252") throw new Error("secret publish failure");
+        return { exitCode: 0, stdout: "", stderr: "" };
+      },
+    });
+    seedState(reconciler, { __manifest: previous });
+    expect(() => reconciler.reconcile()).toThrow("secret publish failure");
+    expect(commands.at(-1)?.at(-1)).toBe(previous.target);
+    expect(JSON.parse(readFileSync(reconciler.statePath, "utf8")).routes.__manifest.target).toBe(previous.target);
+    expect(capture.records()).toHaveLength(1);
+    expect(capture.records()[0]).toMatchObject({ outcome: "failed", context: { reasonCode: "previous_route_restored", changedCount: 2 } });
+    expect(capture.lines.join("")).not.toMatch(/secret publish|127\.0\.0\.1/);
+  });
+
+  test("native replacement rollback restores the previous endpoint and records safe failure", () => {
+    const capture = capturedEvents();
+    const desired = config({ photos: { target: "http://127.0.0.1:4000", tailscaleService: { enable: true, name: "photos", port: 443 } } });
+    const previous = { service: "svc:photos", port: 443, target: "http://127.0.0.1:3923" };
+    const commands: string[][] = [];
+    const reconciler = new NativeServiceReconciler(desired, temporaryDirectory(), {
+      logger: capture.logger,
+      status: () => ({ services: { "svc:photos": { endpoints: { "tcp:443": previous.target } } } }),
+      execute(args) {
+        commands.push(args);
+        if (args.at(-1) === desired.services.photos.target) throw Object.assign(new Error("private credentials"), { code: "EACCES" });
+        return { exitCode: 0, stdout: "", stderr: "" };
+      },
+    });
+    writeFileSync(reconciler.statePath, JSON.stringify({ services: { "svc:photos": previous } }));
+    expect(() => reconciler.reconcile()).toThrow();
+    expect(commands.map((args) => args.at(-1))).toEqual(["svc:photos", desired.services.photos.target, previous.target]);
+    expect(JSON.parse(readFileSync(reconciler.statePath, "utf8")).services["svc:photos"].target).toBe(previous.target);
+    expect(capture.records()).toHaveLength(1);
+    expect(capture.records()[0]).toMatchObject({ operation: "native_service.reconcile", outcome: "failed", context: { reasonCode: "previous_endpoint_restored", errorCode: "EACCES", changedCount: 2 } });
+    expect(capture.lines.join("")).not.toMatch(/credentials|svc:photos|127\.0\.0\.1/);
+  });
+
+  test("health refresh emits one readiness summary, not one event per backend probe", async () => {
+    const capture = capturedEvents();
+    const server = Bun.serve({ port: 0, fetch(request) {
+      return new Response("private body", { status: new URL(request.url).pathname === "/ok" ? 200 : 401 });
+    } });
+    servers.push(server);
+    const target = `http://127.0.0.1:${server.port}`;
+    const desired = config({ a: { target, healthPath: "/ok" }, b: { target, healthPath: "/auth" } });
+    const manifest = sanitizeManifest({ schemaVersion: 1, host: { name: "private-host" }, services: {
+      a: { title: "private title", scheme: "http", port: 8000, path: "/", audience: "owner" },
+      b: { title: "private title", scheme: "http", port: 8001, path: "/", audience: "owner" },
+    } });
+    await refreshManifestHealth(desired, manifest, capture.logger);
+    expect(manifest.services.a.health?.status).toBe("up");
+    expect(manifest.services.b.health?.status).toBe("auth-required");
+    expect(capture.records()).toHaveLength(1);
+    expect(capture.records()[0]).toMatchObject({ operation: "local_health.refresh", outcome: "degraded", context: { providerCount: 2, healthyProviderCount: 1, unhealthyProviderCount: 0, uncertainCount: 1, observationCount: 2, ready: false } });
+    expect(capture.lines.join("")).not.toMatch(/private|127\.0\.0\.1|\/auth|\/ok/);
+  });
+
+  test("host check completion includes coarse readiness, never config paths or API keys", async () => {
+    const capture = capturedEvents();
+    const report = await collectSyncthingReport({ enable: true, url: "http://secret-backend", configFile: "/missing/private-config", folderIds: ["private-folder"] }, capture.logger);
+    expect(report.status).toBe("error");
+    expect(capture.records()[0]).toMatchObject({ operation: "host_checks.refresh", outcome: "failed", context: { ready: false, errorCode: "ENOENT", reasonCode: "report_unavailable" } });
+    expect(capture.lines.join("")).not.toMatch(/private|secret-backend/);
+  });
+
+  test("directory refresh records partial inventory, retains cache, and reports status failures", async () => {
+    const capture = capturedEvents();
+    let failFetch = false;
+    let failStatus = false;
+    const manifest = eventManifest();
+    const directory = new Directory(config(), manifest, temporaryDirectory(), {
+      logger: capture.logger,
+      status() {
+        if (failStatus) throw Object.assign(new Error("private daemon output"), { code: "EIO" });
+        return { Self: { ID: "private-self", HostName: "private-host", Online: true }, Peer: {
+          peer: { ID: "private-peer", HostName: "private-peer-host", DNSName: "secret-dns.tail.net", Online: true },
+        } };
+      },
+      async fetchManifest() {
+        if (failFetch) throw new Error("secret URL token");
+        return manifest;
+      },
+    });
+    await directory.refresh();
+    expect(capture.records()[0]).toMatchObject({ operation: "directory.refresh", outcome: "succeeded", context: { candidateCount: 2, itemCount: 2, missingCount: 0, queryErrorCount: 0 } });
+    failFetch = true;
+    await directory.refresh();
+    expect(directory.getSnapshot().machines.every((machine) => !!machine.manifest)).toBe(true);
+    expect(capture.records()[1]).toMatchObject({ outcome: "degraded", context: { queryErrorCount: 1, ready: false } });
+    failStatus = true;
+    await expect(directory.refresh()).rejects.toThrow();
+    expect(capture.records()[2]).toMatchObject({ outcome: "failed", context: { errorCode: "EIO", ready: false } });
+    expect(capture.records()).toHaveLength(3);
+    expect(capture.lines.join("")).not.toMatch(/private|secret|tail.net/);
+  });
+
+  test("startup failure uses the actual stdout JSON transport and service identity", () => {
+    const result = Bun.spawnSync([process.execPath, fileURLToPath(new URL("./tailnet-registry.ts", import.meta.url))], { stdout: "pipe", stderr: "pipe" });
+    expect(result.exitCode).toBe(1);
+    const records = result.stdout.toString().trim().split("\n").map((line) => JSON.parse(line));
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({ service: "tailnet-registry", operation: "service.start", traffic: "background", outcome: "failed", context: { ready: false, errorCode: "UNEXPECTED_ERROR" } });
+    expect(result.stderr.toString()).toBe("");
+    expect(records[0].eventId).not.toBe(records[0].operationId);
+  });
+});
 
 describe("route parsing", () => {
   test("extracts HTTP and HTTPS root proxies", () => {

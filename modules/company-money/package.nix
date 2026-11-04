@@ -57,6 +57,10 @@ stdenvNoCC.mkDerivation (finalAttrs: {
       --platform=node \
       --target=node22
 
+    # The company-money source fileset intentionally excludes sibling modules.
+    # Resolve the shared logger from its store source before bundling the portal.
+    substituteInPlace portal/portal-server.mjs \
+      --replace-fail '"../../service-events/events.ts"' '"${../service-events/events.ts}"'
     esbuild portal/portal-server.mjs --bundle --format=esm --outfile=portal-server.mjs --platform=node --target=node22
 
     runHook postBuild

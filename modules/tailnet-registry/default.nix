@@ -256,16 +256,7 @@ let
     };
     services = normalizedServices;
   });
-  registryPackage = pkgs.writeShellApplication {
-    name = "tailnet-registry";
-    runtimeInputs = [
-      pkgs.bun
-      pkgs.tailscale
-    ];
-    text = ''
-      exec bun ${./tailnet-registry.ts} "$@"
-    '';
-  };
+  registryPackage = pkgs.callPackage ./package.nix { };
   primaryUser = config.my.primaryUser;
   primaryHome = config.users.users.${primaryUser}.home;
   darwinStateDir = "${primaryHome}/Library/Application Support/tailnet-registry";
