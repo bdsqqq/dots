@@ -22,6 +22,18 @@ test("projection dependencies are complete and ordered; missing shared envelope 
   assert.throws(() => checkDependencies(fields.filter(field => field.name !== "normalized_event")), /requires earlier normalized_event/);
 });
 
+test("upgrading existing fields keeps legacy-first registration dependencies valid", () => {
+  const legacy = new Set([
+    "normalized_payload", "normalized_host", "normalized_source", "normalized_service", "normalized_message",
+    "normalized_systemd_unit", "normalized_operation", "normalized_severity", "normalized_severity_number",
+  ]);
+  const registered = [...fields.filter(field => legacy.has(field.name)), ...fields.filter(field => !legacy.has(field.name))];
+  checkDependencies(registered);
+  const forwardReference = registered.map(field => field.name === "normalized_service"
+    ? { ...field, expression: "tostring(normalized_event.service)" } : field);
+  assert.throws(() => checkDependencies(forwardReference), /normalized_service requires earlier normalized_event/);
+});
+
 const deployment = process.env.SERVICE_EVENTS_AXIOM_DEPLOYMENT;
 test("Axiom evaluates direct, journal, legacy and non-event envelopes without publishing fields", { skip: !deployment }, () => {
   const event = {
