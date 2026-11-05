@@ -1,0 +1,42 @@
+{
+  "name": "@bdsqqq/sagemcom-fast3896-claro",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./catalog": {
+      "types": "./dist/catalog.generated.d.ts",
+      "default": "./dist/catalog.generated.js"
+    }
+  },
+  "files": [
+    "dist",
+    "inventory",
+    "README.md",
+    "API.md",
+    "RUNBOOK.md"
+  ],
+  "scripts": {
+    "generate": "node scripts/generate.ts",
+    "capture": "node scripts/capture.ts",
+    "probe": "node scripts/probe.ts",
+    "bike-iot:rotate": "node scripts/rotate-bike-iot.ts",
+    "catalog:check": "node scripts/generate.ts --check",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "node --test test/*.test.ts",
+    "check": "pnpm run catalog:check && pnpm run typecheck && pnpm test && pnpm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "6.0.3"
+  },
+  "packageManager": "pnpm@12.9.0"
+}
