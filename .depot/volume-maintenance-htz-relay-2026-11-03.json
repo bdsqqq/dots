@@ -1,215 +1,38 @@
 {
-  "status": "maintenance restoration completed 13:51 UTC: relay running, original volume mounted, file services verified and commonplace caught up; helium-remotes baseline error and Axiom poller query failure remain",
-  "finalRecoveryVerification": {
-    "verifiedUtc": "2026-11-03T13:51:31Z",
-    "provider": {"serverId":110564592,"status":"running","volumeId":104047902,"attachedTo":110564592},
-    "guest": {"bootId":"bc260de7-0c99-4ff2-a400-791aa8fffbbe","device":"/dev/sdb","serial":"104047902","stableId":"/dev/disk/by-id/scsi-0HC_Volume_104047902","filesystem":"ext4","uuid":"b22860a5-6334-4b4f-bcd7-035389e6390e","mount":"/mnt/storage-01","options":"rw,relatime,discard"},
-    "guardVerification": "Recovery boot retained all eight persistent application guards; apps inactive/ConditionResult=no while exact UUID mounted. All three pre-writer file hashes matched and HTML state JSON parsed. Only recorded guard files/marker removed after exact content comparison; runtime host/apps guards absent after reboot; no guard files/markers remain.",
-    "mountContract": "Generated fstab mount unit restored What=/dev/disk/by-id/scsi-0HC_Volume_104047902, no drop-ins. systemctl live What normalizes to /dev/sdb; an overly literal string assertion failed, then generated unit content and realpath/serial/UUID checks verified equivalence. No remount needed or done.",
-    "restoredServices": {"home-manager-bdsqqq.service":"active/exited success","syncthing-init.service":"active/exited success","syncthing.service":"active/running success","syncthing-automerge.service":"active/running success","copyparty.service":"active/running success","container@apps.service":"active/running success","html-stuff.service":"active/running success","company-money-portal.service":"active/running success","files-browser.service":"active/running success"},
-    "timers": "nixos-upgrade, axiom-incidents and systemd-tmpfiles-clean restored active/waiting through boot; no manual upgrade/activation executed. nixos-upgrade service remains inactive/success. Cloudflare ingress containers, sshd and tailscaled running.",
-    "http": {"hostCopypartyCommonplace":200,"appsHtml8766":200,"appsCompanyMoneyHealthz3929":200,"appsFiles3925":200},
-    "representativeAccess": "Fetched commonplace/01_files/nix/flake.nix through host Copyparty and apps files-browser; both hashes equal f5de80bcd4afb9a75671165cff7154fc52cf059dbedbd240e0bde253421dcc5d. HTML state JSON/hash matched baseline before writers started. Files-browser published 20690 Syncthing-indexed items and became ready; an early connection refusal and UND_ERR_SOCKET during Syncthing startup cleared without intervention.",
-    "syncProgress": {"firstSampleUtc":"2026-11-03T13:49:57Z","firstTotalInBytes":54062,"firstTotalOutBytes":9045,"finalSampleUtc":"2026-11-03T13:51:31Z","finalTotalInBytes":76795,"finalTotalOutBytes":11650,"connectedPeers":3,"commonplaceState":"idle","commonplacePendingItems":0,"commonplacePendingBytes":0,"commonplaceError":"","sequenceBefore":2708432,"sequenceAfter":2708443,"notes":"Observed successful file transfers in logs; brief sync-preparing state during restoration file edits was normal activity with zero pending items, later idle again."},
-    "remainingProblems": ["helium-remotes remains at its pre-existing missing .stfolder error, 3 pending items/6396 bytes; not repaired", "Axiom incident poller resumed via original timer but repeated exits 1 with queryErrors hosts: kernel killed a process for lack of memory; underlying cause not investigated or attributed to this relay", "independent commonplace backup remains unverified"],
-    "logs": "Kernel ext4 log confirms correct UUID mounted read/write; no I/O errors or local OOM entries returned by targeted boot-kernel query. Host Syncthing/automerge/Copyparty/apps-container and container HTML/company-money/files-browser warning-level logs had no entries. Apps container has zero failed units; host failed unit is Axiom poller.",
-    "tofuAndSource": "Removed temporary storage_detached wiring; main.tf restored exactly to pre-maintenance blob f407da9e; maintenance.auto.tfvars.json moved to Trash after confirming its only setting was false. Encrypted native state retained and updated by apply. Final pinned tofu validate/fmt check/no-drift plan passed after restoring source. Saved encrypted plans left untouched; no unrelated cleanup.",
-    "git": "Recovery changes uncommitted/unpushed; earlier maintenance commit 8216677d retained. Final diff limited to main.tf restoration, maintenance auto-vars removal, encrypted state, and this action record."
-  },
-  "recovery": {
-    "completionEvidence": {"url":"https://status.hetzner.com/incident/3172dc2d-dba4-4283-9e86-2358034f6c0d","title":"Planned maintenance for leaf nbg1-cloud1-leaf8","state":"resolved","completedUtc":"2026-11-03T06:35:43Z","message":"The maintenance has been completed.","visibility":"client_panel","verifiedUtc":"2026-11-03T13:45:32Z","userConfirmed":true},
-    "reattachment": "New encrypted plan maintenance-reattach-20261103-1345.tfplan validated exactly server_id 0 -> 110564592, automount=false; apply completed 0 added/1 changed/0 destroyed; provider verified original server off with volume 104047902 before boot",
-    "poweron": "One successful hcloud server poweron 110564592 using existing write credential; provider confirms running with volume attached. First SSH probe timed out during boot; no power action repeated.",
-    "applicationGuards": "identity/baselines verified first; only recorded guards removed; restoration complete with remaining issues documented in finalRecoveryVerification"
-  },
-  "recoveryChecks": [
-    {
-      "checkedUtc": "2026-11-03T07:05:14Z",
-      "provider": {"serverId":110564592,"status":"off","volumes":[],"volumeId":104047902,"volumeServer":null,"volumeStatus":"available"},
-      "completionSources": ["https://status.hetzner.com/", "https://status.hetzner.com/en.atom"],
-      "completionResult": "Still no matching volume maintenance completion. Public resolved abuse-system incident and October 27 object-storage incident are unrelated. Private notice inaccessible; no explicit user completion confirmation received.",
-      "actions": "No attachment/power/guest/tofu changes; preserved earlier action-record edit. Final automatic retry exhausted; NO further automatic checks scheduled.",
-      "next": "Ask user to confirm Hetzner has explicitly completed the affected storage-01 maintenance, or provide its completion notice. Keep server off and volume detached pending that evidence."
-    },
-    {
-      "checkedUtc": "2026-11-03T06:35:13Z",
-      "host": "mbp-m2.local",
-      "worktreeBeforeCheck": "clean",
-      "provider": {"serverId":110564592,"status":"off","volumes":[],"volumeId":104047902,"volumeServer":null,"volumeStatus":"available"},
-      "completionSources": ["https://status.hetzner.com/", "https://status.hetzner.com/en.atom"],
-      "completionResult": "No matching volume maintenance or completion found. Resolved 05:30–05:58 UTC abuse-system maintenance is explicitly unrelated; object storage incident was October 27, not this block-volume maintenance.",
-      "actions": "No tofu intent/state, attachment, power or guest settings changed. No completion inferred from scheduled end or volume status=available.",
-      "followup": {"runAtUtc":"2026-11-03T07:05:00Z","runAtSaoPaulo":"2026-11-03 04:05","scheduledTaskId":"scheduled-task:command:mcp:aed706b0-c832-4085-989b-4a9b592d6854:schedule-task:htz-relay-104047902-recovery-final-check-20261103-0705","limit":"one final automatic check; no further retries without new direction; if still unconfirmed, leave off/detached and ask user"}
-    }
-  ],
-  "finalShutdownVerification": {
-    "poweroffRequestedUtc": "2026-11-03T03:28:43Z",
-    "method": "One guest systemctl poweroff --no-block after sync; SSH closed during shutdown. First provider read still running, so no command repeated; subsequent reads confirmed off.",
-    "verifiedUtc": "2026-11-03T03:29:16Z",
-    "provider": {"serverId":110564592,"serverStatus":"off","serverVolumes":[],"volumeId":104047902,"volumeServer":null,"volumeStatus":"available"},
-    "ssh": "connection timed out after provider off, expected; provider credentials remain available off-host",
-    "finalTofuPlan": "Pinned 1.12.3 refreshed all resources after poweroff; no changes, exit 0",
-    "checks": "tofu fmt -check, validate, exact single-update saved-plan inspection, actual apply, provider/guest detach checks, namespace checks and final no-drift plan passed; git diff --check passed. No Nix expression changed; no host build/activation run.",
-    "notVerified": "Private notice still unavailable; independent commonplace backup unverified; recovery boot/restore not yet performed. No future task scheduled.",
-    "sourceDiff": "Only main.tf maintenance switch, native encrypted terraform.tfstate update, maintenance.auto.tfvars.json, and local .depot evidence records. Existing private-ingress.tfplan untouched. No commits or pushes."
-  },
-  "executedShutdown": {
-    "quiescenceUtc": "2026-11-03 03:21–03:23 UTC",
-    "services": "apps HTML/company-money/files-browser stopped, then Syncthing/automerge/Copyparty/Axiom poller and apps container stopped. All had no remaining process. Syncthing/Copyparty/apps-container/files-browser/company-money stopped with result=success. HTML wrapper exited 143 on SIGTERM (unit result=exit-code), MainPID=0/ControlPID=0/empty cgroup; no timeout or SIGKILL, explicitly retained as shutdown anomaly.",
-    "timersStopped": ["nixos-upgrade.timer", "axiom-incidents.timer", "systemd-tmpfiles-clean.timer"],
-    "runtimeHostDropins": "/run/systemd/system/{syncthing.service,syncthing-init.service,syncthing-automerge.service,copyparty.service,container@apps.service,axiom-incidents.service,nixos-upgrade.service,home-manager-bdsqqq.service,systemd-tmpfiles-setup.service,systemd-tmpfiles-clean.service}.d/90-relay-volume-maintenance.conf; ConditionPathExists=!/run/relay-volume-maintenance.block, SendSIGKILL=no, TimeoutStopSec=60s",
-    "runtimeMountDropin": "/run/systemd/system/mnt-storage\\x2d01.mount.d/90-relay-volume-maintenance.conf blocks mount restart while /run marker exists",
-    "runtimeAppsDropins": "same 90-relay-volume-maintenance.conf for html-stuff/company-money-portal/files-browser inside apps container, with local /run marker; container stopped",
-    "unmount": "sync -f, normal umount succeeded at approximately 03:23 UTC; root /proc scan before unmount found no FDs/cwd/maps on volume; after unmount every process mount namespace had zero device 8:16 mounts",
-    "underlyingDirectory": "root:root 0755, existing helium-remotes and commonplace children preserved; no data removed",
-    "guardCorrection": "Read-only child tmpfs initially verified but automatically unmounted by device-bound mount unit on provider detach. Writers remained inactive/restart-guarded. Replaced at approximately 03:25 UTC with read-only tmpfs on /mnt after verifying no other /mnt entries/mounts; verified ro,nosuid,nodev,noexec,size=4k,mode=000. This parent guard disappears on poweroff/boot.",
-    "tofuApply": "saved encrypted plan applied successfully: 0 added, 1 changed, 0 destroyed; only hcloud_volume.storage server_id 110564592 -> 0",
-    "providerVerification": "volume 104047902 server=null, status=available, delete-protected; server 110564592 volumes=[]",
-    "guestVerification": "udevadm settle; stable device absent; lsblk no volume; no pending systemd jobs",
-    "convergence": "post-detach pinned tofu plan -detailed-exitcode reports no changes",
-    "persistentGuardInstallation": "Nix owns read-only /etc/systemd/system; attempted mkdir failed before creating a drop-in. Used documented systemd UnitPath /etc/systemd/system.control instead; no immutable path was modified.",
-    "persistentMarker": "/var/lib/relay-volume-maintenance.block (empty, root 0600)",
-    "persistentServiceGuards": {
-      "base": "/etc/systemd/system.control",
-      "units": ["syncthing.service", "syncthing-init.service", "syncthing-automerge.service", "copyparty.service", "container@apps.service", "axiom-incidents.service", "nixos-upgrade.service", "home-manager-bdsqqq.service"],
-      "filename": "91-relay-volume-maintenance.conf",
-      "content": "[Unit]\nConditionPathExists=!/var/lib/relay-volume-maintenance.block\n",
-      "verification": "daemon-reload succeeded; every unit DropInPaths includes its persistent guard; services remain inactive. Recovery boot not yet tested."
-    },
-    "persistentMountGuard": {
-      "path": "/etc/systemd/system.control/mnt-storage\\x2d01.mount.d/91-relay-volume-identity.conf",
-      "content": "[Unit]\nConditionPathExists=/dev/disk/by-id/scsi-0HC_Volume_104047902\n[Mount]\nWhat=/dev/disk/by-uuid/b22860a5-6334-4b4f-bcd7-035389e6390e\n",
-      "verification": "systemctl show What equals exact original UUID; original stable-ID device must also exist. Reattach before boot; filesystem mount failure remains a stop condition."
-    },
-    "fileBaselines": {
-      "commonplace/01_files/nix/flake.nix": {"bytes":20120,"sha256":"f5de80bcd4afb9a75671165cff7154fc52cf059dbedbd240e0bde253421dcc5d"},
-      "commonplace/01_files/html_stuff/pi-setup-dossier.state.json": {"bytes":164,"sha256":"8aa3f4faff4b9dc866eb81ff2e1270e9e8b7bfba6b7491c9beab0ab4a0b00da2","jsonParsed":true},
-      "commonplace/.stfolder": {"bytes":0,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
-    }
-  },
-  "effectiveRecoveryProcedure": [
-    "Do not start relay until Hetzner explicitly confirms completion of this maintenance. No follow-up or power-on scheduled; scheduled window end is not confirmation.",
-    "On this Mac/repository export SOPS_AGE_KEY_FILE=$HOME/.config/sops/age/keys.txt and put /nix/store/4k1yf0ym15k0lv76sdwhjwgy0vh7qx2n-opentofu-1.12.3/bin first in PATH. Keep tokens/passphrase inside existing wrappers, never print them.",
-    "Confirm server 110564592 is off and volume 104047902 remains detached using ./hosts/htz-relay/hcloud describe commands. Change only maintenance.auto.tfvars.json storage_detached to false; do not remove other work or reuse old saved plans.",
-    "Use ./hosts/htz-relay/tofu plan -out=NEW_RECOVERY_PLAN, inspect show -json (filter without saving decrypted state). Require exactly in-place hcloud_volume.storage server_id 0 -> 110564592, no other changes/create/destroy. Apply via HCLOUD_ALLOW_WRITE=1 ./hosts/htz-relay/tofu apply NEW_RECOVERY_PLAN. Verify volume.server=110564592 and server.volumes contains 104047902, automount=false retained.",
-    "Power on original server via hcloud server poweron 110564592 using the existing SOPS hcloud_write_token process-local adaptation; provider schema has no power-state resource, so do not fake a tofu deployment/replacement. Do not force power off/reset on failure.",
-    "SSH in. Persistent guards keep apps/Syncthing/Copyparty/Axiom poller/upgrade/home-manager stopped. Mount uses exact original filesystem UUID and stable-ID existence condition. Verify stable-ID resolves to mounted block device, serial=104047902, ext4 UUID=b22860a5-6334-4b4f-bcd7-035389e6390e, exact /mnt/storage-01 mountpoint, no read-only guard still present. Stop on mismatch or boot/mount failure; use Hetzner console/rescue path if needed, not filesystem repair.",
-    "Before restarting writers verify representative files/hashes and HTML state JSON against executedShutdown.fileBaselines; investigate unexpected changes rather than overwrite them.",
-    "Remove ONLY the eight recorded 91-relay-volume-maintenance.conf files under /etc/systemd/system.control, the recorded 91-relay-volume-identity.conf, and /var/lib/relay-volume-maintenance.block after verifying each file still matches recorded content. Runtime /run guards should already be gone after poweroff; if not, inspect before removing only ours. daemon-reload; confirm original mount What=/dev/disk/by-id/scsi-0HC_Volume_104047902 restored.",
-    "Restore previously active home-manager-bdsqqq, syncthing, syncthing-automerge, copyparty and container@apps; restore original timers if not already active from boot. Do not manually run nixos-upgrade or enable unrelated units. Axiom poller should resume via its timer. No need to start original inactive oneshots just to mimic an instantaneous sample.",
-    "Check local HTTP Copyparty /commonplace/ and apps namespace localhost:8766/, :3929/healthz, :3925/; verify representative served files/publication state, Syncthing commonplace pending items and connected-peer progress over time, service and kernel logs. Report helium-remotes missing marker as pre-existing; do not repair without separate scope.",
-    "Review final tofu plan for no drift and final source diff. Restore temporary maintenance variable wiring to original only when safe, preserving updated encrypted state; never roll terraform.tfstate back to its pre-maintenance copy. Do not commit/push unless requested."
-  ],
-  "fullShutdown": {
-    "authorization": "user: we can spin down the full relay for this night, please",
-    "startUtc": "2026-11-03 approximately 03:18",
-    "originalStateFile": ".depot/htz-relay-maintenance-20261103-original-state.txt",
-    "attachmentIntent": "hosts/htz-relay/main.tf adds storage_detached bool default false; maintenance.auto.tfvars.json sets true until recovery",
-    "plan": "maintenance-detach-20261103.tfplan encrypted; verified exactly hcloud_volume.storage server_id 110564592 -> 0, no other changes, no create/destroy",
-    "powerControl": "Provider schema has no declarative power-state resource/attribute. Use guest systemctl poweroff for clean shutdown; provider hcloud poweron only after tofu reattachment. Existing write credential authenticated via read-only server describe.",
-    "temporaryHostChangesPlanned": "Superseded by executedShutdown: runtime condition/stop-safety drop-ins and /mnt guard disappear on boot; eight persistent condition drop-ins plus mount-identity drop-in and /var/lib marker MUST be removed explicitly after recovery identity verification. No masks used.",
-    "recoveryGate": "No scheduled power-on; require explicit Hetzner completion. Reattach via tofu before boot. Backup remains unverified; current private maintenance notice not retrieved."
-  },
-  "approval": "user: approve; deployment must use existing tofu setup; understand before changes",
-  "followupInspectionUtc": "2026-11-03 approximately 00:38–00:40",
-  "tofuWorkflow": {
-    "credentials": "Existing wrappers work with process-local SOPS_AGE_KEY_FILE=$HOME/.config/sops/age/keys.txt; no credential values printed or configuration changed",
-    "version": "Used existing /nix/store/4k1yf0ym15k0lv76sdwhjwgy0vh7qx2n-opentofu-1.12.3/bin via process-local PATH; default CLI is 1.13.1; repository constraint retained",
-    "state": "Local encrypted state and plans enforced with PBKDF2/AES-GCM; existing wrapper supplies state passphrase",
-    "writeGate": "Wrapper uses read token except apply/destroy; apply requires HCLOUD_ALLOW_WRITE=1 and selects write token",
-    "baselinePlan": "Pinned tofu plan -detailed-exitcode -no-color -input=false: all five resources refreshed, no changes",
-    "validation": "tofu validate passed; no apply executed",
-    "providerContract": "Pinned v1.66.1 internal/volume/resource.go:232–284 explicitly detaches for server_id=0, waits for action; nonzero attaches with automount flag",
-    "providerSource": "https://github.com/hetznercloud/terraform-provider-hcloud/blob/v1.66.1/internal/volume/resource.go#L232-L284",
-    "proposedTransition": "Use explicit temporary maintenance intent server_id=0 through tofu, not an out-of-band hcloud attachment mutation; inspect saved plan for exact one in-place volume change. Restore original server_id through tofu after confirmed completion. Do not apply ordinary attached intent during downtime.",
-    "sourceChanges": "none; do not reuse pre-existing private-ingress.tfplan"
-  },
-  "providerBackupEvidence": {
-    "server": "Seven available server backups; newest 2026-11-02T10:15:43Z, image ID 451139477; backup window 10-14 UTC",
-    "volumeCoverage": "Hetzner explicitly excludes attached volumes from server backups/snapshots; no independent backup for storage-01 verified",
-    "source": "https://docs.hetzner.com/cloud/servers/backups-snapshots/faq/"
-  },
-  "inspectionUtc": "2026-11-03 approximately 00:23–00:28",
-  "sessionId": "01a19ec9-f3e5-7366-86d9-e9bdac19843e",
   "host": "htz-relay",
-  "userSuppliedWindow": "2026-11-03 02:30–03:30 America/Sao_Paulo / 05:30–06:30 UTC",
+  "status": "completed",
+  "maintenance": {
+    "notice": "https://status.hetzner.com/incident/3172dc2d-dba4-4283-9e86-2358034f6c0d",
+    "completedUtc": "2026-11-03T06:35:43Z"
+  },
   "volume": {
-    "id": 104047902, "requestedName": "storage-01",
-    "providerAttachment": "VERIFIED through existing read-only hcloud wrapper: storage-01 ID 104047902 attached to htz-relay ID 110564592 in nbg1; size 64; delete protection true; linux_device matches guest",
-    "originalProviderServerId": 110564592,
-    "guestSerial": "104047902", "deviceAtInspection": "/dev/sdb",
-    "stableDevice": "/dev/disk/by-id/scsi-0HC_Volume_104047902",
-    "filesystem": "ext4", "uuid": "b22860a5-6334-4b4f-bcd7-035389e6390e",
-    "sizeGiB": 64, "mount": "/mnt/storage-01", "options": "rw,relatime,discard",
-    "mountedRootMode": "root:root 0755; covered directory mode not yet inspected",
-    "usage": "50G used, 11G available; root filesystem 8G available"
+    "id": 104047902,
+    "name": "storage-01",
+    "serverId": 110564592,
+    "filesystem": "ext4",
+    "uuid": "b22860a5-6334-4b4f-bcd7-035389e6390e",
+    "mount": "/mnt/storage-01"
   },
-  "originalState": {
-    "syncthing.service": "active/running enabled",
-    "syncthing-automerge.service": "active/running enabled; cwd on volume",
-    "copyparty.service": "active/running enabled",
-    "container@apps.service": "active/running enabled",
-    "appsChildren": {"html-stuff.service":"active/running", "company-money-portal.service":"active/running", "files-browser.service":"active/running"},
-    "axiom-incidents.timer": "active/enabled; every minute",
-    "axiom-incidents.service": "periodic oneshot, observed activating; RequiresMountsFor code on volume",
-    "nixos-upgrade.timer": "active/waiting enabled; hourly",
-    "nixos-upgrade.service": "inactive/dead linked",
-    "home-manager-bdsqqq.service": "active/exited enabled",
-    "systemd-tmpfiles-setup.service": "active/exited enabled; rules create volume child directories",
-    "systemd-tmpfiles-clean.timer": "active/waiting enabled",
-    "userManager": "dbus running; tmpfiles-clean timer waiting; no other running user services found",
-    "otherContainers": ["cloudflare-ingress", "cloudflare-ingress-files", "cloudflare-ingress-t3"],
-    "otherTimers": ["hwmon-metrics-sample", "rex-update", "logrotate", "nix-optimise", "nix-gc", "fstrim"],
-    "paths": "rex-apply watches /usr/local/bin/rex, not volume; password-agent paths present",
-    "ssh": "BatchMode SSH and sudo -n succeeded; sshd, tailscaled, dhcpcd remain untouched"
+  "actions": "Stopped writers, flushed and normally unmounted, detached through tofu, then cleanly powered off. After confirmed completion, reattached through tofu before boot, verified identity and files before restoring dependents, and removed temporary guards/settings. No forced unmount, formatting or manual filesystem repair.",
+  "verifiedUtc": "2026-11-03T13:51:31Z",
+  "recovery": {
+    "provider": "original server running with correct volume attached",
+    "mount": "correct serial and UUID; read/write at original path",
+    "files": "three baseline hashes matched; HTML state JSON parsed; representative file served with matching hash through both Copyparty endpoints",
+    "http": "200: Copyparty, HTML browser, company-money healthz, files-browser",
+    "commonplaceSync": "idle, no errors or pending items, three peers connected; transfer counters increased between samples",
+    "services": "original file services and timers restored; temporary host guards absent",
+    "logs": "no storage I/O errors in targeted boot-kernel check; no warning-level entries in checked file-service logs",
+    "tofu": "validation and final no-drift plan passed"
   },
-  "baseline": {
-    "commonplace": "Syncthing sqz7z-a6tfg idle, needTotalItems=0, errors=0, localFiles=19265, localBytes=27814013762; three peers connected overall",
-    "helium-remotes": "PRE-EXISTING ERROR since 2026-10-23: folder marker missing; missing .stfolder confirmed; needTotalItems=3, needBytes=6396; NOT repaired",
-    "http": "200: host Copyparty /commonplace/; apps localhost:8766/; localhost:3929/healthz; localhost:3925/. Apps checked via nsenter into network namespace; direct bridge probes timed out.",
-    "openFiles": "Root /proc scan: files-browser child Copyparty sessions.db.lock and automerge cwd on volume. Many service/container bind mount namespaces retain volume references; must rescan after shutdown.",
-    "logs": "No kernel warning entries in last 24h; no warning entries for syncthing/automerge/copyparty/apps-container in last 2h",
-    "backups": "No backup/restic/borg/cron unit found in bounded host inventory; no independent off-volume backup or restore test verified. Syncthing trashcan versioning (30 days) is on-volume, not independent backup. main.tf backups=true is configuration, not proof of live backup or volume coverage. Root lacks space for a full volume copy."
-  },
-  "existingWork": {
-    "repository": "clean before inspection; no source/configuration edits",
-    "recentCommits": ["f62ab423 private ingress firewall", "d3206bc8 volume expanded to 64GB"],
-    "tofu": "main.tf owns volume attachment via server_id; automount=false; delete protection/prevent_destroy. Use tofu for temporary explicit detachment intent and recovery; never apply ordinary attached intent during maintenance.",
-    "guards": "No maintenance-named units found in bounded /etc/systemd/system and /run/systemd/system inspection; external automation remains unverified."
-  },
-  "notice": "Public https://status.hetzner.com/ and en.atom checked; no matching volume notice found. /en.json returned 404. Account-specific notice unavailable: no explicit Gmail account/client selected; no mail read attempted.",
-  "proposedDowntime": "Original 02:15 local proposal superseded by full-night shutdown request: apps stopped approximately 00:21 local / 03:21 UTC Nov 3, server powered off approximately 00:29 local / 03:29 UTC. Remains off until explicit completion and recovery; no scheduled restart.",
-  "shutdownPlanNotExecuted": [
-    "Resolve current account-specific notice, provider access/exact original server ID, backup evidence or explicit risk acceptance, and user approval; refresh all live state before acting.",
-    "Record each actual unit state and every created mask/drop-in off-volume. Block activation, mount-dependent timers, restart triggers, home-manager/init/tmpfiles paths as needed; keep SSH/network untouched.",
-    "Cleanly stop apps child services/container, Syncthing and automerge, Copyparty and volume-dependent Axiom poller. Prevent timeout SIGKILL escalation; stop/report on failure. Do not reboot while detached; assess boot recovery and persistent guard behavior before proceeding.",
-    "Rescan FDs/cwd/maps/all mount namespaces, flush writes, normally unmount. Stop on busy or retained filesystem references; never force/lazy-unmount.",
-    "Guard exposed underlying directory with verified read-only covering mount and mount-unit restart blocker; preserve existing contents. Record exact reversible guard state.",
-    "After approved temporary detachment intent has a reviewed tofu plan, apply only the exact in-place server_id transition for volume 104047902 after guest checks; verify successful provider action/server=null and guest device disappearance. No unrelated resource changes."
+  "remainingAtVerification": [
+    "helium-remotes: pre-existing missing .stfolder, three pending items; not repaired",
+    "Axiom incident poller: query failure reporting kernel killed a process for lack of memory; cause not investigated",
+    "independent commonplace backup unverified"
   ],
-  "recoveryPlanNotExecuted": [
-    "Require explicit Hetzner maintenance completion, not scheduled end. No unattended recovery scheduled and no promise this session remains running.",
-    "Restore attached intent and review/apply exact tofu reattachment to original provider server ID 110564592, automount disabled; wait for action success. Verify serial, ext4 and UUID b22860a5-6334-4b4f-bcd7-035389e6390e. Stop on mismatch; no format or filesystem repair.",
-    "Remove only recorded mount guard/blocker, mount at /mnt/storage-01 using original options, verify exact mountpoint/source/UUID before any consumer starts.",
-    "Restore only created temporary settings and previously active services/timers, not bulk-unmask or enable unrelated units.",
-    "Check representative files, HTTP routes/publication, Syncthing folder status and peer progress over time, service/kernel logs. Treat helium-remotes marker error as pre-existing; restart success alone is not recovery."
-  ],
-  "actionsTaken": ["inspection and off-host original-state record", "temporary tofu detachment intent and exact reviewed apply", "clean service quiescence with SIGKILL escalation disabled", "normal unmount, namespace verification, provider and guest detachment verification", "temporary restart and recovery-boot guards"],
-  "actionsNotTaken": ["no activation/upgrade/deletion/format/repair", "no forced/lazy unmount", "no force power-off", "no scheduled follow-up"],
-  "desktopNoticeAttempt": {
-    "timeUtc": "2026-11-03 approximately 01:00",
-    "authorization": "user requested agent-desktop, Helium star profile, Gmail maintenance email",
-    "permissions": "Accessibility and Screen Recording granted; Automation unknown; no permission prompts requested",
-    "confinement": "CLI window inventory provides no macOS Space identity; desktop-1 confinement unverified, so no snapshot, app launch/focus, screenshot or input performed",
-    "windows": "Helium w-55754 New Tab and w-50918 both reported accessible=false; no content read",
-    "blocker": "User subsequently confirmed desktop 1 and authorized opening Helium. launch Helium --activate returned AMBIGUOUS_TARGET (delivered_unverified, unsafe retry) for two existing windows. Fresh inventory unchanged. Exact snapshot of New Tab w-55754 returned ACTION_NOT_SUPPORTED/window_without_accessibility_element. No Gmail content accessed; no launch retry, headed input or desktop switch performed."
-  },
-  "commonplaceBackupFollowup": {
-    "localLiveConfig": "~/.config/backrest/config.json contains only ssd-01 plan: /Volumes/ssd-01/fenfe and /Volumes/ssd-01/igor to Hetzner Storage Box; no /Users/bdsqqq/commonplace plan",
-    "timeMachine": "tmutil destinationinfo: no destinations configured; latestbackup failed with no destination; isexcluded says commonplace Included, which is eligibility, not successful backup",
-    "source": "~/commonplace is an ordinary local directory; /Volumes/ssd-01 is absent on this Mac",
-    "repository": "bounded source inspection found ssd-01/terraria backup plans, not an explicit commonplace backup plan",
-    "conclusion": "Syncthing replicas and on-volume 30-day trashcan versioning exist, but independent historical commonplace backup remains UNVERIFIED; no new backup, repair or configuration change performed"
-  },
-  "next": "No maintenance recovery action pending. Report restoration evidence and remaining helium-remotes/Axiom/backup gaps. Preserve uncommitted recovery diff for review/shipping when requested; no further automated retries or repairs scheduled."
+  "history": {
+    "shutdownCommit": "8216677d",
+    "recoveryCommit": "a29014bf",
+    "detail": "Original state and full execution record remain in these commits. This file records historical checks, not current live health."
+  }
 }
