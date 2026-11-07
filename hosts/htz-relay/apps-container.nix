@@ -75,6 +75,7 @@
           scheme = "http";
           port = 8765;
           healthPath = "/";
+          readinessPath = "/_html-stuff/ready";
         };
         my.tailnetRegistry.providers.money = {
           target = "http://127.0.0.1:3929";
@@ -87,6 +88,7 @@
           scheme = "https";
           port = 3925;
           healthPath = "/";
+          readinessPath = "/_files/ready";
         };
 
         users.users.bdsqqq = {

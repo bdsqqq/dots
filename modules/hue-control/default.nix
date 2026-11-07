@@ -47,6 +47,7 @@ in
       scheme = "https";
       port = cfg.port;
       healthPath = "/health";
+      readinessPath = "/ready";
       access.tailnet = "owner";
       tailscaleService.enable = cfg.publishService;
     };

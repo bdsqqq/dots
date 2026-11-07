@@ -107,7 +107,16 @@ in
     };
   };
   services.hwmon-metrics.enable = true;
-  services.axiom-incidents.enable = true;
+  services.axiom-incidents = {
+    enable = true;
+    externalExpectations = [{
+      host = "mmn-m4";
+      metricsHost = "mmn-m4.local";
+      enabledAt = "2026-11-07T05:00:00Z";
+      manifestUrl = "http://mmn-m4:5252/manifest.json";
+      services = [ "hue" "html-stuff" "files" ];
+    }];
+  };
 
   boot.kernelPackages = pkgs.unstable.linuxPackages_latest;
 

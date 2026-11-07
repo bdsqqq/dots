@@ -16,6 +16,7 @@ export interface HueRuntimeSnapshot {
   lastError: string | null;
   light: HueState | null;
   status: HueRuntimeStatus;
+  reasonCode?: string;
 }
 
 export interface HueRuntimeOptions {
@@ -54,6 +55,8 @@ export class HueRuntime {
   #lastError: string | null = null;
   #light: HueState | null = null;
   #reconnectDelay = 1_000;
+  #retryAttempts = 0;
+  #reasonCode = "unenrolled";
   #reconnectTimer: NodeJS.Timeout | null = null;
   #session: HueProtocolSession | null = null;
   #status: HueRuntimeStatus = "unenrolled";
@@ -86,7 +89,7 @@ export class HueRuntime {
         throw error;
       }
     }
-    if (this.#deviceId) void this.reconnect();
+    if (this.#deviceId) void this.#backgroundReconnect();
     event.finish(this.#status === "available" ? "succeeded" : "degraded", this.#readiness());
   }
 
@@ -95,7 +98,8 @@ export class HueRuntime {
       deviceId: this.#deviceId,
       lastError: this.#lastError,
       light: this.#light,
-      status: this.#status,
+      status: this.#stopped ? "unavailable" : this.#status,
+      reasonCode: this.#stopped ? "stopped" : this.#reasonCode,
     };
   }
 
@@ -139,6 +143,25 @@ export class HueRuntime {
       return;
     }
     if (this.#connectPromise) return this.#connectPromise;
+    // An explicit user reconnect starts a fresh, bounded recovery window.
+    this.#retryAttempts = 0;
+    this.#reconnectDelay = 1_000;
+    return this.#attemptConnection();
+  }
+
+  async #backgroundReconnect(): Promise<void> {
+    try {
+      await this.#attemptConnection();
+    } catch (error) {
+      this.#events.begin("runtime.recovery").finish("degraded", {
+        ...this.#readiness(), reasonCode: "cleanup_failed", action: "manual_intervention",
+        errorCode: safeErrorCode(error),
+      });
+    }
+  }
+
+  async #attemptConnection(): Promise<void> {
+    if (!this.#deviceId || this.#stopped || this.#connectPromise) return this.#connectPromise ?? undefined;
     this.#clearReconnect();
     this.#connectPromise = this.#connect().finally(() => {
       this.#connectPromise = null;
@@ -195,8 +218,17 @@ export class HueRuntime {
     try {
       const connection = await this.#adapter.connect(this.#deviceId!, () => {
         if (this.#connection !== connection) return;
-        void this.#lostConnection("bluetooth connection closed", "connection_closed");
+        void this.#lostConnection("bluetooth connection closed", "connection_closed").catch((error) => {
+          this.#events.begin("runtime.recovery").finish("degraded", {
+            ...this.#readiness(), reasonCode: "cleanup_failed", action: "manual_intervention",
+            errorCode: safeErrorCode(error),
+          });
+        });
       });
+      if (this.#stopped) {
+        await connection.disconnect();
+        return;
+      }
       this.#connection = connection;
       const session = new HueProtocolSession(connection);
       this.#session = session;
@@ -206,15 +238,20 @@ export class HueRuntime {
       reasonCode = "initialization_failed";
       const initialized = await session.initialize();
       if (!initialized.ok) throw new Error(initialized.message);
+      if (this.#stopped) {
+        await this.#disconnect();
+        return;
+      }
       this.#light = initialized.value;
       this.#transition("available", "connected");
       this.#reconnectDelay = 1_000;
+      this.#retryAttempts = 0;
       this.#flushFailures();
       this.#lastConnectionFailure = null;
       event.finish("succeeded", { ...this.#readiness(), observationCount: 1 });
     } catch (error) {
       if (reasonCode !== "initialization_failed") reasonCode = bluetoothReason(error);
-      const retryInMs = this.#stopped ? 0 : this.#reconnectDelay;
+      const retryInMs = this.#canRetry(reasonCode) ? this.#reconnectDelay : 0;
       try {
         await this.#lostConnection(error instanceof Error ? error.message : String(error), reasonCode);
       } finally {
@@ -244,20 +281,34 @@ export class HueRuntime {
   }
 
   async #lostConnection(message: string, reasonCode: string): Promise<void> {
-    const retryInMs = this.#stopped ? 0 : this.#reconnectDelay;
+    const retryInMs = this.#canRetry(reasonCode) ? this.#reconnectDelay : 0;
     this.#transition("unavailable", reasonCode, false, retryInMs);
     this.#lastError = message;
     this.#light = null;
     await this.#disconnect();
-    if (!this.#stopped && !this.#reconnectTimer) {
+    if (this.#canRetry(reasonCode) && !this.#reconnectTimer) {
       const delay = this.#reconnectDelay;
+      this.#retryAttempts += 1;
       this.#reconnectDelay = Math.min(this.#reconnectDelay * 2, 30_000);
       this.#reconnectTimer = setTimeout(() => {
         this.#reconnectTimer = null;
-        void this.reconnect();
+        void this.#backgroundReconnect();
       }, delay);
       this.#reconnectTimer.unref();
+    } else if (!this.#stopped && !this.#reconnectTimer) {
+      // launchd already recovers crashes. Hardware/permission failures need intervention,
+      // not daemon restarts (which would merely reset this budget).
+      this.#flushFailures();
+      this.#events.begin("runtime.recovery").finish("degraded", {
+        ...this.#readiness(), reasonCode, action: "manual_intervention",
+        attempt: this.#retryAttempts, retryInMs: 0,
+      });
     }
+  }
+
+  #canRetry(reasonCode: string): boolean {
+    return !this.#stopped && this.#retryAttempts < 5
+      && reasonCode !== "bluetooth_unavailable" && reasonCode !== "bluetooth_permission_denied";
   }
 
   #readiness() {
@@ -271,6 +322,7 @@ export class HueRuntime {
 
   #transition(next: HueRuntimeStatus, reasonCode: string, quiet = false, retryInMs?: number): void {
     this.#status = next;
+    this.#reasonCode = reasonCode;
     if (quiet || this.#reportedStatus === next) return;
     const fromState = this.#reportedStatus;
     this.#reportedStatus = next;

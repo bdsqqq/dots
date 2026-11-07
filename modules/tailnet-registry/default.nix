@@ -44,7 +44,13 @@ let
       healthPath = lib.mkOption {
         type = lib.types.str;
         default = "/";
-        description = "Path probed locally and reported to the fleet directory.";
+        description = "Liveness path probed locally and reported to the fleet directory.";
+      };
+
+      readinessPath = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Optional JSON readiness endpoint returning ready: boolean; omitted means readiness unknown.";
       };
 
       access = {
@@ -136,6 +142,12 @@ let
           description = "Path probed on this host's local backend.";
         };
 
+        readinessPath = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Optional JSON readiness endpoint returning ready: boolean.";
+        };
+
         adoptExisting = lib.mkOption {
           type = lib.types.bool;
           default = false;
@@ -159,6 +171,7 @@ let
         inherit (provider)
           adoptExisting
           healthPath
+          readinessPath
           path
           port
           scheme
@@ -181,7 +194,8 @@ let
     effectiveServices != { }
     || cfg.directory.enable
     || cfg.directory.tailscaleService.enable
-    || cfg.hostChecks.syncthing.enable;
+    || cfg.hostChecks.syncthing.enable
+    || cfg.hostChecks.upgrade.enable;
   allPorts =
     (map (service: service.port) (lib.attrValues effectiveServices))
     ++ [ cfg.manifest.port ]
@@ -196,6 +210,7 @@ let
         adoptExisting
         description
         healthPath
+        readinessPath
         path
         port
         scheme
@@ -245,6 +260,9 @@ let
       };
     };
     hostChecks = {
+      upgrade = {
+        inherit (cfg.hostChecks.upgrade) enable stateFile;
+      };
       syncthing = {
         inherit (cfg.hostChecks.syncthing)
           enable
@@ -298,6 +316,15 @@ in
         type = lib.types.port;
         default = 15252;
         description = "Loopback port used by the manifest server.";
+      };
+    };
+
+    hostChecks.upgrade = {
+      enable = lib.mkEnableOption "safe local upgrade convergence reporting";
+      stateFile = lib.mkOption {
+        type = lib.types.str;
+        default = "/var/lib/nix-auto-upgrade/state.json";
+        description = "Supervisor state read by the safe upgrade health helper; must match the local supervisor.";
       };
     };
 
@@ -436,7 +463,8 @@ in
           assertion = lib.all
             (service:
               lib.hasPrefix "/" service.path
-              && lib.hasPrefix "/" service.healthPath)
+              && lib.hasPrefix "/" service.healthPath
+              && (service.readinessPath == null || lib.hasPrefix "/" service.readinessPath))
             (lib.attrValues effectiveServices);
           message =
             "my.tailnetRegistry service paths and health paths must begin with /";

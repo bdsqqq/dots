@@ -9,6 +9,8 @@ export interface Observation {
   mount?: string;
   status: "bad" | "healthy" | "unknown";
   critical?: boolean;
+  /** Optional stricter opening duration; cannot shorten the ledger default. */
+  qualifyAfterMs?: number;
   observedAt: number;
   sampleAt?: number;
   detail: Record<string, string | number | boolean | null>;
@@ -128,6 +130,8 @@ export class IncidentStore {
 
   observe(observation: Observation): Transition | null {
     return this.transaction(() => {
+      if (observation.qualifyAfterMs !== undefined && (!Number.isSafeInteger(observation.qualifyAfterMs) || observation.qualifyAfterMs < 0)) throw new Error("invalid observation qualification");
+      const openAfterMs = Math.max(this.options.openAfterMs, observation.qualifyAfterMs ?? 0);
       const previous = this.read(observation);
       if (previous && observation.observedAt <= previous.lastObservedAt) return null;
       const { observedAt, sampleAt } = observation;
@@ -157,8 +161,8 @@ export class IncidentStore {
             state.openAt ??= observedAt;
             state.openSampleAt ??= sampleAt!;
             if (observedAt > state.openAt && sampleAt! > state.openSampleAt
-              && observedAt - state.openAt >= this.options.openAfterMs
-              && sampleAt! - state.openSampleAt >= this.options.openAfterMs) action = "Open";
+              && observedAt - state.openAt >= openAfterMs
+              && sampleAt! - state.openSampleAt >= openAfterMs) action = "Open";
           }
         }
       } else {

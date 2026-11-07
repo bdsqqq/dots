@@ -402,16 +402,23 @@
           touch "$out"
         '';
 
-        checks.tailnet-registry = pkgs.runCommand "tailnet-registry-tests"
+        checks.tailnet-registry = let
+          source = pkgs.lib.fileset.toSource {
+            root = ./.;
+            fileset = pkgs.lib.fileset.unions [
+              (pkgs.lib.fileset.fileFilter (file: pkgs.lib.hasSuffix ".ts" file.name) ./modules/tailnet-registry)
+              ./modules/service-events/events.ts
+              ./modules/nix/upgrade-status.ts
+            ];
+          };
+        in pkgs.runCommand "tailnet-registry-tests"
           {
-            nativeBuildInputs = [ pkgs.bun ];
+            nativeBuildInputs = [ pkgs.bun pkgs.nodejs_latest ];
           } ''
-          mkdir -p source/modules/tailnet-registry source/modules/service-events
-          cp ${./modules/service-events/events.ts} source/modules/service-events/events.ts
-          cp ${./modules/tailnet-registry/tailnet-registry.ts} source/modules/tailnet-registry/tailnet-registry.ts
-          cp ${./modules/tailnet-registry/tailnet-registry.test.ts} source/modules/tailnet-registry/tailnet-registry.test.ts
+          cp -R ${source}/. source
+          chmod -R u+w source
           cd source/modules/tailnet-registry
-          bun test ./tailnet-registry.test.ts
+          bun test .
           touch "$out"
         '';
       };

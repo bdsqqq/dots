@@ -33,6 +33,8 @@ export interface EventContext {
   connected?: boolean;
   changed?: boolean;
   generation?: number;
+  revision?: string;
+  appliedRevision?: string;
   observationCount?: number;
   queryErrorCount?: number;
   transitionCount?: number;
@@ -70,6 +72,7 @@ const symbol = /^[a-zA-Z][a-zA-Z0-9_.:-]{0,95}$/;
 function context(values: EventContext): EventContext {
   const result: Record<string, string | boolean | number> = {};
   for (const [key, value] of Object.entries(values)) {
+    if ((key === "revision" || key === "appliedRevision") && typeof value === "string" && /^[a-f0-9]{40}$/.test(value)) result[key] = value;
     if (stringKeys.has(key) && typeof value === "string" && symbol.test(value)) result[key] = value;
     if (booleanKeys.has(key) && typeof value === "boolean") result[key] = value;
     if (numberKeys.has(key) && typeof value === "number" && Number.isFinite(value) && value >= 0) result[key] = value;

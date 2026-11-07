@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 import type { ServiceEvent } from "../service-events/events.ts";
+import { configurationFingerprint, READINESS_PATH } from "./lifecycle.ts";
 
 const route = "/api/pi-setup-dossier/state";
 const serverPath = new URL("./server.ts", import.meta.url).pathname;
@@ -143,6 +144,30 @@ describe("html stuff dossier state API", () => {
     expect(await new Response(failed.stderr).text()).toBe("");
   });
 
+  test("readiness verifies the live source and a second launcher adopts without replacing it", async () => {
+    const response = await fetch(`${origin}${READINESS_PATH}`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ service: "html-stuff", protocol: 1,
+      configuration: configurationFingerprint(root, stateFile), ready: true, reasonCode: "ready" });
+    await expect(readFile(stateFile)).rejects.toMatchObject({ code: "ENOENT" });
+    const port = new URL(origin).port;
+    const adopter = spawn("bun", ["run", serverPath, "--directory", root, "--port", port, "--state-file", stateFile], { stdio: ["ignore", "pipe", "pipe"] });
+    let adoptedOutput = "";
+    adopter.stdout!.on("data", chunk => { adoptedOutput += chunk.toString(); });
+    try {
+      await waitFor(() => adoptedOutput.includes('"readiness":"adopted"'));
+      expect(adopter.exitCode).toBeNull();
+      expect(child.exitCode).toBeNull();
+      expect((await fetch(`${origin}/sample.html`)).status).toBe(200);
+      expect(await readFile(join(root, "sample.html"), "utf8")).toBe("<!doctype html><title>sample</title>");
+      expect(adoptedOutput).not.toContain(root);
+    } finally {
+      adopter.kill("SIGTERM");
+      await new Promise<void>(resolve => adopter.once("exit", () => resolve()));
+    }
+    expect((await fetch(`${origin}/sample.html`)).status).toBe(200);
+  });
+
   test("missing GET is stable and does not create the file; PUT persists across reload", async () => {
     const first = await getState();
     expect(first.response.status).toBe(200);
@@ -224,6 +249,10 @@ describe("html stuff dossier state API", () => {
     expect(unavailable.outcome).toBe("failed");
     expect(output).not.toContain(malformed);
     expect(await readFile(malformed, "utf8")).toBe("not json");
+    const readiness = await fetch(`${origin}${READINESS_PATH}`);
+    expect(readiness.status).toBe(503);
+    expect(await readiness.json()).toMatchObject({ ready: false, reasonCode: "source_unavailable" });
+    expect((await fetch(`${origin}/sample.html`)).status).toBe(200);
     await stop();
     const target = join(work, "target.json");
     await writeFile(target, JSON.stringify({ version: 1, revision: 0, fields: {} }));

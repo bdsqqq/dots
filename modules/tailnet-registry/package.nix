@@ -8,6 +8,10 @@ let
       "--replace-fail"
       "\"../service-events/events.ts\""
       "\"${../service-events/events.ts}\""
+      "--replace-fail"
+      "\"../nix/upgrade-status.ts\""
+      # Copy the directory, not a bare file: the helper may import sibling state types.
+      "\"${../nix}/upgrade-status.ts\""
     ];
   };
 in

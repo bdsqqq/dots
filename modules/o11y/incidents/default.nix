@@ -9,6 +9,7 @@ let
     // lib.mapAttrs' (name: _: lib.nameValuePair "${name}.local" [ "/System/Volumes/Data" ]) inputs.self.darwinConfigurations;
   runtimeConfig = pkgs.writeText "axiom-incidents.json" (builtins.toJSON {
     inherit mounts;
+    inherit (cfg) externalExpectations;
     rulesPath = "${source}/../monitors.json";
     database = "/var/lib/axiom-incidents/incidents.sqlite";
   });
@@ -22,7 +23,22 @@ let
   };
 in
 {
-  options.services.axiom-incidents.enable = lib.mkEnableOption "persistent, measured-recovery host incident notifications";
+  options.services.axiom-incidents = {
+    enable = lib.mkEnableOption "persistent, measured-recovery host incident notifications";
+    externalExpectations = lib.mkOption {
+      default = [ ];
+      description = "Opt-in readiness and upgrade expectations for explicitly monitored always-on hosts.";
+      type = lib.types.listOf (lib.types.submodule {
+        options = {
+          host = lib.mkOption { type = lib.types.str; };
+          metricsHost = lib.mkOption { type = lib.types.str; };
+          enabledAt = lib.mkOption { type = lib.types.str; };
+          manifestUrl = lib.mkOption { type = lib.types.str; };
+          services = lib.mkOption { type = lib.types.listOf lib.types.str; };
+        };
+      });
+    };
+  };
   config = lib.mkIf cfg.enable {
     my.o11y.credential.required = true;
     environment.systemPackages = [ runner ];

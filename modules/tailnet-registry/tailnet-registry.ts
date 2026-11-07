@@ -16,6 +16,9 @@ import {
   type EventContext,
 } from "../service-events/events.ts";
 
+import { readUpgradeHealth } from "../nix/upgrade-status.ts";
+
+type UpgradeReport = Awaited<ReturnType<typeof readUpgradeHealth>>;
 type EventLogger = ReturnType<typeof createEventLogger>;
 const events = createEventLogger("tailnet-registry");
 
@@ -44,6 +47,7 @@ export interface ServiceConfig {
   access: ServiceAccess;
   description: string | null;
   healthPath: string;
+  readinessPath?: string | null;
   path: string;
   port: number;
   scheme: Scheme;
@@ -64,6 +68,7 @@ interface RegistryConfig {
   };
   hostChecks: {
     syncthing: SyncthingCheckConfig;
+    upgrade?: { enable: boolean; stateFile: string };
   };
   services: Record<string, ServiceConfig>;
 }
@@ -117,6 +122,7 @@ interface PublicManifest {
     checks?: { syncthing?: SyncthingReport };
   };
   services: Record<string, PublicService>;
+  hostChecks?: { upgrade?: UpgradeReport };
 }
 
 interface Machine {
@@ -148,6 +154,11 @@ interface Health {
   checkedAt?: string;
   code?: number;
   latencyMs?: number;
+  reachable?: boolean;
+  /** Legacy reports may omit readiness. Unknown is false, never a recovery signal. */
+  ready?: boolean;
+  readiness?: "ready" | "not_ready";
+  reasonCode?: string;
 }
 
 interface Snapshot {
@@ -914,6 +925,56 @@ function sanitizedHealth(value: unknown, id: string): Health | undefined {
     ...(health.latencyMs === undefined
       ? {}
       : { latencyMs: health.latencyMs }),
+    ...sanitizedReadiness(health),
+  };
+}
+
+function sanitizedReadiness(health: Record<string, unknown>): Partial<Health> {
+  const fields: Partial<Health> = {};
+  if (health.reachable !== undefined) {
+    if (typeof health.reachable !== "boolean") throw new Error("invalid reachability");
+    fields.reachable = health.reachable;
+  }
+  if (health.ready !== undefined) {
+    if (typeof health.ready !== "boolean") throw new Error("invalid readiness");
+    if (health.ready === true && (health.status !== "up" || health.reachable === false)) {
+      throw new Error("inconsistent readiness");
+    }
+    fields.ready = health.ready;
+    fields.readiness = health.ready ? "ready" : "not_ready";
+  }
+  if (health.reasonCode !== undefined) {
+    if (typeof health.reasonCode !== "string" || !/^[a-zA-Z][a-zA-Z0-9_.:-]{0,95}$/.test(health.reasonCode)) {
+      throw new Error("invalid health reason code");
+    }
+    fields.reasonCode = health.reasonCode;
+  }
+  return fields;
+}
+
+function sanitizedUpgradeReport(value: unknown): UpgradeReport | undefined {
+  if (value === undefined) return undefined;
+  const report = asRecord(value);
+  if (!report || !["healthy", "degraded", "unknown"].includes(String(report.status))) {
+    throw new Error("invalid upgrade report");
+  }
+  const symbol = (value: unknown): string => {
+    if (typeof value !== "string" || !/^[a-zA-Z][a-zA-Z0-9_.:-]{0,95}$/.test(value)) {
+      throw new Error("invalid upgrade category");
+    }
+    return value;
+  };
+  const revision = (value: unknown): string | null => {
+    if (value === null) return null;
+    if (typeof value !== "string" || !/^[0-9a-f]{40,64}$/.test(value)) throw new Error("invalid upgrade revision");
+    return value;
+  };
+  return {
+    checkedAt: sanitizedTimestamp(report.checkedAt, "upgrade check time"),
+    status: report.status as UpgradeReport["status"],
+    reasonCode: symbol(report.reasonCode), phase: symbol(report.phase),
+    appliedRevision: revision(report.appliedRevision), desiredRevision: revision(report.desiredRevision),
+    lastSuccessAt: report.lastSuccessAt === null ? null : sanitizedTimestamp(report.lastSuccessAt, "upgrade success time"),
   };
 }
 
@@ -1031,7 +1092,9 @@ export function sanitizeManifest(value: unknown): PublicManifest {
   const rawHost = asRecord(manifest.host);
   const rawChecks = asRecord(rawHost?.checks);
   const syncthing = sanitizedSyncthingReport(rawChecks?.syncthing);
+  const upgrade = sanitizedUpgradeReport(asRecord(manifest.hostChecks)?.upgrade);
   return {
+    ...(upgrade ? { hostChecks: { upgrade } } : {}),
     schemaVersion: 1,
     ...(manifest.reportedAt === undefined
       ? {}
@@ -1139,10 +1202,10 @@ export async function fetchManifest(url: string): Promise<PublicManifest> {
   return sanitizeManifest(JSON.parse(new TextDecoder().decode(body)));
 }
 
-export async function probe(url: string): Promise<Health> {
+export async function probe(url: string, request: typeof fetch = fetch): Promise<Health> {
   const started = performance.now();
   try {
-    const response = await fetch(url, {
+    const response = await request(url, {
       headers: { "user-agent": "tailnet-registry/1" },
       redirect: "manual",
       signal: AbortSignal.timeout(3_000),
@@ -1162,6 +1225,34 @@ export async function probe(url: string): Promise<Health> {
   } catch {
     // The refresh operation reports aggregate readiness; individual healthy probes stay quiet.
     return { status: "down" };
+  }
+}
+
+/** Liveness and readiness are separate observations; arbitrary HTTP 200 pages prove only reachability. */
+export async function probeServiceHealth(
+  target: string,
+  healthPath: string,
+  readinessPath?: string | null,
+  request: typeof fetch = fetch,
+): Promise<Health> {
+  const health = await probe(new URL(healthPath, target).toString(), request);
+  const reachable = health.code !== undefined;
+  const base: Health = { ...health, reachable, ready: false, readiness: "not_ready", reasonCode: "readiness_not_configured" };
+  if (!reachable) return { ...base, ready: false, readiness: "not_ready", reasonCode: "backend_unreachable" };
+  if (!readinessPath) return base;
+  try {
+    const response = await request(new URL(readinessPath, target), {
+      headers: { accept: "application/json", "user-agent": "tailnet-registry/1" },
+      redirect: "manual", signal: AbortSignal.timeout(3_000),
+    });
+    const body = asRecord(JSON.parse(new TextDecoder().decode(await boundedBody(response))));
+    if (typeof body?.ready !== "boolean") throw new Error("invalid readiness response");
+    const ready = response.ok && body.ready && health.status === "up";
+    const reasonCode = typeof body.reasonCode === "string" && /^[a-zA-Z][a-zA-Z0-9_.:-]{0,95}$/.test(body.reasonCode)
+      ? body.reasonCode : ready ? "ready" : "backend_not_ready";
+    return { ...base, ready, readiness: ready ? "ready" : "not_ready", reasonCode };
+  } catch {
+    return { ...base, reasonCode: "readiness_unavailable" };
   }
 }
 
@@ -1332,11 +1423,20 @@ export async function refreshHostChecks(
   manifest: PublicManifest,
   logger: EventLogger = events,
 ): Promise<void> {
-  if (!config.hostChecks?.syncthing.enable) return;
-  manifest.host.checks = {
-    ...manifest.host.checks,
-    syncthing: await collectSyncthingReport(config.hostChecks.syncthing, logger),
-  };
+  if (config.hostChecks?.upgrade?.enable) {
+    const event = logger.begin("host.upgrade_health", "background");
+    const report = sanitizedUpgradeReport(await readUpgradeHealth(config.hostChecks.upgrade.stateFile))!;
+    manifest.hostChecks = { ...manifest.hostChecks, upgrade: report };
+    event.finish(report.status === "healthy" ? "succeeded" : "degraded", {
+      ready: report.status === "healthy", readiness: report.status, reasonCode: report.reasonCode,
+    });
+  }
+  if (config.hostChecks?.syncthing.enable) {
+    manifest.host.checks = {
+      ...manifest.host.checks,
+      syncthing: await collectSyncthingReport(config.hostChecks.syncthing, logger),
+    };
+  }
 }
 
 export async function refreshManifestHealth(
@@ -1361,14 +1461,14 @@ export async function refreshManifestHealth(
         return;
       }
       service.health = {
-        ...(await probe(new URL(healthPath, target).toString())),
+        ...(await probeServiceHealth(target, healthPath, declared?.readinessPath)),
         checkedAt: new Date().toISOString(),
       };
       observations.push(service.health);
     });
     manifest.reportedAt = new Date().toISOString();
-    const healthyProviderCount = observations.filter((health) => health.status === "up").length;
-    const uncertainCount = observations.filter((health) => health.status === "auth-required").length;
+    const healthyProviderCount = observations.filter((health) => health.ready === true).length;
+    const uncertainCount = observations.filter(readinessUnknown).length;
     const unhealthyProviderCount = observations.length - healthyProviderCount - uncertainCount;
     const ready = unhealthyProviderCount === 0 && uncertainCount === 0 && missingCount === 0;
     event.finish(ready ? "succeeded" : "degraded", {
@@ -1442,10 +1542,10 @@ export function manifestHealth(
   health: Health | undefined,
   now = Date.now(),
 ): Health {
-  if (!machineOnline) return { status: "offline", checkedAt: health?.checkedAt };
+  if (!machineOnline) return { status: "offline", checkedAt: health?.checkedAt, reachable: false, ready: false, readiness: "not_ready", reasonCode: "host_offline" };
   if (!health?.checkedAt) return { status: "checking" };
   if (now - Date.parse(health.checkedAt) > STALE_HEALTH_MS) {
-    return { ...health, status: "stale" };
+    return { ...health, status: "stale", ready: false, readiness: "not_ready", reasonCode: "stale_observation" };
   }
   return health;
 }
@@ -1632,18 +1732,31 @@ export function portableServiceSummaries(
   return [...groups.values()]
     .map((group) => ({
       ...group,
-      status: portableServiceStatus(
-        group.providers.map((provider) => provider.health.status),
-      ),
+      status: portableServiceStatus(group.providers.map(({ health }) => health.status)) === "unavailable"
+        ? "unavailable"
+        : group.providers.every(({ health }) => health.status === "up" && health.ready === true)
+          ? "available"
+          : group.providers.some(({ health }) => health.ready === false && !readinessUnknown(health)) ? "degraded" : "unknown",
     }))
     .sort((left, right) => left.title.localeCompare(right.title));
 }
 
+function readinessUnknown(health: Health): boolean {
+  return health.ready === undefined || health.reasonCode === "readiness_not_configured"
+    || health.reasonCode === "readiness_unavailable" || health.reasonCode === "stale_observation";
+}
+
+function healthTone(health: Health): string {
+  return health.status === "up" && health.ready !== true ? "checking" : health.status;
+}
+
 function healthDetail(health: Health): string {
   if (health.status === "up") {
-    return health.latencyMs === undefined ? "reachable" : `${health.latencyMs} ms`;
+    if (readinessUnknown(health)) return "reachable · readiness unknown";
+    if (health.ready === false) return `reachable · not ready (${health.reasonCode ?? "backend_not_ready"})`;
+    return health.latencyMs === undefined ? "ready" : `ready · ${health.latencyMs} ms`;
   }
-  if (health.status === "down") return "unreachable";
+  if (health.status === "down") return health.code === undefined ? "unreachable" : `reachable · HTTP ${health.code}`;
   if (health.status === "offline") return "host offline";
   if (health.status === "auth-required") return "auth boundary reachable";
   if (health.status === "stale") {
@@ -1685,7 +1798,7 @@ export function renderHealth(snapshot: Snapshot, now = Date.now()): string {
             <p><code>svc:${escapeHtml(service.name)}</code> · ${service.providers.length} known provider${service.providers.length === 1 ? "" : "s"}</p>
             <ul>${service.providers
               .map(
-                (provider) => `<li><span>${escapeHtml(provider.hostName)}</span><span class="probe health-${escapeHtml(provider.health.status)}"><i></i>${escapeHtml(healthDetail(provider.health))}</span></li>`,
+                (provider) => `<li><span>${escapeHtml(provider.hostName)}</span><span class="probe health-${escapeHtml(healthTone(provider.health))}"><i></i>${escapeHtml(healthDetail(provider.health))}</span></li>`,
               )
               .join("")}</ul>
           </article>`,
@@ -1702,7 +1815,7 @@ export function renderHealth(snapshot: Snapshot, now = Date.now()): string {
       const services = machine.services.length
         ? machine.services
             .map(
-              (service) => `<li><span>${escapeHtml(service.title)}</span><span class="probe health-${escapeHtml(service.health.status)}"><i></i>${escapeHtml(healthDetail(service.health))}</span></li>`,
+              (service) => `<li><span>${escapeHtml(service.title)}</span><span class="probe health-${escapeHtml(healthTone(service.health))}"><i></i>${escapeHtml(healthDetail(service.health))}</span></li>`,
             )
             .join("")
         : '<li class="empty">no service manifest observed</li>';
@@ -1712,9 +1825,14 @@ export function renderHealth(snapshot: Snapshot, now = Date.now()): string {
         : syncthing && timestampIsStale(syncthing.checkedAt, now)
           ? "stale"
           : syncthing?.status;
-      const checks = syncthing
+      const upgrade = machine.manifest?.hostChecks?.upgrade;
+      const upgradeState = !machine.online ? "host offline"
+        : upgrade && timestampIsStale(upgrade.checkedAt, now) ? "stale"
+        : upgrade ? `${upgrade.status} · ${upgrade.reasonCode}` : "unknown";
+      const checks = (syncthing
         ? `<div class="host-check"><strong>syncthing</strong><span class="state syncthing-${escapeHtml(syncthingState)}">${escapeHtml(machine.online ? syncthingDetail(syncthing, now) : "host offline; cached Syncthing report retained")}</span></div>`
-        : "";
+        : "") + (upgrade
+          ? `<div class="host-check"><strong>upgrade</strong><span class="state">${escapeHtml(upgradeState)}</span></div>` : "");
       return `<article class="machine-card ${machine.online ? "" : "offline"}">
         <header><strong>${escapeHtml(machine.hostName)}</strong><span>${machine.online ? "online" : `offline ${escapeHtml(relativeTime(machine.lastSeen, now))}`}</span></header>
         <p class="${reportStale ? "stale-copy" : ""}">${escapeHtml(manifestState)}</p>
@@ -1757,26 +1875,13 @@ export function renderDirectory(snapshot: Snapshot): string {
       const services = machine.services.length
         ? machine.services
             .map((service) => {
-              const detail =
-                service.health.status === "up"
-                  ? service.health.latencyMs === undefined
-                    ? "reachable"
-                    : `${service.health.latencyMs} ms`
-                  : service.health.status === "down"
-                    ? "unreachable"
-                    : service.health.status === "offline"
-                      ? "machine offline"
-                      : service.health.status === "auth-required"
-                        ? "sign-in required"
-                        : service.health.status === "stale"
-                          ? `stale ${relativeTime(service.health.checkedAt ?? null)}`
-                        : "checking";
+              const detail = healthDetail(service.health);
               return `<a class="service" href="${escapeHtml(service.url)}">
                 <span class="service-copy">
                   <strong>${escapeHtml(service.title)}</strong>
                   <small>${escapeHtml(service.description ?? service.url)}</small>
                 </span>
-                <span class="health health-${escapeHtml(service.health.status)}">
+                <span class="health health-${escapeHtml(healthTone(service.health))}">
                   <i></i>${escapeHtml(detail)}
                 </span>
               </a>`;

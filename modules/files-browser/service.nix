@@ -25,6 +25,7 @@ in
       scheme = "https";
       port = 3925;
       healthPath = "/";
+      readinessPath = "/_files/ready";
     };
 
     home-manager.users.bdsqqq = { config, lib, ... }: {

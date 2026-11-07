@@ -14,7 +14,11 @@ import {
   NativeServiceReconciler,
   portableServiceStatus,
   probe,
+  probeServiceHealth,
+  refreshHostChecks,
   refreshManifestHealth,
+  portableServiceSummaries,
+  renderDirectory,
   renderHealth,
   routesFromStatus,
   sanitizeManifest,
@@ -300,11 +304,12 @@ describe("operation events", () => {
   test("health refresh emits one readiness summary, not one event per backend probe", async () => {
     const capture = capturedEvents();
     const server = Bun.serve({ port: 0, fetch(request) {
+      if (new URL(request.url).pathname === "/ready") return Response.json({ ready: true });
       return new Response("private body", { status: new URL(request.url).pathname === "/ok" ? 200 : 401 });
     } });
     servers.push(server);
     const target = `http://127.0.0.1:${server.port}`;
-    const desired = config({ a: { target, healthPath: "/ok" }, b: { target, healthPath: "/auth" } });
+    const desired = config({ a: { target, healthPath: "/ok", readinessPath: "/ready" }, b: { target, healthPath: "/auth" } });
     const manifest = sanitizeManifest({ schemaVersion: 1, host: { name: "private-host" }, services: {
       a: { title: "private title", scheme: "http", port: 8000, path: "/", audience: "owner" },
       b: { title: "private title", scheme: "http", port: 8001, path: "/", audience: "owner" },
@@ -781,6 +786,82 @@ describe("health probes", () => {
       manifestHealth(true, report, Date.parse(checkedAt) + 121_000).status,
     ).toBe("stale");
     expect(manifestHealth(false, report).status).toBe("offline");
+  });
+});
+
+describe("readiness and safe upgrade reporting", () => {
+  test("injected probes distinguish a live HTTP server from readiness and reject ambiguous success", async () => {
+    let ready = false;
+    const request = (async (input: string | URL | Request) => {
+      const path = new URL(String(input)).pathname;
+      return path === "/ready" ? Response.json({ ready, reasonCode: ready ? "connected" : "bluetooth_unavailable" }, { status: ready ? 200 : 503 })
+        : new Response("live");
+    }) as typeof fetch;
+    expect(await probeServiceHealth("http://localhost", "/health", "/ready", request)).toMatchObject({
+      status: "up", reachable: true, ready: false, readiness: "not_ready", reasonCode: "bluetooth_unavailable",
+    });
+    ready = true;
+    expect(await probeServiceHealth("http://localhost", "/health", "/ready", request)).toMatchObject({ ready: true, readiness: "ready" });
+    expect(await probeServiceHealth("http://localhost", "/health", undefined, request)).toMatchObject({ reachable: true, ready: false, readiness: "not_ready", reasonCode: "readiness_not_configured" });
+    const filesReady = (async (input: string | URL | Request) => new URL(String(input)).pathname === "/_files/ready"
+      ? Response.json({ ready: false, reasonCode: "filesystem.EACCES" }, { status: 503 }) : new Response("live")) as typeof fetch;
+    expect(await probeServiceHealth("http://localhost", "/health", "/_files/ready", filesReady)).toMatchObject({
+      reachable: true, ready: false, readiness: "not_ready", reasonCode: "filesystem.EACCES",
+    });
+    const ambiguous = (async () => Response.json({ ok: true })) as typeof fetch;
+    expect(await probeServiceHealth("http://localhost", "/health", "/ready", ambiguous)).toMatchObject({ ready: false, readiness: "not_ready", reasonCode: "readiness_unavailable" });
+  });
+
+  test("healthy-but-not-ready remains degraded in aggregate events, manifests and both directories", async () => {
+    const server = Bun.serve({ port: 0, fetch(request) {
+      return new URL(request.url).pathname === "/ready" ? Response.json({ ready: false, reasonCode: "bluetooth_unavailable" }, { status: 503 }) : new Response("live");
+    } });
+    servers.push(server);
+    const desired = config({ hue: { target: server.url.origin, healthPath: "/health", readinessPath: "/ready" } });
+    const manifest = sanitizeManifest({ schemaVersion: 1, host: { name: "mini" }, services: {
+      hue: { scheme: "https", port: 8756, audience: "owner", tailscaleService: { name: "hue", port: 443 } },
+    } });
+    const capture = capturedEvents();
+    await refreshManifestHealth(desired, manifest, capture.logger);
+    expect(capture.records()[0]).toMatchObject({ operation: "local_health.refresh", outcome: "degraded", context: { ready: false, healthyProviderCount: 0, unhealthyProviderCount: 1 } });
+    expect(sanitizeManifest(manifest).services.hue.health).toMatchObject({ status: "up", reachable: true, ready: false });
+    const snapshot: Parameters<typeof renderHealth>[0] = { updatedAt: new Date().toISOString(), machines: [{
+      id: "mini", hostName: "mini", dnsName: "mini.tail.ts.net", online: true, lastSeen: null, os: "macOS", manifest,
+      services: [{ ...manifest.services.hue, id: "hue", url: "https://hue.tail.ts.net", health: manifest.services.hue.health! }],
+    }] };
+    expect(portableServiceSummaries(snapshot)[0].status).toBe("degraded");
+    expect(renderDirectory(snapshot)).toContain("reachable · not ready");
+    expect(renderHealth(snapshot)).toContain("bluetooth_unavailable");
+    const stale = manifestHealth(true, { ...manifest.services.hue.health!, ready: true }, Date.now() + 121_000);
+    expect(stale.ready).toBe(false);
+    expect(manifestHealth(false, { ...manifest.services.hue.health!, ready: true }).ready).toBe(false);
+  });
+
+  test("upgrade opt-in reads safe state each refresh, emits unknown on missing/invalid state and never leaks state details", async () => {
+    const desired = config();
+    const manifest = sanitizeManifest({ schemaVersion: 1, services: {} });
+    const capture = capturedEvents();
+    const stateFile = join(temporaryDirectory(), "private-upgrade.json");
+    await refreshHostChecks(desired, manifest, capture.logger);
+    expect(capture.records()).toHaveLength(0);
+    desired.hostChecks.upgrade = { enable: true, stateFile };
+    await refreshHostChecks(desired, manifest, capture.logger);
+    expect(manifest.hostChecks?.upgrade).toMatchObject({ status: "unknown", reasonCode: "state_missing" });
+    writeFileSync(stateFile, JSON.stringify({ privateError: "private-token", phase: "succeeded" }));
+    await refreshHostChecks(desired, manifest, capture.logger);
+    expect(capture.records().at(-1)).toMatchObject({ operation: "host.upgrade_health", outcome: "degraded", context: { ready: false, readiness: "unknown", reasonCode: "state_invalid" } });
+    const now = new Date().toISOString();
+    writeFileSync(stateFile, JSON.stringify({
+      schemaVersion: 1, host: "mini", operationId: "00000000-0000-0000-0000-000000000000", phase: "succeeded",
+      desiredRevision: "a".repeat(40), appliedRevision: "a".repeat(40), startedAt: now, phaseStartedAt: now, updatedAt: now,
+      lastSuccessAt: now, nextAttemptAt: null, consecutiveFailures: 0, reasonCode: "healthy", buildTimeoutMs: 1000,
+      activationWarnAfterMs: 1000, components: {}, privateError: "private-token",
+    }));
+    await refreshHostChecks(desired, manifest, capture.logger);
+    expect(capture.records().at(-1)).toMatchObject({ operation: "host.upgrade_health", outcome: "succeeded", context: { ready: true, readiness: "healthy", reasonCode: "healthy" } });
+    expect(sanitizeManifest(manifest).hostChecks?.upgrade).toEqual(manifest.hostChecks?.upgrade);
+    expect(Object.keys(manifest.hostChecks!.upgrade!).sort()).toEqual(["checkedAt", "status", "reasonCode", "phase", "appliedRevision", "desiredRevision", "lastSuccessAt"].sort());
+    expect(capture.lines.join("")).not.toMatch(/private-token|private-upgrade|appliedRevision|desiredRevision/);
   });
 });
 

@@ -3,6 +3,8 @@ import { mkdir, open, readdir, rename, rm } from "node:fs/promises";
 import { basename, extname, isAbsolute, join, resolve } from "node:path";
 import { createEventLogger, classifyHttpTraffic, safeErrorCode, type EventContext } from "../service-events/events.ts";
 
+import { acquireBackend, configurationFingerprint, inspectBackend, READINESS_PATH } from "./lifecycle.ts";
+
 const events = createEventLogger("html-stuff");
 const startup = events.begin("service.start", "background");
 
@@ -34,7 +36,8 @@ async function main() {
   }
 
   const root = resolve(argument("--directory"));
-  const port = Number.parseInt(argument("--port", "8766"), 10);
+  const port = Number(argument("--port", "8766"));
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("invalid port");
   const stateFileArgument = Bun.argv.includes("--state-file")
     ? argument("--state-file")
     : undefined;
@@ -45,6 +48,7 @@ async function main() {
   const stateOrigin = Bun.argv.includes("--state-origin")
     ? new URL(argument("--state-origin")).origin
     : undefined;
+  const configuration = configurationFingerprint(root, stateFile, stateOrigin);
   const STATE_ROUTE = "/api/pi-setup-dossier/state";
   const MAX_STATE_BYTES = 2 * 1024 * 1024;
   const MAX_REQUEST_BYTES = MAX_STATE_BYTES + 64;
@@ -495,8 +499,23 @@ async function main() {
     return name;
   }
 
+  async function backendReady(): Promise<boolean> {
+    try {
+      await readdir(root);
+      if (stateFile) await readState();
+      return true;
+    } catch { return false; }
+  }
+
   async function handleRequest(request: Request, context: EventContext): Promise<Response> {
     const { pathname } = new URL(request.url);
+    if (pathname === READINESS_PATH && request.method === "GET") {
+      const ready = await backendReady();
+      return response(JSON.stringify({
+        service: "html-stuff", protocol: 1, configuration, ready,
+        reasonCode: ready ? "ready" : "source_unavailable",
+      }), ready ? 200 : 503, "application/json");
+    }
     if (pathname === STATE_ROUTE) {
       if (!stateFile) return stateResponse('{"error":"not found"}', 404);
       if (request.method === "GET" || request.method === "HEAD") {
@@ -527,13 +546,23 @@ async function main() {
     }
   }
 
-  const server = Bun.serve({
+  const initiallyReady = await backendReady();
+  let server: ReturnType<typeof Bun.serve> | null = null;
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    process.once(signal, () => {
+      server?.stop(true);
+      process.exit(0);
+    });
+  }
+  server = await acquireBackend({
+    start: () => Bun.serve({
     hostname: "127.0.0.1",
     port,
     maxRequestBodySize: MAX_REQUEST_BYTES,
     async fetch(request) {
       const { pathname } = new URL(request.url);
-      const route = pathname === STATE_ROUTE ? "state"
+      const route = pathname === READINESS_PATH ? "health"
+        : pathname === STATE_ROUTE ? "state"
         : pathname === "/" || pathname === "/index.html" ? "index"
         : artifactName(pathname) ? "artifact" : "not_found";
       // Never use arbitrary methods or artifact/state names as event dimensions.
@@ -552,15 +581,22 @@ async function main() {
       operation.finish(result.status >= 400 ? "failed" : "succeeded", { ...context, statusCode: result.status });
       return result;
     },
+    }),
+    inspect: () => inspectBackend(`http://127.0.0.1:${port}`, configuration),
+    sleep: Bun.sleep,
+    observe: ({ state, attempt, retryInMs }) => {
+      const ready = state === "managed" ? initiallyReady : state === "adopted";
+      const context = { ready, readiness: state, reasonCode: state === "managed" && !ready ? "source_unavailable" : state, attempt, retryInMs };
+      startup.finish(ready ? "succeeded" : "degraded", context);
+      events.begin("backend.acquire").finish(ready ? "succeeded" : "degraded", {
+        ...context, ...(state === "recovery_exhausted" ? { action: "manual_intervention" } : {}),
+      });
+    },
   });
-
-  startup.finish("succeeded", { ready: true });
-
-  for (const signal of ["SIGINT", "SIGTERM"] as const) {
-    process.on(signal, () => {
-      server.stop(true);
-      process.exit(0);
-    });
+  if (!server) {
+    // Keep launchd from treating an unknown listener as a crash/restart loop.
+    // No listener or editable source is changed; intervention remains explicit.
+    setInterval(() => {}, 24 * 60 * 60 * 1000);
   }
 }
 

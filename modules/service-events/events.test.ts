@@ -33,6 +33,14 @@ test("metadata allowlist rejects bodies, paths, tokens, messages, and non-finite
   assert.ok(!JSON.stringify(event).includes("secret"));
 });
 
+test("upgrade revisions accept only full commit hashes", () => {
+  const logger = createEventLogger("fixture", { sink: () => {} });
+  const safe = logger.begin("upgrade.attempt").finish("succeeded", { revision: "a".repeat(40), appliedRevision: "1".repeat(40) });
+  assert.deepEqual(safe.context, { revision: "a".repeat(40), appliedRevision: "1".repeat(40) });
+  const unsafe = logger.begin("upgrade.attempt").finish("failed", { revision: "https://example.com/secret", appliedRevision: "/private/file" });
+  assert.deepEqual(unsafe.context, {});
+});
+
 test("probe classification is separate from browser-like and unknown clients", () => {
   assert.equal(classifyHttpTraffic("Mozilla/5.0", "artifact"), "browser");
   assert.equal(classifyHttpTraffic("tailnet-registry/1", "index"), "probe");
