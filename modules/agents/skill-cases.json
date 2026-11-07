@@ -1,5 +1,40 @@
 [
   {
+    "id": "youtube-pin-before-partial-failure",
+    "prompt": "Refresh only the metadata of my saved YouTube note from the supplied capture. It contains two comments: a popular creator-hearted comment and an explicitly pinned correction. Fetching then stopped with HTTP 429. Don't fetch again or alter the narration and assets.",
+    "expectedSkills": ["clipping-youtube-videos"],
+    "forbiddenSkills": [],
+    "expectedBehavior": "Retain only the explicit pin with its exact text and permalink; use found while preserving the partial-fetch error and actual inspected count of two. Preserve the note body, assets, unrelated properties, and prior capture/transcript provenance. No network requests."
+  },
+  {
+    "id": "youtube-clip-with-graphics",
+    "prompt": "Clip my YouTube video into the vault like the earlier devlog: keep the full captions and inline screenshots of the explanatory diagrams. Preserve the source description and pinned comments too.",
+    "expectedSkills": ["clipping-youtube-videos"],
+    "forbiddenSkills": ["making-brainrot-videos", "designing-agent-skills"],
+    "expectedBehavior": "Load the clipping workflow, preserve source metadata in YAML frontmatter, label automatic captions accurately, preserve caption order, and inspect local screenshots placed beside the relevant passages. Do not replace the transcript with paraphrases or claim an audio check that did not run."
+  },
+  {
+    "id": "youtube-not-chat-summary",
+    "prompt": "In this chat only, summarize the following YouTube description in one sentence: I built a tiny weather station that reports temperature over Bluetooth. No saved note or files.",
+    "expectedSkills": [],
+    "forbiddenSkills": ["clipping-youtube-videos", "obsidian"],
+    "expectedBehavior": "Answer briefly from the supplied text without downloading the video, retrieving comments, or creating a clip."
+  },
+  {
+    "id": "youtube-backfill-not-app-command",
+    "prompt": "Update only the frontmatter of my existing Markdown YouTube clip with the full source description, channel identity, and any pinned comments. Leave its transcript and screenshots unchanged. Thirty top comments were retrieved, none marked pinned; one is creator-hearted.",
+    "expectedSkills": ["clipping-youtube-videos"],
+    "forbiddenSkills": ["agent-desktop"],
+    "expectedBehavior": "Use ordinary file edits, preserve the body and existing metadata, and record an empty pinned list with not_found_in_bounded_sample plus the sample size, limit, and sort. Never treat a creator heart as a pin or the sample as proof of no pinned comment. Parse the saved YAML and compare source metadata."
+  },
+  {
+    "id": "youtube-pinned-fetch-failure",
+    "prompt": "Save a Markdown clip of my video. Metadata and original captions are available, but comments returned HTTP 429. The description contains multiple lines, colons, quotes, and links. Keep the description intact and don't retry comments.",
+    "expectedSkills": ["clipping-youtube-videos"],
+    "forbiddenSkills": [],
+    "expectedBehavior": "Save a parseable YAML description without truncation, retain successful metadata and captions, and mark pinned comments unavailable with the actual retrieval error. Do not invent comments, use none_confirmed, or retry the blocked request."
+  },
+  {
     "id": "write-substantial",
     "prompt": "Draft a public technical essay from these notes: our upload handler acknowledged before persistence; a delayed-write test reproduced stale reads; awaiting persistence fixes that ordering; multi-process behavior remains untested. Explain the mechanism and limits. Keep it in your response; do not publish it.",
     "expectedSkills": ["write"],
