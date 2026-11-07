@@ -45,10 +45,12 @@ let
     postPatch = (old.postPatch or "") + ''
       cp ${./native_schedule_test.go} internal/protoutil/native_schedule_test.go
       cp ${./schedule_history_test.go} internal/orchestrator/tasks/schedule_history_test.go
+      cp ${./sftp_transport_test.go} internal/orchestrator/repo/nix_sftp_transport_test.go
     '';
     postCheck = (old.postCheck or "") + ''
       NIX_BACKUP_CONFIG=${settings} go test ./internal/protoutil -run TestNixNative -count=1
       TZ=UTC go test ./internal/orchestrator/tasks -run TestNixScheduleHistory -count=1
+      NIX_BACKUP_CONFIG=${settings} NIX_TEST_SHELL=${pkgs.runtimeShell} go test ./internal/orchestrator/repo -run TestNixNativeSFTPTransport -count=1
     '';
   });
   pathGuard = paths: {

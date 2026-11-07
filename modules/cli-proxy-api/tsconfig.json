@@ -1,0 +1,5 @@
+{
+  "extends": "../tool-auth/tsconfig.json",
+  "compilerOptions": { "skipLibCheck": true, "erasableSyntaxOnly": true, "typeRoots": ["../pi/node_modules/@types"] },
+  "include": ["./*.ts", "../tool-auth/process.ts"]
+}

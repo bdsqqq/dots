@@ -1,4 +1,5 @@
 { lib, inputs, hostSystem ? null, config ? { }, ... }: {
+  imports = [ ../cli-proxy-api ];
   home-manager.users.bdsqqq = { pkgs, config, lib, ... }: {
     # home.file + mkOutOfStoreSymlink creates a 3-hop chain through /nix/store/
     # that iOS syncthing can't resolve. home.activation + ln -sf bypasses

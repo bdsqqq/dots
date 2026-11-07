@@ -31,6 +31,9 @@ in
         inherit (drive.repository) uri guid;
         inherit passwordFile;
         flags = [
+          # Backrest otherwise injects nonempty sftp.args alongside our command,
+          # which restic rejects. An explicit empty value suppresses that default.
+          "--option=sftp.args="
           (lib.escapeShellArgs [
             "-o"
             "sftp.command=${sshCommand}"

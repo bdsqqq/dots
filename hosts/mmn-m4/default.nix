@@ -61,6 +61,8 @@ in
     ../../modules/media-feeds
     ../../modules/backup/ssd-01
     ../../modules/backup/terraria
+    ../../modules/inference-archive
+    ../../modules/inference-archive/backup.nix
     ../../modules/files-browser/service.nix
     ../../modules/photo-gallery/service.nix
     ../../modules/photo-intelligence/service.nix
@@ -82,6 +84,16 @@ in
     stateFile = "${config.system.autoUpgrade.supervision.stateDir}/status.json";
   };
   my.primaryUser = "bdsqqq";
+  my.cliProxyApi.hub.enable = true;
+  my.inferenceArchive = {
+    enable = true;
+    backup.enable = true;
+    database.indexer = {
+      enable = true;
+      endpoint = "https://htz-lab.tail1543a7.ts.net:18923";
+      passwordFile = "/Users/bdsqqq/.config/inference-archive-indexer/password";
+    };
+  };
   my.openDisplay = {
     launchAtLogin = true;
     wifiServiceName = "iPad";

@@ -51,12 +51,24 @@ in
     ../../modules/fairy-name
     ../../modules/pi
     ../../modules/t3-code/server.nix
+    ../../modules/inference-archive
   ];
 
   nixpkgs.hostPlatform = "x86_64-linux";
   my.primaryUser = "bdsqqq";
   my.paths.commonplace = "/home/bdsqqq/commonplace";
   my.t3Code.nativeService.enable = true;
+  my.inferenceArchive.database.enable = true;
+  my.tailnetRegistry.services.inference-archive-database = {
+    title = "inference query index";
+    description = "authenticated ClickHouse; authoritative raw journals remain on mmn-m4";
+    target = "http://127.0.0.1:18923";
+    scheme = "https";
+    port = 18923;
+    healthPath = "/ping";
+    access.tailnet = "owner";
+    adoptExisting = true;
+  };
 
   # Install the CLI, but don't transfer the old runner's Google authorization.
   my.gog.enable = false;
