@@ -20,13 +20,14 @@ function fixture() {
 const root=${JSON.stringify(directory)}, command=process.argv[2], args=process.argv.slice(3), c=JSON.parse(readFileSync(root+'/control.json','utf8'));
 appendFileSync(root+'/commands.jsonl',JSON.stringify([command,...args])+'\\n');
 if(command==='revision') console.log(readFileSync(root+'/profile','utf8'));
-else if(command==='nix' && args[0]==='flake') console.log(JSON.stringify({revision:c.invalidRevision?'not-a-revision':${JSON.stringify(target)}}));
+else if(command==='nix' && args[0]==='flake') console.log(JSON.stringify({revision:c.invalidRevision?'not-a-revision':(c.publishedRevision??${JSON.stringify(target)})}));
 else if(command==='nix') {
  writeFileSync(root+'/building','yes');
  if(c.hangBuild) { process.on('SIGTERM',()=>{}); setInterval(()=>{},1000); }
  else { if(c.buildDelayMs) await new Promise(r=>setTimeout(r,c.buildDelayMs)); process.exitCode=c.buildFailure?1:0; }
 } else if(command==='activate') {
- writeFileSync(root+'/profile',${JSON.stringify(target)});
+ const pinned=args.find(value=>value.startsWith('github:'))?.split('/').at(-1)?.split('#')[0]??${JSON.stringify(target)};
+ writeFileSync(root+'/profile',pinned);
  writeFileSync(root+'/state/homebrew.json',JSON.stringify({status:c.dependenciesFailure||c.installerFailure?'failed':'succeeded',checkedAt:new Date().toISOString(),reasonCode:'fixture_install'}));
  process.exitCode=c.activationFailure?1:0;
 } else if(command==='dependencies') process.exitCode=c.dependenciesFailure?1:0;
@@ -68,6 +69,7 @@ test("manual migration can pin an exact published revision without chasing a con
     await assert.rejects(main(["run","--revision"]),/missing revision/);
     await assert.rejects(reconcile(f.config,{revision:"not-a-revision"}),/invalid published revision/);
     assert.deepEqual(f.history(),[]);
+    f.control({publishedRevision:"c".repeat(40)});
     assert.equal((await reconcile(f.config,{revision:target})).status,"succeeded");
     assert.equal(f.history().some(x=>x[0]==="nix" && x[1]==="flake"),false);
     assert.ok(f.history().find(x=>x[0]==="nix" && x[1]==="build")?.includes(`${f.config.flake}/${target}#darwinConfigurations.mmn-m4.system`));
@@ -82,6 +84,17 @@ test("build failure preserves current generation and applies retry backoff", asy
     assert.equal((await reconcile(f.config)).reasonCode,"retry_backoff");
     assert.equal(upgradeHealth(f.state()).status,"degraded");
   } finally { f.cleanup(); }
+});
+test("a newly published fix bypasses the failed revision's backoff and resets its failure budget", async () => {
+  const f=fixture();try {
+    f.control({buildFailure:true});assert.equal((await reconcile(f.config)).status,"failed");
+    assert.ok(Date.parse(f.state().nextAttemptAt!)>Date.now());
+    const next="c".repeat(40);f.control({publishedRevision:next});
+    assert.equal((await reconcile(f.config)).status,"succeeded");
+    assert.equal(f.state().appliedRevision,next);
+    assert.equal(f.state().consecutiveFailures,0);
+    assert.equal(f.history().filter(x=>x[0]==="activate").length,1);
+  }finally{f.cleanup();}
 });
 test("a hung build is terminated without activation or generation loss", {timeout:20_000}, async () => {
   const f=fixture();try {
@@ -116,6 +129,12 @@ test("presence checks cannot erase failed installers, and permanent dependency r
     assert.equal(f.history().filter(x=>x[0]==="repair-dependencies").length,3);
     assert.equal(f.state().components.dependencies.status,"succeeded");
     assert.equal(f.state().components.homebrew.status,"failed");
+    let state=f.state();state.nextAttemptAt=null;writeFileSync(join(f.config.stateDir,"status.json"),JSON.stringify(state));
+    f.control({invalidRevision:true});assert.equal((await reconcile(f.config)).status,"failed");
+    assert.equal(f.state().desiredRevision,target);assert.equal(f.state().dependencyRepairAttempts,3);
+    state=f.state();state.nextAttemptAt=null;writeFileSync(join(f.config.stateDir,"status.json"),JSON.stringify(state));
+    f.control({installerFailure:true,repairFailure:true});assert.equal((await reconcile(f.config)).status,"partial");
+    assert.equal(f.history().filter(x=>x[0]==="repair-dependencies").length,3,"metadata failure must not replenish the installer budget");
   }finally{f.cleanup();}
 });
 test("a proven reboot can retry pre-activation work, but cannot bless interrupted activation", async () => {

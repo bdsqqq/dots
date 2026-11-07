@@ -119,6 +119,15 @@ export async function recordComponent(config: UpgradeConfig, name: string, statu
 }
 
 export type UpgradeResult = { status: "succeeded" | "partial" | "failed" | "blocked" | "skipped"; reasonCode: string };
+async function publishedRevision(config: UpgradeConfig): Promise<{ revision: string | null; reasonCode: string }> {
+  const metadata = await execute([...config.nixCommand, "flake", "metadata", "--refresh", "--json", config.flake], { timeoutMs: 30_000, capture: true });
+  if (metadata.code !== 0 || metadata.timedOut) return { revision: null, reasonCode: "resolve_failed" };
+  try {
+    const data = JSON.parse(metadata.stdout), revision = data.revision ?? data.locked?.rev;
+    return typeof revision === "string" && sha.test(revision) ? { revision, reasonCode: "resolved" } : { revision: null, reasonCode: "invalid_revision" };
+  } catch { return { revision: null, reasonCode: "invalid_revision" }; }
+}
+
 export async function reconcile(config: UpgradeConfig, options: { acknowledgeInterrupted?: boolean; configFile?: string; bootId?: string | null; revision?: string } = {}): Promise<UpgradeResult> {
   if (options.revision !== undefined && !sha.test(options.revision)) throw new Error("invalid published revision");
   await mkdir(config.stateDir, { recursive: true, mode: 0o755 });
@@ -149,11 +158,18 @@ export async function reconcile(config: UpgradeConfig, options: { acknowledgeInt
       await atomicJson(statePath(config), state);
       return finish("blocked", state.reasonCode);
     }
+    let selection: Awaited<ReturnType<typeof publishedRevision>> | undefined = options.revision ? { revision: options.revision, reasonCode: "resolved" } : undefined;
     if (previous?.nextAttemptAt && Date.parse(previous.nextAttemptAt) > Date.now()) {
-      state = previous;
-      return finish("skipped", "retry_backoff");
+      // Backoff belongs to the failed revision, not to a newly published fix.
+      // Resolve read-only first so unchanged failures remain observable, not briefly "resolving".
+      selection ??= await publishedRevision(config);
+      if (!selection.revision || selection.revision === previous.desiredRevision) {
+        state = previous;
+        return finish("skipped", "retry_backoff");
+      }
     }
-    state = { ...initial(config), bootId, operationId: event.operationId, appliedRevision: previous?.appliedRevision ?? null, lastSuccessAt: previous?.lastSuccessAt ?? null, consecutiveFailures: previous?.consecutiveFailures ?? 0 };
+    state = { ...initial(config), bootId, operationId: event.operationId,
+      desiredRevision: previous?.desiredRevision ?? null, dependencyRepairAttempts: previous?.dependencyRepairAttempts ?? 0, appliedRevision: previous?.appliedRevision ?? null, lastSuccessAt: previous?.lastSuccessAt ?? null, consecutiveFailures: previous?.consecutiveFailures ?? 0 };
     const phase = async (value: UpgradePhase, reasonCode: string = value) => {
       state!.phase = value; state!.reasonCode = reasonCode; state!.phaseStartedAt = iso(); state!.updatedAt = state!.phaseStartedAt;
       await atomicJson(statePath(config), state);
@@ -166,15 +182,11 @@ export async function reconcile(config: UpgradeConfig, options: { acknowledgeInt
       return finish("failed", reasonCode);
     };
     await phase("resolving");
-    let target = options.revision;
-    if (!target) {
-      const metadata = await execute([...config.nixCommand, "flake", "metadata", "--refresh", "--json", config.flake], { timeoutMs: 30_000, capture: true });
-      if (metadata.code !== 0 || metadata.timedOut) return await fail("resolve_failed");
-      const data = JSON.parse(metadata.stdout);
-      target = data.revision ?? data.locked?.rev;
-    }
-    if (typeof target !== "string" || !sha.test(target)) return await fail("invalid_revision");
+    selection ??= await publishedRevision(config);
+    const target = selection.revision;
+    if (!target) return await fail(selection.reasonCode);
     state.desiredRevision = target;
+    if (previous?.desiredRevision !== target) state.consecutiveFailures = 0;
     state.dependencyRepairAttempts = previous?.desiredRevision === target ? previous.dependencyRepairAttempts ?? 0 : 0;
     state.appliedRevision = await revision(config);
     const pinned = `${config.flake}/${target}`;

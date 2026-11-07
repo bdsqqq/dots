@@ -13,8 +13,7 @@ let
     exec ${pkgs.nodejs_latest}/bin/node --experimental-strip-types ${source}/nix/host-upgrade.ts "$@"
   '';
   dependencyCheck = pkgs.writeShellScript "host-upgrade-dependencies" ''
-    export HOMEBREW_NO_AUTO_UPDATE=1
-    ${config.homebrew.onActivation.brewBundleCmd { onlyCheck = true; }}
+    ${import ../homebrew/dependency-check.nix { inherit lib pkgs; homebrew = config.homebrew; }}
   '';
   dependencyRepair = pkgs.writeShellScript "host-upgrade-dependency-repair" ''
     export HOMEBREW_NO_AUTO_UPDATE=1
