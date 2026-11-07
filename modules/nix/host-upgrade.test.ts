@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { execute, initialize, parseConfig, reconcile, type UpgradeConfig } from "./host-upgrade.ts";
+import { execute, initialize, main, parseConfig, reconcile, type UpgradeConfig } from "./host-upgrade.ts";
 import { parseUpgradeState, readUpgradeHealth, upgradeHealth } from "./upgrade-status.ts";
 
 const current = "a".repeat(40), target = "b".repeat(40);
@@ -57,10 +57,21 @@ test("validated direct operation pins one revision, verifies apply, and skips re
     assert.deepEqual(await reconcile(parseConfig(f.config)), {status:"succeeded",reasonCode:"healthy"});
     assert.equal(f.state().appliedRevision,target);
     assert.equal(upgradeHealth(f.state()).status,"healthy");
+    assert.ok(f.history().some(x=>x[0]==="nix" && x[1]==="flake"),"positive control: default discovery really records metadata calls");
     assert.ok(f.history().find(x=>x[0]==="nix" && x[1]==="build")?.includes(`github:bdsqqq/dots/${target}#darwinConfigurations.mmn-m4.system`));
     assert.equal((await reconcile(f.config)).status,"succeeded");
     assert.equal(f.history().filter(x=>x[0]==="activate").length,1);
   } finally { f.cleanup(); }
+});
+test("manual migration can pin an exact published revision without chasing a concurrent main update", async () => {
+  const f=fixture();try {
+    await assert.rejects(main(["run","--revision"]),/missing revision/);
+    await assert.rejects(reconcile(f.config,{revision:"not-a-revision"}),/invalid published revision/);
+    assert.deepEqual(f.history(),[]);
+    assert.equal((await reconcile(f.config,{revision:target})).status,"succeeded");
+    assert.equal(f.history().some(x=>x[0]==="nix" && x[1]==="flake"),false);
+    assert.ok(f.history().find(x=>x[0]==="nix" && x[1]==="build")?.includes(`${f.config.flake}/${target}#darwinConfigurations.mmn-m4.system`));
+  }finally{f.cleanup();}
 });
 test("build failure preserves current generation and applies retry backoff", async () => {
   const f=fixture();try {
