@@ -6,6 +6,8 @@ let
   );
 in
 ''
+  # sudo preserves cwd; the target user cannot traverse launchd's /var/root.
+  cd /
   # nix-darwin's onlyCheck runs cleanup: unrelated native installs are NOT missing dependencies.
   PATH="${homebrew.prefix}/bin:${lib.makeBinPath [ pkgs.mas ]}:$PATH" \
     sudo --preserve-env=PATH --user=${lib.escapeShellArg homebrew.user} --set-home \

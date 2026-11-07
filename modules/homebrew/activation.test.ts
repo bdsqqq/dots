@@ -69,7 +69,7 @@ test("supervisor checks declared presence, not cleanup or unrelated native insta
     const prefix=join(directory,"native brew"), bin=join(prefix,"bin");mkdirSync(bin,{recursive:true});
     const unrelated=join(prefix,"unrelated-install");writeFileSync(unrelated,"preserve native work");
     writeFileSync(join(bin,"sudo"),'#!/bin/bash\nset -e\nwhile [ "$1" != env ]; do shift; done\nexec "$@"\n',{mode:0o755});
-    writeFileSync(join(bin,"brew"),'#!/bin/bash\n[ "$1 $2" = "bundle check" ] || exit 42\nexit "${FIXTURE_MISSING:-0}"\n',{mode:0o755});
+    writeFileSync(join(bin,"brew"),'#!/bin/bash\n[ "$PWD" = / ] || exit 43\n[ "$1 $2" = "bundle check" ] || exit 42\nexit "${FIXTURE_MISSING:-0}"\n',{mode:0o755});
     const expression=`let source=builtins.fetchTree { ${nixSource} }; lib=import (source.outPath+"/lib"); in
       import ${moduleDir}/dependency-check.nix { inherit lib;
         pkgs={writeText=builtins.toFile;mas="/fixture/mas";};
@@ -81,10 +81,13 @@ test("supervisor checks declared presence, not cleanup or unrelated native insta
     assert.equal(run().status,0,"unrelated installed packages are not a dependency failure");
     assert.equal(run(rendered.stdout,"1").status,1,"missing declared packages must fail");
     assert.equal(run(rendered.stdout.replace("bundle check","bundle cleanup")).status,42,"known wrong operation is rejected");
+    assert.equal(run(rendered.stdout.replace("cd /\n","")).status,43,"known unsafe inherited cwd is rejected");
     assert.equal(readFileSync(unrelated,"utf8"),"preserve native work");
     const wiring=readFileSync(join(root,"modules/nix/auto-upgrade.nix"),"utf8").match(/dependencyCheck =[^]*?''([^]*?)'';/)![1];
     assert.match(wiring,/import \.\.\/homebrew\/dependency-check\.nix/);
     assert.doesNotMatch(wiring,/onlyCheck/);
+    const repair=readFileSync(join(root,"modules/nix/auto-upgrade.nix"),"utf8").match(/dependencyRepair =[^]*?''([^]*?)'';/)![1];
+    assert.ok(repair.includes("cd /"));
   } finally {rmSync(directory,{recursive:true,force:true});}
 });
 

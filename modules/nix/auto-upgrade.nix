@@ -16,6 +16,8 @@ let
     ${import ../homebrew/dependency-check.nix { inherit lib pkgs; homebrew = config.homebrew; }}
   '';
   dependencyRepair = pkgs.writeShellScript "host-upgrade-dependency-repair" ''
+    # The native user must be able to traverse cwd after sudo drops root.
+    cd /
     export HOMEBREW_NO_AUTO_UPDATE=1
     ${config.homebrew.onActivation.brewBundleCmd { onlyCheck = false; }}
   '';
