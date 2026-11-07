@@ -94,6 +94,7 @@ function routeCategory(pathname: string): string {
   switch (pathname) {
     case "/": return "ui";
     case "/health": return "health";
+    case "/ready": return "readiness";
     case "/api/state": return "state";
     case "/api/discover": return "discover";
     case "/api/commission": return "commission";
@@ -129,14 +130,14 @@ export function createHueControlServer(runtime: HueRuntimeApi, options: HueServe
     const method = ["GET", "POST", "HEAD", "OPTIONS", "PUT", "DELETE", "PATCH"].includes(request.method ?? "")
       ? request.method! : "OTHER";
     // Classification uses only a bounded category. Neither URL nor user agent enters an event.
-    const traffic = classifyHttpTraffic(request.headers["user-agent"], route);
+    const traffic = classifyHttpTraffic(request.headers["user-agent"], route === "readiness" ? "health" : route);
     const event = events.begin("http.request", traffic);
     const complete = (aborted: boolean): void => {
       if (completed) return;
       completed = true;
       const snapshot = runtime.snapshot();
       const ready = snapshot.status === "available";
-      const readinessOperation = ["health", "state", "commission", "enroll", "reconnect"].includes(route);
+      const readinessOperation = ["health", "readiness", "state", "commission", "enroll", "reconnect"].includes(route);
       const outcome: Outcome = aborted || response.statusCode >= 400 ? "failed"
         : readinessOperation && !ready ? "degraded" : "succeeded";
       const context: EventContext = {
@@ -147,7 +148,7 @@ export function createHueControlServer(runtime: HueRuntimeApi, options: HueServe
       };
       // The UI polls state every three seconds. Keep first observation and changes immediate,
       // then summarize identical health/state polls per traffic class at most once/minute.
-      if (!aborted && method === "GET" && (route === "health" || route === "state")) {
+      if (!aborted && method === "GET" && (route === "health" || route === "readiness" || route === "state")) {
         const key = `${route}:${traffic}`;
         const signature = JSON.stringify({ outcome, context });
         const previous = polls.get(key);
@@ -177,6 +178,15 @@ export function createHueControlServer(runtime: HueRuntimeApi, options: HueServe
       }
       if (request.method === "GET" && url.pathname === "/health") {
         json(response, 200, { ok: true, lightAvailable: runtime.snapshot().status === "available" });
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/ready") {
+        const snapshot = runtime.snapshot();
+        const ready = snapshot.status === "available";
+        json(response, ready ? 200 : 503, {
+          ready, readiness: snapshot.status,
+          reasonCode: snapshot.reasonCode ?? (ready ? "connected" : snapshot.status),
+        });
         return;
       }
       if (request.method === "GET" && url.pathname === "/api/state") {

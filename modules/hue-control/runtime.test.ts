@@ -193,10 +193,10 @@ test("runtime JSON events explain commands and readiness without disclosing devi
   }
 });
 
-test("identical BLE failures are counted, capped to one summary/minute, and flushed on recovery/stop", async () => {
+test("identical transient BLE failures are counted, capped to one summary/minute, and flushed on recovery/stop", async () => {
   const directory = await mkdtemp(join(tmpdir(), "hue-retry-"));
   const adapter = new FakeAdapter();
-  adapter.connectError = Object.assign(new Error("private-radio-device-secret"), { code: "BLUETOOTH_UNAVAILABLE" });
+  adapter.connectError = Object.assign(new Error("private-radio-device-secret"), { code: "ECONNRESET" });
   const capture = captureEvents();
   let clock = 0;
   const runtime = new HueRuntime(adapter, join(directory, "state.json"), { ...capture, now: () => clock });
@@ -207,7 +207,7 @@ test("identical BLE failures are counted, capped to one summary/minute, and flus
     assert.equal(runtime.snapshot().lastError, "private-radio-device-secret");
     assert.equal(capture.emitted().find((event) => event.operation === "runtime.enroll")?.outcome, "degraded");
     assert.equal(connections().length, 1);
-    assert.equal(connections()[0].context.reasonCode, "bluetooth_unavailable");
+    assert.equal(connections()[0].context.reasonCode, "bluetooth_connection_failed");
     assert.equal(connections()[0].context.retryInMs, 1000);
     for (let i = 0; i < 10; i++) await runtime.reconnect();
     assert.equal(connections().length, 1, "no new log for every identical retry");
@@ -217,7 +217,7 @@ test("identical BLE failures are counted, capped to one summary/minute, and flus
     assert.equal(connections().length, 2);
     assert.equal(connections()[1].operation, "ble.retry_summary");
     assert.equal(connections()[1].context.observationCount, 11);
-    assert.equal(connections()[1].context.retryInMs, 30_000);
+    assert.equal(connections()[1].context.retryInMs, 1000);
 
     // A changed failure category is meaningful immediately, even inside the rate-limit window.
     await runtime.reconnect();
@@ -237,7 +237,7 @@ test("identical BLE failures are counted, capped to one summary/minute, and flus
     assert.equal(recovered.context.fromState, "unavailable");
     assert.equal(recovered.context.toState, "available");
 
-    adapter.connectError = Object.assign(new Error("private-radio-device-secret"), { code: "BLUETOOTH_UNAVAILABLE" });
+    adapter.connectError = Object.assign(new Error("private-radio-device-secret"), { code: "ECONNRESET" });
     await runtime.reconnect();
     await runtime.reconnect();
     const beforeStop = connections().length;
@@ -283,6 +283,64 @@ test("automatic BLE retry keeps exponential delay and emits only bounded complet
   }
 });
 
+test("automatic transient recovery has a finite budget and explicit reconnect can recover", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+  const directory = await mkdtemp(join(tmpdir(), "hue-bounded-"));
+  const adapter = new FakeAdapter();
+  adapter.failConnect = true;
+  const capture = captureEvents();
+  const runtime = new HueRuntime(adapter, join(directory, "state.json"), capture);
+  const settle = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
+  try {
+    await runtime.enroll("private-id");
+    for (const delay of [1000, 2000, 4000, 8000, 16000]) {
+      t.mock.timers.tick(delay);
+      await settle();
+    }
+    assert.equal(adapter.connectedIds.length, 6);
+    t.mock.timers.tick(24 * 60 * 60_000);
+    await settle();
+    assert.equal(adapter.connectedIds.length, 6, "no retry loop after exhaustion");
+    assert.equal(runtime.snapshot().status, "unavailable");
+    assert.equal(capture.emitted().find(e => e.operation === "runtime.recovery")?.context.action, "manual_intervention");
+    adapter.failConnect = false;
+    await runtime.reconnect();
+    assert.equal(runtime.snapshot().status, "available");
+  } finally {
+    await runtime.stop();
+    t.mock.timers.reset();
+    await rm(directory, { recursive: true });
+  }
+});
+
+for (const [code, reasonCode] of [["BLUETOOTH_UNAVAILABLE", "bluetooth_unavailable"], ["EACCES", "bluetooth_permission_denied"], ["EPERM", "bluetooth_permission_denied"]]) {
+  test(`${code} stays degraded and escalates without automatic hardware/process recovery`, async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+    const directory = await mkdtemp(join(tmpdir(), "hue-terminal-"));
+    const adapter = new FakeAdapter();
+    adapter.connectError = Object.assign(new Error("private-device-error"), { code });
+    const capture = captureEvents();
+    const runtime = new HueRuntime(adapter, join(directory, "state.json"), capture);
+    try {
+      await runtime.enroll("private-id");
+      t.mock.timers.tick(24 * 60 * 60_000);
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+      assert.equal(adapter.connectedIds.length, 1);
+      assert.equal(runtime.snapshot().status, "unavailable");
+      assert.equal(runtime.snapshot().reasonCode, reasonCode);
+      const escalation = capture.emitted().find(e => e.operation === "runtime.recovery")!;
+      assert.equal(escalation.context.action, "manual_intervention");
+      assert.equal(escalation.context.retryInMs, 0);
+      assert.equal(escalation.context.reasonCode, reasonCode);
+      assert.doesNotMatch(capture.lines.join(""), /private-device|private-id/);
+    } finally {
+      await runtime.stop();
+      t.mock.timers.reset();
+      await rm(directory, { recursive: true });
+    }
+  });
+}
+
 test("initialization and persisted-state failures emit bounded categories without changing error results", async () => {
   const directory = await mkdtemp(join(tmpdir(), "hue-state-failure-"));
   const path = join(directory, "state.json");
@@ -302,6 +360,27 @@ test("initialization and persisted-state failures emit bounded categories withou
     assert.equal(failed.context.reasonCode, "initialization_failed");
     assert.equal(failed.context.ready, false);
     assert.doesNotMatch(capture.lines.join("\n"), /private-invalid-json|private-device|missing|932c32bd/);
+  } finally {
+    await runtime.stop();
+    await rm(directory, { recursive: true });
+  }
+});
+
+test("a disconnect callback cleanup failure escalates without an unhandled rejection or restart", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "hue-callback-"));
+  const adapter = new FakeAdapter();
+  const capture = captureEvents();
+  const runtime = new HueRuntime(adapter, join(directory, "state.json"), capture);
+  try {
+    await runtime.enroll("private-id");
+    adapter.connection.failDisconnect = true;
+    adapter.lost!();
+    for (let i = 0; i < 30; i++) await Promise.resolve();
+    assert.equal(runtime.snapshot().status, "unavailable");
+    assert.equal(adapter.connectedIds.length, 1);
+    const escalation = capture.emitted().find(e => e.operation === "runtime.recovery")!;
+    assert.equal(escalation.context.reasonCode, "cleanup_failed");
+    assert.equal(escalation.context.action, "manual_intervention");
   } finally {
     await runtime.stop();
     await rm(directory, { recursive: true });

@@ -16,6 +16,7 @@ import {
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createEventLogger, classifyHttpTraffic, safeErrorCode } from "../service-events/events.ts";
+import { BackendRecoveryBudget } from "./recovery.ts";
 
 const events = createEventLogger("files-browser");
 
@@ -318,14 +319,17 @@ export function startBackend(config, generation, snapshot, spawnProcess = spawn)
   return backend;
 }
 
-export async function stopBackend(backend) {
+export async function stopBackend(backend, graceMs = 5000) {
   if (backend.stopping) return backend.stopping;
   const operation = events.begin("backend.stop", "background", { generation: backend.generation });
   backend.stopping = (async () => {
     if (backend.child.pid !== undefined && backend.child.exitCode === null) {
       backend.child.kill("SIGTERM");
     }
-    await backend.closed;
+    const deadline = setTimeout(() => {
+      if (backend.child.exitCode === null && backend.child.signalCode == null) backend.child.kill("SIGKILL");
+    }, graceMs);
+    try { await backend.closed; } finally { clearTimeout(deadline); }
     await rm(backend.snapshot, { recursive: true, force: true });
     await rm(backend.history, { recursive: true, force: true });
   })().then(() => { operation.finish("succeeded"); }, (error) => {
@@ -346,12 +350,33 @@ function drainBackend(backend, backends) {
   timer.unref();
 }
 
+export async function backendReadiness(backend) {
+  if (!backend || backend.failure || backend.stopping || !backend.child || backend.child.exitCode !== null) {
+    return { ready: false, reasonCode: "backend_unavailable" };
+  }
+  try {
+    const response = await fetch(`http://127.0.0.1:${backend.port}/`, { signal: AbortSignal.timeout(1_000) });
+    await response.body?.cancel();
+    assertBackendLive(backend);
+    return response.ok ? { ready: true, reasonCode: "ready" } : { ready: false, reasonCode: "backend_http_failure" };
+  } catch { return { ready: false, reasonCode: "backend_unresponsive" }; }
+}
+
 export function proxyServer(activeBackend) {
   const server = createServer((incoming, outgoing) => {
     const path = (incoming.url ?? "/").split("?", 1)[0];
-    const route = ["/health", "/healthz"].includes(path) ? "health" : path === "/" ? "index" : "content";
+    const route = ["/health", "/healthz", "/_files/ready"].includes(path) ? "health" : path === "/" ? "index" : "content";
     const operation = observeRequest(incoming, outgoing, route);
     const backend = activeBackend();
+    if (path === "/_files/ready") {
+      void backendReadiness(backend).then(result => {
+        if (result.ready && activeBackend() !== backend) result = { ready: false, reasonCode: "backend_changed" };
+        const statusCode = result.ready ? 200 : 503;
+        operation.finish(result.ready ? "succeeded" : "degraded", { ...result, statusCode });
+        outgoing.writeHead(statusCode, { "content-type": "application/json", "cache-control": "no-store" }).end(JSON.stringify(result));
+      });
+      return;
+    }
     if (!backend) {
       operation.finish("failed", { statusCode: 503, ready: false, reasonCode: "BACKEND_UNAVAILABLE" });
       outgoing.writeHead(503).end("files browser is starting\n");
@@ -432,18 +457,39 @@ export function proxyServer(activeBackend) {
   return server;
 }
 
-export function createPublicationManager(config, snapshotsRoot) {
+export function createPublicationManager(config, snapshotsRoot, dependencies = {}) {
   let active = null;
   let generation = 0;
   let lastModelToken = null;
   let refreshing = false;
   const backends = new Set();
+  const recovery = new BackendRecoveryBudget(join(config.state, "backend-recovery.json"), dependencies.now);
+  const checkBackend = dependencies.readiness ?? backendReadiness;
+  const startOwned = dependencies.start ?? startBackend;
+  const stopOwned = dependencies.stop ?? stopBackend;
+  let pendingRecovery = Promise.resolve();
+  let recoveryError = null;
+  const recordFailure = async () => {
+    try { await recovery.failed(); } catch (error) { recoveryError = error; throw error; }
+  };
 
   const refresh = async () => {
     if (refreshing) return;
     refreshing = true;
     const operation = events.begin("publication.refresh");
     try {
+      await pendingRecovery;
+      if (recoveryError) throw recoveryError;
+      if (active) {
+        if (!(await checkBackend(active)).ready) {
+          const previous = active;
+          active = null;
+          lastModelToken = null;
+          try { await stopOwned(previous); } catch (error) { recoveryError = error; throw error; }
+          backends.delete(previous);
+          await recordFailure();
+        } else await recovery.healthy();
+      }
       config.apiKey ??= apiKeyFromConfig(await readFile(config.syncthingConfig, "utf8"));
       const status = await syncthingRequest(
         config,
@@ -459,6 +505,11 @@ export function createPublicationManager(config, snapshotsRoot) {
         return;
       }
 
+      const permit = await recovery.permit();
+      if (!permit.allowed) {
+        operation.finish("skipped", { ready: active !== null, reasonCode: permit.reasonCode, retryInMs: permit.retryInMs });
+        return;
+      }
       const entries = await syncthingRequest(
         config,
         `/rest/db/browse?folder=${encodeURIComponent(FOLDER_ID)}`
@@ -475,14 +526,15 @@ export function createPublicationManager(config, snapshotsRoot) {
       }
 
       generation += 1;
-      const backend = startBackend(config, generation, publication.snapshot);
+      const backend = startOwned(config, generation, publication.snapshot);
       backend.signature = publication.signature;
       backends.add(backend);
       backend.onExit = () => {
         if (active !== backend || backend.stopping) return;
         active = null;
         lastModelToken = null;
-        stopBackend(backend)
+        pendingRecovery = recordFailure().catch(() => {});
+        stopOwned(backend)
           .then(() => backends.delete(backend))
           .catch(() => {}); // backend.stop already records cleanup failures.
         setTimeout(() => {
@@ -494,7 +546,8 @@ export function createPublicationManager(config, snapshotsRoot) {
         assertBackendLive(backend);
       } catch (error) {
         backends.delete(backend);
-        await stopBackend(backend);
+        await stopOwned(backend);
+        await recordFailure();
         throw error;
       }
 
@@ -520,31 +573,39 @@ async function main(startup) {
   const config = parseArgs(process.argv.slice(2));
   await access(config.source);
   await mkdir(config.state, { recursive: true });
-  const snapshotsRoot = join(config.state, "snapshots");
-  await rm(snapshotsRoot, { recursive: true, force: true });
-  await rm(join(config.state, "history"), { recursive: true, force: true });
-  await mkdir(snapshotsRoot, { recursive: true });
-  const publication = createPublicationManager(config, snapshotsRoot);
-  await waitForPublication(publication.refresh, () => publication.active !== null);
-
-  const server = proxyServer(() => publication.active);
+  let publication = null;
+  let timer = null;
+  let stopping = false;
+  const server = proxyServer(() => publication?.active ?? null);
+  // Acquire the public listener before clearing managed snapshots: a second
+  // launcher must not erase the publication of an already-running instance.
   await new Promise((resolvePromise, reject) => {
     server.once("error", reject);
     server.listen(config.port, config.host, resolvePromise);
   });
-  startup.finish("succeeded", { readiness: "listening" });
-
-  const timer = setInterval(() => {
-    publication.refresh().catch(() => {});
-  }, REFRESH_INTERVAL_MS);
-
   const shutdown = async () => {
-    clearInterval(timer);
+    if (stopping) return;
+    stopping = true;
+    if (timer) clearInterval(timer);
+    server.closeAllConnections();
     await new Promise((resolvePromise) => server.close(resolvePromise));
-    await Promise.all([...publication.backends].map(stopBackend));
+    await Promise.all([...(publication?.backends ?? [])].map(backend => stopBackend(backend)));
   };
   process.once("SIGTERM", () => shutdown().finally(() => process.exit(0)));
   process.once("SIGINT", () => shutdown().finally(() => process.exit(130)));
+  try {
+    const snapshotsRoot = join(config.state, "snapshots");
+    await rm(snapshotsRoot, { recursive: true, force: true });
+    await rm(join(config.state, "history"), { recursive: true, force: true });
+    await mkdir(snapshotsRoot, { recursive: true });
+    publication = createPublicationManager(config, snapshotsRoot);
+    await waitForPublication(publication.refresh, () => stopping || publication.active !== null);
+    if (stopping) return;
+    startup.finish("succeeded", { readiness: "listening" });
+    timer = setInterval(() => {
+      publication.refresh().catch(() => {});
+    }, REFRESH_INTERVAL_MS);
+  } catch (error) { await shutdown(); throw error; }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

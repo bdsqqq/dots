@@ -13,7 +13,7 @@ const source = Object.fromEntries(["type", "owner", "repo", "rev", "narHash"].ma
 const nixSource = Object.entries(source).map(([key, value]) => `${key} = ${JSON.stringify(value)};`).join(" ");
 const decisions = '{"formulae":["example/tap/existing"]}\n';
 
-function fixture() {
+function fixture(supervised = false) {
   const directory = mkdtempSync(join(tmpdir(), "homebrew-activation-"));
   const home = join(directory, "user home");
   const configHome = join(home, "custom config");
@@ -23,6 +23,9 @@ function fixture() {
   const prefix = join(directory, "brew");
   for (const path of [dirname(trust), dirname(legacyTrust), logs, join(prefix, "bin")]) mkdirSync(path, { recursive: true });
   const brew = join(prefix, "bin/brew");
+  const recorder = join(directory, "record-component");
+  const results = join(directory, "results");
+  writeFileSync(recorder, `#!/bin/bash\nprintf '%s\\n' "$*" >> ${JSON.stringify(results)}\n`, { mode: 0o755 });
   // No installation or trust changes: the fake bundle checks preparation ordering.
   writeFileSync(brew, `#!/bin/bash\n[ -x ${JSON.stringify(logs)} ] || exit 12\n[ -d ${JSON.stringify(join(logs, "Homebrew"))} ] || exit 13\nexit "\${FIXTURE_BREW_STATUS:-0}"\n`, { mode: 0o755 });
   const expression = `let
@@ -32,6 +35,7 @@ function fixture() {
       inherit lib;
       config = {
         system.primaryUser = "fixture";
+        system.autoUpgrade.supervision.enable = ${supervised ? "true" : "false"};
         users.users.fixture.home = ${JSON.stringify(home)};
         home-manager.users.fixture.xdg.configHome = ${JSON.stringify(configHome)};
         homebrew.prefix = ${JSON.stringify(prefix)};
@@ -46,9 +50,10 @@ function fixture() {
   const result = spawnSync("nix", ["eval", "--impure", "--json", "--expr", expression], { encoding: "utf8", timeout: 60000 });
   assert.equal(result.status, 0, result.stderr);
   const rendered = JSON.parse(result.stdout) as { script: string; seed: string };
-  const script = rendered.script.replaceAll("chown fixture", `chown ${process.getuid!()}`);
+  const script = rendered.script.replaceAll("chown fixture", `chown ${process.getuid!()}`)
+    .replaceAll("/nix/var/nix/profiles/system/sw/bin/host-upgrade", JSON.stringify(recorder));
   return {
-    directory, home, trust, legacyTrust, logs, seed: rendered.seed,
+    directory, home, trust, legacyTrust, logs, seed: rendered.seed, results,
     run(status = 0) {
       return spawnSync("/bin/bash", ["-eu", "-c", script], {
         encoding: "utf8", env: { ...process.env, FIXTURE_BREW_STATUS: String(status) }, timeout: 10000,
@@ -57,6 +62,19 @@ function fixture() {
     cleanup() { rmSync(directory, { recursive: true, force: true }); },
   };
 }
+
+test("nonfatal Homebrew failures persist a partial result rather than pretending dependencies installed", () => {
+  const f = fixture(true);
+  try {
+    assert.equal(f.run(1).status, 0);
+    const failed = readFileSync(f.results, "utf8");
+    assert.match(failed, /--status running/);
+    assert.match(failed, /--status failed --reason dependency_install_failed/);
+    assert.doesNotMatch(failed, /--status succeeded/);
+    assert.equal(f.run(0).status, 0);
+    assert.match(readFileSync(f.results, "utf8"), /--status succeeded --reason dependencies_installed/);
+  } finally { f.cleanup(); }
+});
 
 for (const state of ["dangling", "readable", "regular", "custom-link", "missing"] as const) {
   test(`activation repairs legacy state idempotently: ${state}`, () => {

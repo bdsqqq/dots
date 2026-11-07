@@ -21,6 +21,7 @@ in
       scheme = "http";
       port = 8765;
       healthPath = "/";
+      readinessPath = "/_html-stuff/ready";
       adoptExisting = true;
     };
 

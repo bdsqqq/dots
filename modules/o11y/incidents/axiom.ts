@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import type { Observation, Transition } from "./state.ts";
+import { externalObservations, validateExpectations, type ExternalExpectation } from "./external.ts";
 
 const MINUTE = 60_000;
 const GIB = 1024 ** 3;
@@ -9,7 +10,7 @@ export type Rule = {
   name: string; type: string; mplQuery?: string; aplQuery?: string;
   threshold?: number; rangeMinutes: number;
 };
-export type Configuration = { mounts: Record<string, string[]>; rulesPath: string };
+export type Configuration = { mounts: Record<string, string[]>; rulesPath: string; externalExpectations?: ExternalExpectation[] };
 type Point = { at: number; value: number };
 type Series = { tags: Record<string, string>; points: Point[] };
 type Row = Record<string, unknown>;
@@ -128,8 +129,11 @@ export function metricObservation(rule: Rule, host: string, mount: string, point
   };
 }
 
-export async function observations(client: Axiom, config: Configuration, now: number): Promise<{ observations: Observation[]; errors: string[] }> {
+export async function observations(client: Axiom, config: Configuration, now: number, request: typeof fetch = fetch, clock: () => number = Date.now): Promise<{ observations: Observation[]; errors: string[] }> {
   const rules: Rule[] = JSON.parse(readFileSync(config.rulesPath, "utf8"));
+  const expectations = config.externalExpectations ?? [];
+  validateExpectations(expectations, new Set(rules.filter(rule => rule.type === "Threshold" && rule.name.startsWith("hosts: telemetry missing"))
+    .map(rule => rule.mplQuery?.match(/`host.name` == "([a-z0-9.-]+)"/)?.[1]).filter((host): host is string => !!host && Object.hasOwn(config.mounts, host))));
   const hosts = Object.keys(config.mounts);
   const errors: string[] = [];
   const safe = async <T>(name: string, operation: () => Promise<T>): Promise<T | undefined> => {
@@ -187,6 +191,9 @@ export async function observations(client: Axiom, config: Configuration, now: nu
       throw new Error(`unsupported host threshold rule: ${rule.name}`);
     }
   }
+  const external = await externalObservations(client, expectations, freshAt, now, request, clock);
+  result.push(...external.observations);
+  errors.push(...external.errors);
   return { observations: result, errors };
 }
 

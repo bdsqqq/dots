@@ -38,15 +38,31 @@ in
     repair_homebrew_trust ${lib.escapeShellArg "${configHome}/homebrew/trust.json"}
     unset -f repair_homebrew_trust
 
+    record_homebrew_result() {
+      :
+      ${lib.optionalString (config.system.autoUpgrade.supervision.enable or false) ''
+        # A non-critical installer failure must remain visible to the independent observer.
+        /nix/var/nix/profiles/system/sw/bin/host-upgrade component \
+          --name homebrew --status "$1" --reason "$2" \
+          --config /etc/host-upgrade.json || true
+      ''}
+    }
+
     # Homebrew manages mutable third-party packages. A broken cask should not
     # prevent nix-darwin and home-manager from activating the rest of the system.
     echo >&2 "Homebrew bundle..."
     if [ -f "${config.homebrew.prefix}/bin/brew" ]; then
-      if ! ${config.homebrew.onActivation.brewBundleCmd { onlyCheck = false; }}; then
+      record_homebrew_result running dependency_installing
+      if ${config.homebrew.onActivation.brewBundleCmd { onlyCheck = false; }}; then
+        record_homebrew_result succeeded dependencies_installed
+      else
+        record_homebrew_result failed dependency_install_failed
         printf >&2 '\e[1;33mwarning: Homebrew bundle failed; continuing system activation\e[0m\n'
       fi
     else
+      record_homebrew_result missing dependency_missing
       printf >&2 '\e[1;33mwarning: Homebrew is not installed; continuing system activation\e[0m\n'
     fi
+    unset -f record_homebrew_result
   '';
 }

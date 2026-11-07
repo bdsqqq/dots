@@ -84,6 +84,22 @@ async function withServer(
   }
 }
 
+test("liveness stays healthy while readiness truthfully reports an unavailable light", async () => {
+  await withServer(async (origin, runtime) => {
+    const ready = async () => {
+      const response = await fetch(`${origin}/ready`);
+      return { status: response.status, body: await response.json() };
+    };
+    assert.deepEqual(await ready(), { status: 503, body: { ready: false, readiness: "unenrolled", reasonCode: "unenrolled" } });
+    runtime.enrolled = "private-device";
+    runtime.available = false;
+    assert.equal((await fetch(`${origin}/health`)).status, 200);
+    assert.deepEqual(await ready(), { status: 503, body: { ready: false, readiness: "unavailable", reasonCode: "unavailable" } });
+    runtime.available = true;
+    assert.deepEqual(await ready(), { status: 200, body: { ready: true, readiness: "available", reasonCode: "connected" } });
+  });
+});
+
 test("server exposes UI, health, state, discovery, enrollment, and controls", async () => {
   await withServer(async (origin, runtime) => {
     const page = await fetch(origin);

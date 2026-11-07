@@ -76,6 +76,11 @@ in
 
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
+  system.autoUpgrade.supervision.enable = true;
+  my.tailnetRegistry.hostChecks.upgrade = {
+    enable = true;
+    stateFile = "${config.system.autoUpgrade.supervision.stateDir}/status.json";
+  };
   my.primaryUser = "bdsqqq";
   my.openDisplay = {
     launchAtLogin = true;
