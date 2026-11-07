@@ -3,6 +3,8 @@
   fetchPnpmDeps,
   lib,
   nodejs,
+  openssl,
+  rcodesign,
   pnpm_11,
   pnpmConfigHook,
   runtimeShell,
@@ -44,7 +46,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
 
   # The shared logger is outside this package's source root; esbuild must bundle the store copy.
   postPatch = ''
-    substituteInPlace events.ts runtime.ts server.ts hue-control-main.ts \
+    substituteInPlace events.ts runtime.ts server.ts hue-control-main.ts host-install.ts \
       --replace-fail '../service-events/events.ts' '${../service-events/events.ts}'
   '';
 
@@ -66,6 +68,9 @@ stdenvNoCC.mkDerivation (finalAttrs: {
       --platform=node \
       --target=node24
 
+    esbuild host-install.ts \
+      --bundle --format=esm --outfile=host-install.mjs --platform=node --target=node24
+
     ${lib.getExe nodejs} -e "import('webbluetooth')"
 
     runHook postBuild
@@ -75,7 +80,13 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     runHook preInstall
 
     app="$out/Applications/Hue Control.app"
-    mkdir -p "$out/bin" "$app/Contents/MacOS" "$app/Contents/Resources"
+    mkdir -p "$out/bin" "$out/libexec" "$app/Contents/MacOS" "$app/Contents/Resources"
+    install -m644 host-install.mjs "$out/libexec/host-install.mjs"
+    cat > "$out/bin/hue-host" <<EOF
+    #!${runtimeShell}
+    exec ${lib.getExe nodejs} "$out/libexec/host-install.mjs" "\$@" --signer ${lib.getExe rcodesign} --openssl ${lib.getExe openssl}
+    EOF
+    chmod 755 "$out/bin/hue-host"
     install -m755 ${lib.getExe nodejs} "$app/Contents/MacOS/HueControl"
     install -m644 hue-control.mjs "$app/Contents/Resources/hue-control.mjs"
     install -m644 hue-cli.mjs "$app/Contents/Resources/hue-cli.mjs"
@@ -83,7 +94,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
 
     cat > "$out/bin/hue" <<EOF
     #!${runtimeShell}
-    exec "$app/Contents/MacOS/HueControl" "$app/Contents/Resources/hue-cli.mjs" "\$@"
+    exec ${lib.getExe nodejs} "$app/Contents/Resources/hue-cli.mjs" "\$@"
     EOF
     chmod 755 "$out/bin/hue"
 

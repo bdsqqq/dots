@@ -9,6 +9,7 @@ import type { HueDevice } from "./ble-adapter.ts";
 import type { HueResult, HueState } from "./hue-protocol.ts";
 import type { HueRuntimeSnapshot } from "./runtime.ts";
 import { hueControlHtml } from "./ui.ts";
+import { parseDeployment } from "./deployment.ts";
 
 const maximumBodyBytes = 16 * 1024;
 
@@ -86,6 +87,8 @@ async function lightCommand(
 }
 
 export interface HueServerOptions {
+  /** Immutable startup metadata, not a live installation receipt. */
+  deploymentId?: string;
   events?: HueEvents;
   now?: () => number;
 }
@@ -106,6 +109,8 @@ function routeCategory(pathname: string): string {
 }
 
 export function createHueControlServer(runtime: HueRuntimeApi, options: HueServerOptions = {}): Server {
+  const deploymentId = options.deploymentId === undefined ? undefined
+    : parseDeployment({ schemaVersion: 1, deploymentId: options.deploymentId }).deploymentId;
   const events = options.events ?? hueEvents;
   const now = options.now ?? Date.now;
   type Completion = { event: ReturnType<HueEvents["begin"]>; outcome: Outcome; context: EventContext };
@@ -177,7 +182,7 @@ export function createHueControlServer(runtime: HueRuntimeApi, options: HueServe
         return;
       }
       if (request.method === "GET" && url.pathname === "/health") {
-        json(response, 200, { ok: true, lightAvailable: runtime.snapshot().status === "available" });
+        json(response, 200, { ok: true, lightAvailable: runtime.snapshot().status === "available", ...(deploymentId ? { deploymentId, runtimeVersion: process.version } : {}) });
         return;
       }
       if (request.method === "GET" && url.pathname === "/ready") {

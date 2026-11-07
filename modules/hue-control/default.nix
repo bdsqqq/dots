@@ -9,6 +9,14 @@ let
   cfg = config.my.hueControl;
   package = pkgs.callPackage ./package.nix { nodejs = pkgs.nodejs_latest; };
   app = "${package}/Applications/Hue Control.app";
+  installedApp = "/Applications/Hue Control.app";
+  host = "${package}/bin/hue-host";
+  # Do not register the changing ad-hoc payload beside the host-signed app.
+  tools = pkgs.runCommand "hue-control-tools" { } ''
+    mkdir -p "$out/bin"
+    ln -s ${package}/bin/hue "$out/bin/hue"
+    ln -s ${package}/bin/hue-host "$out/bin/hue-host"
+  '';
 in
 {
   options.my.hueControl = {
@@ -52,8 +60,20 @@ in
       tailscaleService.enable = cfg.publishService;
     };
 
+    # Private identity material is generated on the host, never in a derivation.
+    # Stage/sign/verify before home-manager can launch the new app; reload after it
+    # writes the agent plist, even when that plist's stable paths did not change.
+    system.activationScripts.preActivation.text = lib.mkIf cfg.runDaemon (lib.mkAfter ''
+      ${host} provision
+      ${host} install --source ${lib.escapeShellArg app}
+    '');
+    system.activationScripts.postActivation.text = lib.mkIf cfg.runDaemon (lib.mkOrder 2000 ''
+      ${host} activate --uid "$(/usr/bin/id -u bdsqqq)" --port ${toString cfg.port} \
+        --plist ${lib.escapeShellArg "${config.users.users.bdsqqq.home}/Library/LaunchAgents/org.nix-community.home.hue-control.plist"}
+    '');
+
     home-manager.users.bdsqqq = { config, lib, ... }: {
-      home.packages = [ package ];
+      home.packages = [ tools ];
       home.activation.hueControlState = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         mkdir -p ${lib.escapeShellArg (builtins.dirOf cfg.statePath)}
         chmod 700 ${lib.escapeShellArg (builtins.dirOf cfg.statePath)}
@@ -63,8 +83,8 @@ in
         enable = true;
         config = {
           ProgramArguments = [
-            "${app}/Contents/MacOS/HueControl"
-            "${app}/Contents/Resources/hue-control.mjs"
+            "${installedApp}/Contents/MacOS/HueControl"
+            "${installedApp}/Contents/Resources/hue-control.mjs"
             "--state"
             cfg.statePath
             "--port"
