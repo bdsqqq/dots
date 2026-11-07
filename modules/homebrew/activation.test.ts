@@ -63,6 +63,31 @@ function fixture(supervised = false) {
   };
 }
 
+test("supervisor checks declared presence, not cleanup or unrelated native installs", () => {
+  const directory = mkdtempSync(join(tmpdir(), "homebrew-presence-"));
+  try {
+    const prefix=join(directory,"native brew"), bin=join(prefix,"bin");mkdirSync(bin,{recursive:true});
+    const unrelated=join(prefix,"unrelated-install");writeFileSync(unrelated,"preserve native work");
+    writeFileSync(join(bin,"sudo"),'#!/bin/bash\nset -e\nwhile [ "$1" != env ]; do shift; done\nexec "$@"\n',{mode:0o755});
+    writeFileSync(join(bin,"brew"),'#!/bin/bash\n[ "$1 $2" = "bundle check" ] || exit 42\nexit "${FIXTURE_MISSING:-0}"\n',{mode:0o755});
+    const expression=`let source=builtins.fetchTree { ${nixSource} }; lib=import (source.outPath+"/lib"); in
+      import ${moduleDir}/dependency-check.nix { inherit lib;
+        pkgs={writeText=builtins.toFile;mas="/fixture/mas";};
+        homebrew={prefix=${JSON.stringify(prefix)};user="fixture";brewfile="brew \\\"declared\\\"";onActivation.extraEnv={};};
+      }`;
+    const rendered=spawnSync("nix",["eval","--impure","--raw","--expr",expression],{encoding:"utf8",timeout:60000});
+    assert.equal(rendered.status,0,rendered.stderr);
+    const run=(script=rendered.stdout,missing="0")=>spawnSync("/bin/bash",["-eu","-c",script],{encoding:"utf8",env:{...process.env,FIXTURE_MISSING:missing},timeout:5000});
+    assert.equal(run().status,0,"unrelated installed packages are not a dependency failure");
+    assert.equal(run(rendered.stdout,"1").status,1,"missing declared packages must fail");
+    assert.equal(run(rendered.stdout.replace("bundle check","bundle cleanup")).status,42,"known wrong operation is rejected");
+    assert.equal(readFileSync(unrelated,"utf8"),"preserve native work");
+    const wiring=readFileSync(join(root,"modules/nix/auto-upgrade.nix"),"utf8").match(/dependencyCheck =[^]*?''([^]*?)'';/)![1];
+    assert.match(wiring,/import \.\.\/homebrew\/dependency-check\.nix/);
+    assert.doesNotMatch(wiring,/onlyCheck/);
+  } finally {rmSync(directory,{recursive:true,force:true});}
+});
+
 test("nonfatal Homebrew failures persist a partial result rather than pretending dependencies installed", () => {
   const f = fixture(true);
   try {

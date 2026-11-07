@@ -3,7 +3,9 @@
 an hourly trigger is not evidence that a host applied anything. the opt-in darwin
 supervisor pins one published revision, builds it with an owned-process deadline,
 and verifies the applied revision and dependency check before reporting success.
-unchanged revisions are checked without reactivating the system.
+unchanged revisions are checked without reactivating the system. retry backoff
+belongs to the failed revision; a newly published fix starts a fresh bounded
+attempt without waiting for an older revision's retry deadline.
 
 ## safety boundaries
 
