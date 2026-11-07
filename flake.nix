@@ -395,6 +395,9 @@
 
         checks.service-events = import ./modules/service-events/check.nix { inherit pkgs; };
 
+        checks.hue-control = pkgs.lib.mkIf pkgs.stdenv.hostPlatform.isDarwin
+          (import ./modules/hue-control/check.nix { inherit pkgs; });
+
         checks.tailnet-artifacts = pkgs.runCommand "tailnet-artifacts-check" { } ''
           ${config.packages.tailnet-artifact-generator}/bin/generate-tailnet-artifacts \
             --check \

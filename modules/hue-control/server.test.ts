@@ -84,6 +84,17 @@ async function withServer(
   }
 }
 
+test("deployment acknowledgement is immutable and does not claim Bluetooth readiness", async () => {
+  const options = { deploymentId: "a".repeat(64) };
+  await withServer(async (origin) => {
+    options.deploymentId = "b".repeat(64);
+    const response = await fetch(`${origin}/health`);
+    assert.deepEqual(await response.json(), { ok: true, lightAvailable: false, deploymentId: "a".repeat(64), runtimeVersion: process.version });
+    assert.equal((await fetch(`${origin}/ready`)).status, 503);
+  }, options);
+  assert.throws(() => createHueControlServer(new FakeRuntime(), { deploymentId: "private invalid value" }));
+});
+
 test("liveness stays healthy while readiness truthfully reports an unavailable light", async () => {
   await withServer(async (origin, runtime) => {
     const ready = async () => {

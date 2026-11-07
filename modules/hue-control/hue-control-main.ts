@@ -6,6 +6,7 @@ import { hueEvents } from "./events.ts";
 
 import { WebBluetoothHueAdapter } from "./ble-adapter.ts";
 import { HueRuntime } from "./runtime.ts";
+import { runningDeployment } from "./deployment.ts";
 import { createHueControlServer, listen } from "./server.ts";
 
 function option(name: string, fallback: string): string {
@@ -27,7 +28,8 @@ try {
 
   const runtime = new HueRuntime(new WebBluetoothHueAdapter(), statePath);
   await runtime.start();
-  const server = createHueControlServer(runtime);
+  const deployed = await runningDeployment();
+  const server = createHueControlServer(runtime, { deploymentId: deployed?.deploymentId });
   await listen(server, port);
   const snapshot = runtime.snapshot();
   startup.finish(snapshot.status === "available" ? "succeeded" : "degraded", {
