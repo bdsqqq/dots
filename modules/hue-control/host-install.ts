@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash, createPrivateKey, generateKeyPairSync, randomUUID, X509Certificate } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { chmod, cp, lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, cp, lchmod, lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
@@ -100,7 +100,11 @@ async function writableTree(root: string): Promise<void> {
   const links: string[] = [];
   async function visit(path: string): Promise<void> {
     const stat = await lstat(path);
-    if (stat.isSymbolicLink()) { links.push(path); return; }
+    if (stat.isSymbolicLink()) {
+      // macos enforces readlink permissions; root's private umask must not hide public dependencies.
+      await lchmod(path, 0o777);
+      links.push(path); return;
+    }
     await chmod(path, stat.isDirectory() ? 0o755 : (stat.mode & 0o111) ? 0o755 : 0o644);
     if (stat.isDirectory()) for (const name of await readdir(path)) await visit(join(path, name));
   }
@@ -141,7 +145,8 @@ export async function install(config: HostConfig, sourceApp: string): Promise<De
       await verifyOwnedApp(config, config.destination, signer);
       if ((await deployment(config.destination)).deploymentId === desired.deploymentId) return desired;
     }
-    const staging = join(dirname(config.destination), `.Hue Control.stage-${randomUUID()}.app`);
+    // keep unsigned code behind the root-only state directory until verification and promotion.
+    const staging = join(config.stateDir, `.Hue Control.stage-${randomUUID()}.app`);
     const requirements = join(config.stateDir, `requirements-${randomUUID()}`);
     try {
       await cp(source, staging, { recursive: true, dereference: false, verbatimSymlinks: true, errorOnExist: true, force: false });
@@ -155,6 +160,8 @@ export async function install(config: HostConfig, sourceApp: string): Promise<De
       // No keychain or global certificate trust. The signer-bound requirement,
       // not an ad-hoc code hash or identifier-only rule, authenticates upgrades.
       await command(config.signer, ["--config-file", "/dev/null", "sign", "--pem-file", signer.key, "--pem-file", signer.certificate, "--timestamp-url", "none", "--code-requirements-file", requirements, staging]);
+      // signing and metadata writes inherit the private umask; only the key directory stays private.
+      await writableTree(staging);
       await verifyApp(staging, signer);
       if (await exists(previous)) { await verifyOwnedApp(config, previous, signer); await rm(previous, { recursive: true }); }
       if (await exists(config.destination)) await rename(config.destination, previous);

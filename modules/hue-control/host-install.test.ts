@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmod, cp, mkdir, mkdtemp, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, cp, lchmod, lstat, mkdir, mkdtemp, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -72,9 +72,11 @@ test("different executable and resource bytes retain one authenticated identity;
     assert.deepEqual(await f.metadata(), second, "sign failure preserves the installed generation");
     const unsafe = await f.app("external-reference", "/usr/bin/true");
     const unrelated = join(f.root, "unrelated-file");await writeFile(unrelated,"preserve this");
+    const unrelatedMode = (await lstat(unrelated)).mode;
     await symlink(unrelated,join(unsafe,"Contents/Resources/outside"));
     await assert.rejects(install(f.config,unsafe),/EXTERNAL_BUNDLE_SYMLINK/);
     assert.equal(await readFile(unrelated,"utf8"),"preserve this");
+    assert.equal((await lstat(unrelated)).mode, unrelatedMode, "link normalization must not chmod the external target");
     await writeFile(join(f.config.destination, "Contents/Resources/payload.txt"), "native user edit");
     await assert.rejects(install(f.config, c), "unverified native edits must not be overwritten");
     assert.equal(await readFile(join(f.config.destination, "Contents/Resources/payload.txt"), "utf8"), "native user edit");
@@ -83,10 +85,24 @@ test("different executable and resource bytes retain one authenticated identity;
 
 test("the real packaged payload signs and verifies without touching its immutable source", { skip: !native || !process.env.HUE_APP_PAYLOAD, timeout: 120_000 }, async () => {
   const f = await fixture();
+  const previousUmask = process.umask(0o077);
+  async function publicRuntime(): Promise<void> {
+    const resources = join(f.config.destination, "Contents/Resources");
+    assert.equal((await lstat(join(resources,"node_modules/webbluetooth"))).mode & 0o777, 0o777, "root's umask must not make readlink private to root on macos");
+    assert.equal((await stat(join(resources,"host-deployment.json"))).mode & 0o777, 0o644);
+    const code = "process.stdout.write(typeof require('node:module').createRequire(process.argv[1])('webbluetooth').Bluetooth)";
+    assert.equal(execFileSync(join(f.config.destination,"Contents/MacOS/HueControl"), ["-e", code, join(resources,"hue-control.mjs")], {encoding:"utf8"}), "function", "signed javascript and native dependencies load without acquiring the adapter");
+  }
   try {
     const signed = await provision(f.config);
     await install(f.config, process.env.HUE_APP_PAYLOAD!);
     await verifyApp(f.config.destination, signed);
+    await publicRuntime();
+    const dependencyLink = join(f.config.destination,"Contents/Resources/node_modules/webbluetooth");
+    await lchmod(dependencyLink,0o700);
+    await verifyApp(f.config.destination,signed);
+    await assert.rejects(publicRuntime(), "known bad: valid signature cannot excuse a root-private dependency symlink");
+    await lchmod(dependencyLink,0o777);
     const sourceVersion = execFileSync(join(process.env.HUE_APP_PAYLOAD!, "Contents/MacOS/HueControl"), ["--version"], { encoding: "utf8" });
     assert.equal(execFileSync(join(f.config.destination, "Contents/MacOS/HueControl"), ["--version"], { encoding: "utf8" }), sourceVersion, "the signed Node executable must pass native runtime validation without invoking BLE");
     await assert.rejects(verifyApp(process.env.HUE_APP_PAYLOAD!, signed), "source payload remains ad-hoc, not silently re-signed in the store");
@@ -95,13 +111,14 @@ test("the real packaged payload signs and verifies without touching its immutabl
       const next = process.env.HUE_UPGRADE_PAYLOAD;
       await install(f.config, next);
       const after = await verifyApp(f.config.destination, signed);
+      await publicRuntime();
       assert.equal(before, after);
       const nextVersion = execFileSync(join(f.config.destination, "Contents/MacOS/HueControl"), ["--version"], { encoding: "utf8" });
       assert.notEqual(nextVersion, sourceVersion, "the upgrade fixture must genuinely change Node versions");
       execFileSync("/usr/bin/codesign", ["--verify", "--strict", "-R", `=${before}`, f.config.destination]);
       execFileSync("/usr/bin/codesign", ["--verify", "--strict", "-R", `=${after}`, join(f.root,"installed/.Hue Control.previous.app")]);
     }
-  } finally { await f.cleanup(); }
+  } finally { process.umask(previousUmask); await f.cleanup(); }
 });
 
 test("interrupted replacement restores only our authenticated backup before attempting another install", { skip: !native, timeout: 30_000 }, async () => {
