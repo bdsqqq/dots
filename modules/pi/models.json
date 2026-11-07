@@ -2,6 +2,41 @@
   "providers": {
     "typesafe": {
       "apiKey": "!cat /run/secrets/TYPESAFE_API_KEY"
+    },
+    "cliproxyapi": {
+      "name": "CLIProxyAPI · Codex",
+      "baseUrl": "https://mmn-m4.tail1543a7.ts.net:8317/v1",
+      "api": "openai-responses",
+      "apiKey": "!inference-broker key",
+      "models": [
+        {
+          "id": "gpt-6.1-sol",
+          "name": "GPT-6.1 Sol · broker",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 500000,
+          "maxTokens": 128000,
+          "thinkingLevelMap": { "off": null, "minimal": "low", "low": "low", "medium": "medium", "high": "high", "xhigh": "xhigh", "max": "max" }
+        },
+        {
+          "id": "gpt-6-astra",
+          "name": "GPT-6 Astra · broker",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 272000,
+          "maxTokens": 128000,
+          "thinkingLevelMap": { "off": null, "minimal": "low", "low": "low", "medium": "medium", "high": "high", "xhigh": "xhigh", "max": "max" }
+        },
+        {
+          "id": "gpt-6-luna",
+          "name": "GPT-6 Luna · broker",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 272000,
+          "maxTokens": 128000,
+          "thinkingLevelMap": { "off": "none", "minimal": "low", "low": "low", "medium": "medium", "high": "high", "xhigh": "xhigh", "max": "max" }
+        }
+      ]
     }
   }
 }

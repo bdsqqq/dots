@@ -12,6 +12,10 @@
 	},
 	"hosts": {
 		"mbp-m2": "100.87.59.1",
+		"mmn-m4": "100.99.140.27",
+		"htz-lab": "100.98.252.85",
+		"htz-xfs-lab": "100.124.47.127",
+		"htz-relay": "100.67.59.10",
 	},
 
 	"autoApprovers": {
@@ -57,6 +61,18 @@
 			"dst": ["autogroup:owner", "tag:service-host", "tag:ssh-accept"],
 			"ip":  ["5252", "22000"],
 		},
+		// Personal inference clients need the broker, not general access to home.
+		{
+			"src": ["htz-lab", "htz-xfs-lab", "htz-relay"],
+			"dst": ["mmn-m4"],
+			"ip":  ["8317"],
+		},
+		// Only the raw-journal hub writes the authenticated derived query index.
+		{
+			"src": ["mmn-m4"],
+			"dst": ["htz-lab"],
+			"ip":  ["18923"],
+		},
 		// Exit-node use is opt-in without granting personal-device access.
 		{
 			"src": ["tag:exit-client"],
@@ -101,6 +117,20 @@
 	],
 
 	"tests": [
+		{
+			"src": "100.98.252.85",
+			"accept": ["mmn-m4:8317"],
+			"deny": ["mmn-m4:22", "mmn-m4:18318"],
+		},
+		{
+			"src": "100.99.140.27",
+			"accept": ["htz-lab:18923"],
+			"deny": ["htz-lab:22", "htz-lab:9000"],
+		},
+		{
+			"src": "tag:cf-ingress",
+			"deny": ["mmn-m4:8317", "htz-lab:18923"],
+		},
 		{
 			"src":    "tag:exit-client",
 			"accept": ["1.1.1.1:443", "[2606:4700:4700::1111]:443"],

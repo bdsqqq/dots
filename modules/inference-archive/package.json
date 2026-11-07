@@ -1,0 +1,18 @@
+{
+  "name": "inference-archive",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "node --experimental-strip-types service.ts",
+    "test": "node --experimental-strip-types --test *.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ws": "8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/ws": "8.18.1",
+    "typescript": "5.9.3"
+  }
+}
