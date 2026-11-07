@@ -119,7 +119,8 @@ export async function recordComponent(config: UpgradeConfig, name: string, statu
 }
 
 export type UpgradeResult = { status: "succeeded" | "partial" | "failed" | "blocked" | "skipped"; reasonCode: string };
-export async function reconcile(config: UpgradeConfig, options: { acknowledgeInterrupted?: boolean; configFile?: string; bootId?: string | null } = {}): Promise<UpgradeResult> {
+export async function reconcile(config: UpgradeConfig, options: { acknowledgeInterrupted?: boolean; configFile?: string; bootId?: string | null; revision?: string } = {}): Promise<UpgradeResult> {
+  if (options.revision !== undefined && !sha.test(options.revision)) throw new Error("invalid published revision");
   await mkdir(config.stateDir, { recursive: true, mode: 0o755 });
   const lock = new DatabaseSync(join(config.stateDir, "run-lock.sqlite"));
   try { lock.exec("PRAGMA busy_timeout = 0; BEGIN IMMEDIATE"); }
@@ -165,10 +166,13 @@ export async function reconcile(config: UpgradeConfig, options: { acknowledgeInt
       return finish("failed", reasonCode);
     };
     await phase("resolving");
-    const metadata = await execute([...config.nixCommand, "flake", "metadata", "--refresh", "--json", config.flake], { timeoutMs: 30_000, capture: true });
-    if (metadata.code !== 0 || metadata.timedOut) return await fail("resolve_failed");
-    const data = JSON.parse(metadata.stdout);
-    const target = data.revision ?? data.locked?.rev;
+    let target = options.revision;
+    if (!target) {
+      const metadata = await execute([...config.nixCommand, "flake", "metadata", "--refresh", "--json", config.flake], { timeoutMs: 30_000, capture: true });
+      if (metadata.code !== 0 || metadata.timedOut) return await fail("resolve_failed");
+      const data = JSON.parse(metadata.stdout);
+      target = data.revision ?? data.locked?.rev;
+    }
     if (typeof target !== "string" || !sha.test(target)) return await fail("invalid_revision");
     state.desiredRevision = target;
     state.dependencyRepairAttempts = previous?.desiredRevision === target ? previous.dependencyRepairAttempts ?? 0 : 0;
@@ -262,13 +266,14 @@ export async function reconcile(config: UpgradeConfig, options: { acknowledgeInt
 export async function main(args = process.argv.slice(2)): Promise<void> {
   const command = args.shift() ?? "run";
   const option = (name: string, fallback?: string) => { const at = args.indexOf(name); return at < 0 ? fallback : args[at + 1]; };
+  if (args.includes("--revision") && !option("--revision")) throw new Error("missing revision");
   const configFile = option("--config", "/etc/host-upgrade.json")!;
   const config = parseConfig(JSON.parse(await readFile(configFile, "utf8")));
   if (command === "init") return initialize(config);
   if (command === "component") return recordComponent(config, option("--name")!, option("--status")! as ComponentState["status"], option("--reason")!);
   if (command === "status") { console.log(JSON.stringify(await readUpgradeHealth(statePath(config)))); return; }
   if (command !== "run") throw new Error("unknown upgrade operation");
-  const result = await reconcile(config, { acknowledgeInterrupted: args.includes("--acknowledge-interrupted"), configFile });
+  const result = await reconcile(config, { acknowledgeInterrupted: args.includes("--acknowledge-interrupted"), configFile, revision: option("--revision") });
   if (!["succeeded", "skipped"].includes(result.status)) process.exitCode = 1;
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

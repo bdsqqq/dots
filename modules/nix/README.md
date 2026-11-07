@@ -27,9 +27,12 @@ unchanged revisions are checked without reactivating the system.
 launchd invokes the runner through the system profile and a stable `/etc` config
 path. embedding a new store path in its plist would unload an updater during its
 own activation. the first migration must therefore be activated outside the old
-updater job: temporarily disable its timer, apply the configuration, then enable
-and start the new job after activation completes. do not use a partially applied
-migration as proof of convergence.
+updater job: temporarily disable its timer, build the published candidate, then
+run its `sw/bin/host-upgrade run --config <candidate>/etc/host-upgrade.json
+--revision <published-sha>` as root outside launchd. using the coordinator also
+holds the attempt lock if nix-darwin's `launchctl load -w` re-enables calendar
+triggers during activation. re-enable and start the new job after completion;
+do not use a partially applied migration as proof of convergence.
 
 ## evidence and escalation
 
