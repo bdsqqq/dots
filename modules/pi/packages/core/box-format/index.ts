@@ -889,8 +889,8 @@ if (import.meta.vitest) {
           (_match: string, spec: string) =>
             `from ${JSON.stringify(pathToFileURL(spec === "@earendil-works/pi-codemode" ? `${getPackageDir()}/../pi-codemode/${codemodePackage.exports["."].import}` : require.resolve(spec)).href)}`,
         );
-      await writeFile(`${temporary}/baseline.mjs`, baseline);
-      const old = await import(pathToFileURL(`${temporary}/baseline.mjs`).href);
+      await writeFile(`${temporary}/baseline.ts`, baseline);
+      const old = await import(pathToFileURL(`${temporary}/baseline.ts`).href);
       const run = (code: string, signal?: AbortSignal) =>
         executeCodemode("preview-test", { code }, signal);
       try {
@@ -1027,16 +1027,16 @@ if (import.meta.vitest) {
             (_match: string, spec: string) =>
               `from ${JSON.stringify(spec === "../../utils/output-files.js" ? boundaryUrl : pathToFileURL(spec === "@earendil-works/pi-codemode" ? `${getPackageDir()}/../pi-codemode/${codemodePackage.exports["."].import}` : require.resolve(spec)).href)}`,
           );
-        await writeFile(`${temporary}/failing.mjs`, failingSource);
+        await writeFile(`${temporary}/failing.ts`, failingSource);
         await writeFile(
-          `${temporary}/old-failing.mjs`,
+          `${temporary}/old-failing.ts`,
           baseline.replaceAll(outputFilesUrl, boundaryUrl),
         );
         const failedWrites = await import(
-          pathToFileURL(`${temporary}/failing.mjs`).href
+          pathToFileURL(`${temporary}/failing.ts`).href
         );
         const oldFailedWrites = await import(
-          pathToFileURL(`${temporary}/old-failing.mjs`).href
+          pathToFileURL(`${temporary}/old-failing.ts`).href
         );
         const plainTheme = { fg: (_color: string, text: string) => text };
         const display = (result: any, showImages: boolean, expanded: boolean) =>
@@ -1203,9 +1203,9 @@ if (import.meta.vitest) {
             (_m: string, spec: string) =>
               `from ${JSON.stringify(pathToFileURL(require.resolve(spec)).href)}`,
           );
-        await writeFile(`${temporary}/old-renderer.mjs`, oldRendererSource);
+        await writeFile(`${temporary}/old-renderer.ts`, oldRendererSource);
         const oldRenderer = (
-          await import(pathToFileURL(`${temporary}/old-renderer.mjs`).href)
+          await import(pathToFileURL(`${temporary}/old-renderer.ts`).href)
         ).codemodeRenderers;
         const oldView = (result: any) =>
           oldRenderer
@@ -1260,9 +1260,9 @@ if (import.meta.vitest) {
           (_m: string, spec: string) =>
             `from ${JSON.stringify(pathToFileURL(require.resolve(spec)).href)}`,
         );
-        await writeFile(`${temporary}/shipped-renderer.mjs`, shippedSource);
+        await writeFile(`${temporary}/shipped-renderer.ts`, shippedSource);
         const shippedRenderer = (
-          await import(pathToFileURL(`${temporary}/shipped-renderer.mjs`).href)
+          await import(pathToFileURL(`${temporary}/shipped-renderer.ts`).href)
         ).codemodeRenderers;
         const contentFirst = (renderer: any) => {
           const text = renderer
