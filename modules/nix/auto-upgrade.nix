@@ -3,6 +3,10 @@
 let
   cfg = config.system.autoUpgrade;
   statusDir = cfg.supervision.stateDir;
+  operator = cfg.supervision.passwordlessOperator;
+  operatorPolicy = ''
+    ${operator} ALL=(root) NOPASSWD: /bin/launchctl kickstart system/org.nixos.darwin-upgrade, /bin/launchctl kickstart system/org.nixos.darwin-upgrade-recovery
+  '';
   source = pkgs.runCommand "host-upgrade-source" { } ''
     mkdir -p "$out/nix" "$out/service-events"
     cp ${./host-upgrade.ts} "$out/nix/host-upgrade.ts"
@@ -47,6 +51,11 @@ if lib.hasSuffix "-darwin" hostSystem then {
     };
     supervision = {
       enable = lib.mkEnableOption "bounded build attempts and externally observable upgrade convergence";
+      passwordlessOperator = lib.mkOption {
+        type = lib.types.nullOr (lib.types.strMatching "[a-z_][a-z0-9_-]*");
+        default = null;
+        description = "User allowed to request the fixed updater and explicit recovery jobs without a password; no arbitrary commands or launchctl flags.";
+      };
       stateDir = lib.mkOption {
         type = lib.types.str;
         default = "/var/db/host-upgrade";
@@ -99,6 +108,27 @@ if lib.hasSuffix "-darwin" hostSystem then {
     launchd.daemons.darwin-upgrade.serviceConfig.RunAtLoad = false;
     environment.systemPackages = [ runner ];
     environment.etc."host-upgrade.json".source = runtime;
+    environment.etc."sudoers.d/20-host-upgrade-operator" = lib.mkIf (operator != null) {
+      text = operatorPolicy;
+      # A checked bootstrap copy is safe to adopt once full activation can complete.
+      knownSha256Hashes = [ (builtins.hashString "sha256" operatorPolicy) ];
+    };
+    launchd.daemons.darwin-upgrade-recovery = lib.mkIf (operator != null) {
+      serviceConfig = {
+        UserName = "root";
+        ProgramArguments = [
+          "/nix/var/nix/profiles/system/sw/bin/host-upgrade" "run"
+          "--config" "/etc/host-upgrade.json" "--acknowledge-interrupted"
+        ];
+        EnvironmentVariables.HOME = "/var/root";
+        WorkingDirectory = "/var/root";
+        # Only an explicit operator kickstart acknowledges quarantine. Never a timer or load.
+        RunAtLoad = false;
+        KeepAlive = false;
+        StandardOutPath = "/var/log/darwin-upgrade-recovery.log";
+        StandardErrorPath = "/var/log/darwin-upgrade-recovery.log";
+      };
+    };
     system.activationScripts.postActivation.text = lib.mkAfter ''
       ${runner}/bin/host-upgrade init --config /etc/host-upgrade.json
     '';

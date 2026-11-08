@@ -36,6 +36,26 @@ holds the attempt lock if nix-darwin's `launchctl load -w` re-enables calendar
 triggers during activation. re-enable and start the new job after completion;
 do not use a partially applied migration as proof of convergence.
 
+## passwordless operator requests
+
+`supervision.passwordlessOperator` is opt-in per host. on the mini, the primary
+user can request either fixed root job over ssh or locally:
+
+```sh
+sudo -n /bin/launchctl kickstart system/org.nixos.darwin-upgrade
+# only after inspecting a failed activation and confirming native writes stopped:
+sudo -n /bin/launchctl kickstart system/org.nixos.darwin-upgrade-recovery
+```
+
+neither command accepts extra arguments. there is no arbitrary shell, installer,
+config path, `launchctl -k`, or permission to manage other jobs. both run detached
+from ssh under launchd and share the coordinator lock. recovery has no timer,
+run-at-load, or keepalive trigger; naming that job is the explicit acknowledgement.
+root-owned config and program paths retain the existing published-repository trust
+boundary. a compromised operator account can request these two operations, not an
+arbitrary root command. inspect status and logs rather than treating kickstart's
+exit code as successful activation.
+
 ## evidence and escalation
 
 `host-upgrade status` is read-only. the registry reads the same safe status file
