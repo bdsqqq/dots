@@ -13,6 +13,9 @@ import {
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 export default async function renderingFixture(pi: ExtensionAPI) {
   const boundary = await import("../prompt-patch/codemode-boundaries.ts");
+  // SDK startup installs its HTTP dispatcher after the preload. Reset before
+  // subsequent extension factories capture fetch (notably MymindClient).
+  globalThis.fetch = boundary.fixtureFetch;
   const plan = JSON.parse(readFileSync(process.env.PI_RENDER_PLAN!, "utf8"));
   const log = (event: unknown) =>
     appendFileSync(plan.events, JSON.stringify(event) + "\n");
