@@ -57,6 +57,8 @@ in
     ../../modules/rex
     ../../modules/open-display
     ../../modules/obsidian
+    ../../modules/mpv
+    ../../modules/iina
     ../../modules/html-stuff
     ../../modules/media-feeds
     ../../modules/backup/ssd-01
