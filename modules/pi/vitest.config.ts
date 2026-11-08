@@ -22,7 +22,7 @@ export default defineConfig({
     },
   },
   test: {
-    includeSource: ["packages/**/*.ts"],
+    includeSource: ["packages/**/*.ts", "tsdown.config.ts"],
     exclude: ["**/node_modules/**", "**/*.sync-conflict-*.ts"],
     testTimeout: 15_000,
   },

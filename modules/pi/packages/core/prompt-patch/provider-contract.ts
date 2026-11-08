@@ -13,7 +13,7 @@ import {
  * handlers (maintenance, UI, and watchers) or tool execution. All current tool
  * registrations happen in factories. Loader errors must not shrink the test set.
  */
-export async function loadProviderContractTools(
+export async function loadExtensionContractTools(
   built = false,
 ): Promise<Tool[]> {
   const cwd = fileURLToPath(new URL("../../../", import.meta.url));
@@ -43,16 +43,24 @@ export async function loadProviderContractTools(
   if (loaded.extensions.length !== paths.length)
     throw new Error("extension inventory was not fully loaded");
   const tools = new Map<string, Tool>();
-  for (const tool of createCodingTools(cwd)) tools.set(tool.name, tool);
-  // Match SDK precedence: first extension registration wins over built-ins.
-  const extensionNames = new Set<string>();
   for (const extension of loaded.extensions) {
     for (const { definition } of extension.tools.values()) {
-      if (extensionNames.has(definition.name)) continue;
-      extensionNames.add(definition.name);
-      tools.set(definition.name, definition);
+      if (!tools.has(definition.name)) tools.set(definition.name, definition);
     }
   }
+  return [...tools.values()];
+}
+
+export async function loadProviderContractTools(
+  built = false,
+): Promise<Tool[]> {
+  const cwd = fileURLToPath(new URL("../../../", import.meta.url));
+  const tools = new Map<string, Tool>(
+    createCodingTools(cwd).map((tool) => [tool.name, tool]),
+  );
+  // Match SDK precedence: extension definitions override native tools.
+  for (const tool of await loadExtensionContractTools(built))
+    tools.set(tool.name, tool);
   for (const required of ["read_web_page", "web_search", "edit", "write"])
     if (!tools.has(required)) throw new Error(`missing tool: ${required}`);
   return [...tools.values()];

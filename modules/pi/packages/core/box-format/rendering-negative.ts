@@ -5,7 +5,7 @@ import { registerHooks } from "node:module";
 import { pathToFileURL } from "node:url";
 const source = realpathSync(
   new URL(
-    "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/tool-execution.js",
+    "../../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/tool-execution.js",
     import.meta.url,
   ),
 );
@@ -21,13 +21,13 @@ const broken = original.replace(
   needle,
   "this.sharedFrame.setFooterMarker(undefined);",
 );
-writeFileSync(process.env.PI_RENDER_NEGATIVE_SOURCE, broken);
+writeFileSync(process.env.PI_RENDER_NEGATIVE_SOURCE!, broken);
 registerHooks({
   load(url, context, nextLoad) {
     if (url === pathToFileURL(source).href)
       return {
         format: "module",
-        source: readFileSync(process.env.PI_RENDER_NEGATIVE_SOURCE, "utf8"),
+        source: readFileSync(process.env.PI_RENDER_NEGATIVE_SOURCE!, "utf8"),
         shortCircuit: true,
       };
     return nextLoad(url, context);

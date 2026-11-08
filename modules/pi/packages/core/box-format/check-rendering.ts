@@ -27,14 +27,14 @@ import {
   readdirSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, resolve, join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { crc32, deflateSync } from "node:zlib";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { visibleWidth, stripTerminalSequences } from "@earendil-works/pi-tui";
 
 assertOfflineRenderingArgs(process.argv.slice(2));
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const root = fileURLToPath(new URL("../../../", import.meta.url));
 const agentTools = [
   "oracle",
   "finder",
@@ -326,7 +326,7 @@ try {
   });
   const child = executable(
     "pi-child",
-    `import ${JSON.stringify(new URL("./rendering-child-launch.mjs", import.meta.url).href)};`,
+    `import ${JSON.stringify(new URL("./rendering-child-launch.ts", import.meta.url).href)};`,
   );
   const settings: Record<string, unknown> = {};
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
@@ -723,7 +723,6 @@ async function runSampler({
       "--others",
       "--exclude-standard",
       "packages",
-      "scripts",
       "package.json",
     ],
     { cwd: root, encoding: "utf8" },
@@ -788,7 +787,7 @@ async function runSampler({
     PI_RENDER_PLAN: join(temporary, "plan.json"),
     PI_CODEMODE_NETWORK_LOG: join(temporary, "network.log"),
     PATH: `${join(temporary, "bin")}:${process.env.PATH}`,
-    NODE_OPTIONS: `--import=${join(root, "scripts/codemode-boundaries.mjs")}${negative && !dropResults ? ` --import=${join(root, "scripts/rendering-negative.mjs")}` : ""} --import=${join(root, "scripts/rendering-observe.mjs")}`,
+    NODE_OPTIONS: `--import=${join(root, "packages/core/prompt-patch/codemode-boundaries.ts")}${negative && !dropResults ? ` --import=${join(root, "packages/core/box-format/rendering-negative.ts")}` : ""} --import=${join(root, "packages/core/box-format/rendering-observe.ts")}`,
     PI_RENDER_OBSERVED_SOURCE: join(temporary, "observed-tool-execution.js"),
     PI_RENDER_DROP_RESULTS: dropResults ? "1" : "0",
     PI_RENDER_NEGATIVE_SOURCE: join(temporary, "broken-tool-execution.js"),
@@ -810,7 +809,7 @@ async function runSampler({
     "builtin:codemode",
     ...extensionPaths.flatMap((p: string) => ["-e", p]),
     "-e",
-    join(root, "scripts/rendering-fixture.ts"),
+    join(root, "packages/core/box-format/rendering-fixture.ts"),
     "--provider",
     "rendering-fixture",
     "--model",
@@ -1518,9 +1517,11 @@ async function runSampler({
     // Execution-time truncation can make even huge real emissions quite short;
     // neither a clipped real result nor the small head/tail fixture proves that
     // the verifier rejects the old unbounded native Text behavior.
-    const unboundedFixture = Array(3).fill(
-      resultEntry.message.content.map((p: any) => p.text ?? "").join("\n"),
-    ).join("\n");
+    const unboundedFixture = Array(3)
+      .fill(
+        resultEntry.message.content.map((p: any) => p.text ?? "").join("\n"),
+      )
+      .join("\n");
     for (const width of [20, 80, 140]) {
       const unbounded = {
         callLines: [
@@ -1541,11 +1542,7 @@ async function runSampler({
         ...evidenceFor(rawIndex, width),
         resultLines: [
           "output",
-          ...new Text(
-            unboundedFixture,
-            0,
-            0,
-          ).render(width - 4),
+          ...new Text(unboundedFixture, 0, 0).render(width - 4),
         ],
       };
       assert.throws(

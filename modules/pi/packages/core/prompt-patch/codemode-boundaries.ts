@@ -5,9 +5,9 @@ import { Socket } from "node:net";
 Socket.prototype.connect = function () {
   throw new Error("offline codemode probe forbids sockets");
 };
-export const fixtureFetch = async (input, options) => {
+export const fixtureFetch: typeof fetch = async (input, _options) => {
   const url = String(input instanceof Request ? input.url : input);
-  appendFileSync(process.env.PI_CODEMODE_NETWORK_LOG, `${url}\n`);
+  appendFileSync(process.env.PI_CODEMODE_NETWORK_LOG!, `${url}\n`);
   if (url === "https://codemode.example/fixture")
     return new Response("WEB_FIXTURE_".repeat(500), {
       headers: { "content-type": "text/plain" },

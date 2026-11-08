@@ -3,7 +3,7 @@
  * no model calls: inspect saved evidence against the declared source/fact rubrics.
  * reserve published maximum request cost BEFORE dispatch, including failures.
  *
- * node scripts/eval-web-retrieval.mjs --live --budget=1 --repeats=3
+ * node packages/core/web-retrieval/evaluate.ts --live --budget=1 --repeats=3
  * requires existing PARALLEL_API_KEY credits; never funds or changes the account.
  */
 import { createJiti } from "jiti";
@@ -12,6 +12,52 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
+import {
+  ModelRuntime,
+  SessionManager,
+  type ExtensionToolContext,
+} from "@earendil-works/pi-coding-agent";
+import { InMemoryCredentialStore, type JsonValue } from "@earendil-works/pi-ai";
+import type { WebSearchParams } from "../../extensions/web-search/index.ts";
+import type { ReadWebPageParams } from "../../extensions/read-web-page/index.ts";
+
+type Schema = {
+  $ref?: string;
+  anyOf?: Schema[];
+  type?: string;
+  properties?: Record<string, Schema>;
+  additionalProperties?: boolean;
+  required?: string[];
+  items?: Schema;
+};
+type ProviderSpec = {
+  components: { schemas: Record<string, Schema> };
+  paths: Record<
+    string,
+    {
+      post: {
+        requestBody: { content: { "application/json": { schema: Schema } } };
+      };
+    }
+  >;
+};
+type RetrievalRequest = {
+  advanced_settings?: { max_results?: number };
+  max_results?: number;
+  mode?: string;
+  urls?: string[];
+};
+type RequestRecord = {
+  path: string;
+  request: RetrievalRequest;
+  reservedCost: number;
+  startedAt: string;
+  status?: number;
+  response?: unknown;
+  milliseconds?: number;
+};
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const args = process.argv.slice(2);
 const budget = Number(
@@ -33,14 +79,14 @@ if (
 if (!process.env.PARALLEL_API_KEY) throw new Error("PARALLEL_API_KEY required");
 
 const jiti = createJiti(import.meta.url);
-const { createWebSearchTool } = await jiti.import(
-  "../packages/extensions/web-search/index.ts",
-);
-const { createReadWebPageTool } = await jiti.import(
-  "../packages/extensions/read-web-page/index.ts",
-);
+const { createWebSearchTool } = await jiti.import<
+  typeof import("../../extensions/web-search/index.ts")
+>("../../extensions/web-search/index.ts");
+const { createReadWebPageTool } = await jiti.import<
+  typeof import("../../extensions/read-web-page/index.ts")
+>("../../extensions/read-web-page/index.ts");
 const fetchOriginal = globalThis.fetch;
-const records = [];
+const records: RequestRecord[] = [];
 let reserved = 0;
 const directory = await mkdtemp(join(tmpdir(), "pi-web-eval-"));
 console.log(JSON.stringify({ directory, budget, repeats }));
@@ -52,18 +98,19 @@ const specResponse = await fetchOriginal(
   { signal: AbortSignal.timeout(30000) },
 );
 if (!specResponse.ok) throw new Error("could not load provider contract");
-const spec = await specResponse.json();
+const spec = (await specResponse.json()) as ProviderSpec;
 await writeFile(
   join(directory, "provider-schema.json"),
   JSON.stringify(spec, null, 2),
   { mode: 0o600 },
 );
-function checkFields(value, schema) {
-  if (schema.$ref)
-    return checkFields(
-      value,
-      spec.components.schemas[schema.$ref.split("/").at(-1)],
-    );
+function checkFields(value: unknown, schema: Schema): void {
+  if (schema.$ref) {
+    const name = schema.$ref.split("/").at(-1);
+    const target = name ? spec.components.schemas[name] : undefined;
+    assert.ok(target, `missing schema ${schema.$ref}`);
+    return checkFields(value, target);
+  }
   if (schema.anyOf) {
     const options = schema.anyOf.filter(
       (s) =>
@@ -75,10 +122,10 @@ function checkFields(value, schema) {
               ? "null"
               : typeof value),
     );
-    if (options.length === 1) checkFields(value, options[0]);
+    if (options.length === 1 && options[0]) checkFields(value, options[0]);
     return;
   }
-  if (schema.properties && value && typeof value === "object") {
+  if (schema.properties && isRecord(value)) {
     if (schema.additionalProperties === false)
       for (const key of Object.keys(value))
         assert.ok(key in schema.properties, `undocumented field ${key}`);
@@ -100,25 +147,29 @@ globalThis.fetch = async (input, init) => {
     ["/v1/search", "/v1beta/search", "/v1/extract"].includes(url.pathname),
     "retrieval endpoints only",
   );
+  assert.ok(init);
   assert.equal(typeof init.body, "string");
-  const body = JSON.parse(init.body);
+  const body = JSON.parse(String(init.body)) as RetrievalRequest;
   const search = url.pathname.endsWith("/search");
   if (url.pathname.startsWith("/v1/")) {
     const schema =
-      spec.paths[url.pathname].post.requestBody.content["application/json"]
+      spec.paths[url.pathname]?.post.requestBody.content["application/json"]
         .schema;
+    assert.ok(schema, `missing request schema ${url.pathname}`);
     checkFields(body, schema);
   }
   const resultCount =
     body.advanced_settings?.max_results ?? body.max_results ?? 10;
+  if (!search)
+    assert.ok(body.urls, "extract URLs required for cost reservation");
   const cost = search
     ? (body.mode === "fast" || body.mode === "turbo" ? 0.001 : 0.005) +
       Math.max(0, resultCount - 10) * 0.001
-    : body.urls.length * 0.001;
+    : body.urls!.length * 0.001;
   if (reserved + cost > budget + 1e-9)
     throw new Error("evaluation budget exhausted BEFORE dispatch");
   reserved += cost;
-  const record = {
+  const record: RequestRecord = {
     path: url.pathname,
     request: body,
     reservedCost: cost,
@@ -217,21 +268,50 @@ const tasks = [
     facts: ["attention", "sqrt"],
   },
 ];
-const outcomes = [];
-function context(modelId) {
-  const entries = [];
-  const id = randomUUID();
+const outcomes: unknown[] = [];
+const models = await ModelRuntime.create({
+  credentials: new InMemoryCredentialStore(),
+  refreshOnCreate: false,
+  modelsPath: null,
+});
+function context(modelId?: "gpt-5.4"): ExtensionToolContext {
+  // Real in-memory entries preserve paging identity without disk/session startup.
+  const unsupported = (): never => {
+    throw new Error("unsupported evaluation context operation");
+  };
   return {
-    model: modelId ? { id: modelId } : undefined,
-    sessionManager: {
-      getSessionId: () => id,
-      getBranch: () => entries,
-      getEntries: () => entries,
+    model: modelId ? models.getModel("openai-codex", modelId) : undefined,
+    sessionManager: SessionManager.inMemory(),
+    get ui() {
+      return unsupported();
     },
-    entries,
+    get modelRegistry() {
+      return unsupported();
+    },
+    mode: "json",
+    hasUI: false,
+    cwd: process.cwd(),
+    scopedModels: [],
+    signal: undefined,
+    isIdle: () => true,
+    isProjectTrusted: () => false,
+    abort: unsupported,
+    hasPendingMessages: () => false,
+    shutdown: unsupported,
+    getContextUsage: () => undefined,
+    compact: unsupported,
+    getSystemPrompt: () => "",
+    tools: [],
+    executeTool: unsupported,
   };
 }
-async function execute(tool, params, ctx) {
+async function execute(
+  tool:
+    | ReturnType<typeof createWebSearchTool>
+    | ReturnType<typeof createReadWebPageTool>,
+  params: WebSearchParams & ReadWebPageParams,
+  ctx: ExtensionToolContext,
+): Promise<{ text: string; failed: boolean }> {
   let result = await tool.execute(
     randomUUID(),
     params,
@@ -239,24 +319,37 @@ async function execute(tool, params, ctx) {
     undefined,
     ctx,
   );
-  ctx.entries.push({
-    type: "message",
-    id: randomUUID(),
-    parentId: null,
-    message: {
-      role: "toolResult",
-      toolName: tool.name,
-      details: result.details,
-    },
+  // The read-only tool context exposes this manager; retain the initial result
+  // exactly as the SDK would so continuations can find their snapshot.
+  assert.ok(ctx.sessionManager instanceof SessionManager);
+  ctx.sessionManager.appendMessage({
+    role: "toolResult",
+    toolCallId: randomUUID(),
+    toolName: tool.name,
+    content: result.content,
+    details: JSON.parse(JSON.stringify(result.details)) as JsonValue,
+    isError: false,
+    timestamp: Date.now(),
   });
   let text = "";
-  const failed = result.details?.retrievalFailed === true;
+  const failed =
+    isRecord(result.details) && result.details.retrievalFailed === true;
   for (;;) {
-    const page = result.details?.webPage;
-    text += page
-      ? result.content[0].text.slice(0, page.end - page.start)
-      : result.content[0].text;
+    const page =
+      isRecord(result.details) && isRecord(result.details.webPage)
+        ? result.details.webPage
+        : undefined;
+    const first = result.content[0];
+    assert.ok(first?.type === "text", "retrieval must return text");
+    if (page) {
+      assert.equal(typeof page.end, "number");
+      assert.equal(typeof page.start, "number");
+      assert.ok(typeof page.end === "number" && typeof page.start === "number");
+      text += first.text.slice(0, page.end - page.start);
+    } else text += first.text;
     if (!page?.nextCursor) return { text, failed };
+    assert.equal(typeof page.nextCursor, "string");
+    assert.ok(typeof page.nextCursor === "string");
     result = await tool.execute(
       randomUUID(),
       { cursor: page.nextCursor },
@@ -273,7 +366,12 @@ try {
     repeat++
   )
     for (const task of tasks) {
-      for (const variant of ["legacy-2k", "advanced", "basic", "fast"]) {
+      for (const variant of [
+        "legacy-2k",
+        "advanced",
+        "basic",
+        "fast",
+      ] as const) {
         const start = performance.now();
         let evidence = "";
         let error;
@@ -299,7 +397,13 @@ try {
               },
             );
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const data = await response.json();
+            const data = (await response.json()) as {
+              results?: Array<{
+                title: string;
+                url: string;
+                excerpts: string[];
+              }>;
+            };
             if (!Array.isArray(data.results))
               throw new Error("missing legacy results");
             evidence = data.results
@@ -383,7 +487,7 @@ try {
       max_chars_per_result: 10000,
       fetch_policy: { max_age_seconds: 600, timeout_seconds: 30 },
     },
-  ]) {
+  ] satisfies ReadWebPageParams[]) {
     const start = performance.now();
     try {
       const result = await execute(reader, params, context());
@@ -431,7 +535,7 @@ try {
         after_date: "2026-01-01",
       },
     },
-  ]) {
+  ] satisfies WebSearchParams[]) {
     const tool = createWebSearchTool({
       defaultMaxResults: 10,
       endpoint: "https://api.parallel.ai/v1/search",

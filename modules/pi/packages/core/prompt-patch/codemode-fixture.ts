@@ -6,7 +6,7 @@ import type {
   ToolResultMessage,
 } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { fixtureFetch } from "./codemode-boundaries.mjs";
+import { fixtureFetch } from "./codemode-boundaries.ts";
 
 // A deterministic LLM boundary, not a replacement for any extension tool.
 export default function fixture(pi: ExtensionAPI) {

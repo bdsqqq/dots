@@ -13,41 +13,22 @@ import {
   realpathSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, resolve, join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { crc32, deflateSync } from "node:zlib";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { loadExtensionContractTools } from "./provider-contract.ts";
 
 assert.equal(
   process.argv.slice(2).every((arg) => ["--negative", "--built"].includes(arg)),
   true,
   "offline only; flags: --built, --negative (clobber text)",
 );
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const root = fileURLToPath(new URL("../../../", import.meta.url));
 const built = process.argv.includes("--built");
-const expected = [
-  "agent_message",
-  "bash",
-  "code_review",
-  "commit_search",
-  "delegate",
-  "diff",
-  "finder",
-  "glob_github",
-  "librarian",
-  "list_directory_github",
-  "list_repositories",
-  "look_at",
-  "oracle",
-  "read",
-  "read_github",
-  "history_list",
-  "history_read",
-  "read_web_page",
-  "search_github",
-  "skill",
-  "web_search",
-].sort();
+const expected = (await loadExtensionContractTools(built))
+  .map((tool) => tool.name)
+  .sort();
 const native = ["edit", "write"];
 const agentTools = [
   "oracle",
@@ -154,10 +135,10 @@ try {
   );
   // The project owns the formatter command, not a generic tool or fake formatter.
   json(join(temporary, "package.json"), {
-    scripts: { format: "node format.mjs" },
+    scripts: { format: "node format.ts" },
   });
   put(
-    join(temporary, "format.mjs"),
+    join(temporary, "format.ts"),
     `
     import {readFileSync,writeFileSync} from 'node:fs';
     writeFileSync('format.json', JSON.stringify(JSON.parse(readFileSync('format.json','utf8')),null,2)+'\\n');
@@ -424,7 +405,7 @@ try {
     PI_CODEMODE_PLAN: join(temporary, "plan.json"),
     PI_CODEMODE_NETWORK_LOG: join(temporary, "network.log"),
     PATH: `${join(temporary, "bin")}:${process.env.PATH}`,
-    NODE_OPTIONS: `--import=${join(root, "scripts/codemode-boundaries.mjs")}`,
+    NODE_OPTIONS: `--import=${join(root, "packages/core/prompt-patch/codemode-boundaries.ts")}`,
     PI_OFFLINE: "1",
   };
   const args = [
@@ -438,7 +419,7 @@ try {
     "builtin:codemode",
     ...extensionPaths.flatMap((p: string) => ["-e", p]),
     "-e",
-    join(root, "scripts/codemode-fixture.ts"),
+    join(root, "packages/core/prompt-patch/codemode-fixture.ts"),
     "--provider",
     "codemode-fixture",
     "--model",
@@ -494,6 +475,7 @@ try {
   const mailbox = join(temporary, "mailbox", targetId);
   const queued = readdirSync(mailbox).filter((p) => p.endsWith(".json"));
   assert.equal(queued.length, 1);
+  assert.ok(queued[0]);
   assert.equal(
     JSON.parse(readFileSync(join(mailbox, queued[0]), "utf8")).content,
     "MESSAGE_FIXTURE",
