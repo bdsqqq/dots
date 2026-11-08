@@ -4,7 +4,19 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, mkdirSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { identity, packageExpression, receive, shellQuote, managedToolsRoot, ownedLauncher, refreshTools } from "./fleet.ts";
+import { configuredHosts, deploy, identity, packageExpression, receive, shellQuote, managedToolsRoot, ownedLauncher, refreshTools } from "./fleet.ts";
+
+test("fleet membership follows flake host additions and removals without evaluating systems", () => {
+  const repo = mkdtempSync(join(tmpdir(), "broker-fleet-inventory-"));
+  try {
+    const flake = join(repo, "flake.nix");
+    writeFileSync(flake, '{ outputs = _: { darwinConfigurations.desktop = throw "do not evaluate systems"; nixosConfigurations.server = throw "do not evaluate systems"; }; }');
+    assert.deepEqual(configuredHosts(repo), ["desktop", "server"]);
+    writeFileSync(flake, '{ outputs = _: { darwinConfigurations.laptop = throw "do not evaluate systems"; nixosConfigurations.server = throw "do not evaluate systems"; }; }');
+    assert.deepEqual(configuredHosts(repo), ["laptop", "server"]);
+    assert.throws(() => deploy("-oProxyCommand=fixture"), /host not in configured fleet/);
+  } finally { rmSync(repo, { recursive: true, force: true }); }
+});
 
 test("fleet refuses unexpected users, homes and unowned homes", () => {
   const good = { user: "bdsqqq", uid: 1000, home: "/home/bdsqqq", owner: 1000, os: "Linux" };
