@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { chmod, cp, lchmod, lstat, mkdir, mkdtemp, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { once } from "node:events";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { BUNDLE_ID, install, listenerOwned, loadedAgentPid, parseConfig, provision, requirement, verifyApp, type HostConfig } from "./host-install.ts";
+import { BUNDLE_ID, install, listenerArguments, listenerOwned, loadedAgentPid, parseConfig, provision, requirement, verifyApp, type HostConfig } from "./host-install.ts";
 import { DEPLOYMENT_PLACEHOLDER, parseDeployment, runningDeployment } from "./deployment.ts";
 
 const native = process.platform === "darwin" && !!process.env.HUE_SIGNER;
@@ -25,6 +27,25 @@ test("a matching version claim cannot substitute for ownership of the port and l
   assert.equal(listenerOwned(definition.replace("\tpid = 123\n", ""), destination, "123"), false);
   assert.throws(() => listenerOwned("pid = 123", destination, "123"));
   assert.throws(() => loadedAgentPid(definition.replace("123", "999999999999999999999"), destination));
+});
+
+test("listener authentication excludes a different interface's legitimate same-port service", { skip: !native, timeout: 20_000 }, async () => {
+  const backend = createServer();
+  backend.listen(0,"127.0.0.1"); await once(backend,"listening");
+  const address=backend.address(); assert.ok(address && typeof address!=="string");
+  const port=address.port;
+  const child=spawn(process.execPath,["-e","require('node:net').createServer().listen({port:Number(process.argv[1]),host:'::1',ipv6Only:true},()=>process.stdout.write('ready'))",String(port)],{stdio:["ignore","pipe","pipe"]});
+  try {
+    await Promise.race([once(child.stdout,"data"),once(child,"exit").then(()=>{throw new Error("fixture listener exited");})]);
+    const broad=execFileSync("/usr/sbin/lsof",["-nP",`-iTCP:${port}`,"-sTCP:LISTEN","-t"],{encoding:"utf8"}).trim().split(/\s+/);
+    assert.ok(broad.includes(String(process.pid)) && broad.includes(String(child.pid)),"known bad: a port-only probe confuses frontend and backend owners");
+    const scoped=execFileSync("/usr/sbin/lsof",listenerArguments(port),{encoding:"utf8"}).trim().split(/\s+/);
+    assert.deepEqual([...new Set(scoped)],[String(process.pid)]);
+    assert.throws(()=>listenerArguments(0));
+  } finally {
+    if(child.exitCode===null && child.signalCode===null){child.kill();await once(child,"exit");}
+    await new Promise<void>((resolve,reject)=>backend.close(error=>error?reject(error):resolve()));
+  }
 });
 
 async function fixture() {
