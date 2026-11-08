@@ -6,14 +6,22 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isMain } from "../tool-auth/process.ts";
 
-export const HOSTS = ["mbp-m2", "mbp-m5", "lgo-z2e", "htz-lab", "htz-relay", "htz-xfs-lab"] as const;
+/** flake output names own membership without forcing host configurations. */
+export function configuredHosts(flakeRef = `git+${new URL("../../", import.meta.url).href}`): string[] {
+  const result = spawnSync("nix", ["eval", "--json", "--impure", "--no-write-lock-file", "--expr",
+    `let flake = builtins.getFlake ${JSON.stringify(flakeRef)}; in builtins.attrNames ((flake.darwinConfigurations or {}) // (flake.nixosConfigurations or {}))`],
+    { encoding: "utf8", timeout: 30000, maxBuffer: 1024 * 1024 });
+  if (result.status !== 0) throw new Error("cannot read the configured fleet; Nix output withheld");
+  const hosts: unknown = JSON.parse(result.stdout);
+  if (!Array.isArray(hosts) || hosts.some(host => typeof host !== "string")) throw new Error("invalid fleet inventory");
+  return hosts;
+}
 export function shellQuote(value: string) { return `'${value.replaceAll("'", `'\\''`)}'`; }
 export function identity(value: any) {
   if (value.user !== "bdsqqq" || !Number.isInteger(value.uid) || value.uid < 500 || !["/home/bdsqqq", "/Users/bdsqqq"].includes(value.home) || value.owner !== value.uid || !["Linux", "Darwin"].includes(value.os)) throw new Error("unexpected native identity or home ownership");
   return value as { user: string; uid: number; home: string; owner: number; os: string };
 }
 function ssh(host: string, command: string, input?: string, timeout = 15000) {
-  if (![...HOSTS, "mmn-m4"].includes(host as any)) throw new Error("host not in personal fleet");
   const result = spawnSync("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=6", host, command], { input, encoding: "utf8", timeout, maxBuffer: 2 * 1024 * 1024 });
   if (result.status !== 0) throw new Error(`SSH operation failed on ${host} (exit ${result.status}); private output withheld`);
   return result.stdout.trim();
@@ -140,6 +148,7 @@ export function refreshTools(home: string, store: string, codex?: string): strin
 }
 
 export function deploy(host: string) {
+  if (!/^[a-z0-9][a-z0-9._-]*$/.test(host) || !configuredHosts().includes(host)) throw new Error("host not in configured fleet");
   const native = identity(JSON.parse(ssh(host, checkIdentity)));
   const repo = ssh(host, 'cd "$HOME/commonplace/01_files/nix" && pwd -P');
   if (!repo.startsWith("/") || repo === "/" || repo.startsWith("/nix/store/") || repo.split("/").includes("..")) throw new Error("invalid canonical repository");
