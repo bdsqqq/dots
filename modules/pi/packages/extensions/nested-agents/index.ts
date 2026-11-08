@@ -1,9 +1,8 @@
 /**
- * Injects descendant AGENTS.md context when tools enter a nested subtree.
+ * Appends newly applicable AGENTS.md context as tools encounter file paths.
  *
- * Pi loads context only from cwd and its ancestors. Tool-driven work can cross
- * into a descendant package later, so observations append newly applicable
- * context and known file-mutation tools pause once before changing the file.
+ * Pi already loads cwd and ancestor instructions. This fills in other scopes,
+ * including paths outside cwd, without authorizing or blocking any tool call.
  */
 
 import * as fs from "node:fs";
@@ -13,6 +12,7 @@ import type { JsonObject } from "@earendil-works/pi-ai";
 import { resolveToAbsolute } from "@bds_pi/fs";
 
 const CONTEXT_NAMES = [
+  "AGENTS.override.md",
   "AGENTS.md",
   "AGENTS.MD",
   "CLAUDE.md",
@@ -20,10 +20,8 @@ const CONTEXT_NAMES = [
 ] as const;
 const MAX_FILE_BYTES = 32 * 1024;
 const MAX_EVENT_BYTES = 128 * 1024;
-const MUTATION_TOOLS = new Set(["edit", "write"]);
-// Shell discovery is intentionally not parsed: known native edits still gate
-// before mutation, while read/look_at deliver instructions on observation.
-const OBSERVATION_TOOLS = new Set(["read", "look_at"]);
+// Shell output is not a path contract; do not guess targets from command text.
+const OBSERVATION_TOOLS = new Set(["read", "look_at", "edit", "write"]);
 
 type TargetPath = {
   path: string;
@@ -34,18 +32,6 @@ export type NestedContextFile = {
   path: string;
   content: string;
 };
-
-class NestedContextPolicyError extends Error {}
-
-function isWithin(root: string, candidate: string): boolean {
-  const relative = path.relative(root, candidate);
-  return (
-    relative === "" ||
-    (!relative.startsWith(`..${path.sep}`) &&
-      relative !== ".." &&
-      !path.isAbsolute(relative))
-  );
-}
 
 function nearestExistingPath(candidate: string): {
   existing: string;
@@ -68,35 +54,18 @@ function nearestExistingPath(candidate: string): {
   return { existing: current, suffix };
 }
 
-function resolveTargetDirectory(
-  cwd: string,
-  target: TargetPath,
-): string | undefined {
-  const root = fs.realpathSync(cwd);
+function resolveTargetDirectory(cwd: string, target: TargetPath): string {
   const requested = path.resolve(resolveToAbsolute(target.path.trim(), cwd));
   const { existing, suffix } = nearestExistingPath(requested);
-  let canonicalExisting: string;
-  try {
-    canonicalExisting = fs.realpathSync(existing);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw error;
-  }
-  const canonicalRequested = path.join(canonicalExisting, ...suffix);
-  if (!isWithin(root, canonicalRequested)) return undefined;
-  if (target.assumeFile || suffix.length > 0) {
-    const parent = path.dirname(canonicalRequested);
-    return isWithin(root, parent) ? parent : undefined;
-  }
-  const stat = fs.statSync(canonicalRequested);
-  const directory = stat.isDirectory()
+  const canonicalRequested = path.join(fs.realpathSync(existing), ...suffix);
+  if (target.assumeFile || suffix.length > 0)
+    return path.dirname(canonicalRequested);
+  return fs.statSync(canonicalRequested).isDirectory()
     ? canonicalRequested
     : path.dirname(canonicalRequested);
-  return isWithin(root, directory) ? directory : undefined;
 }
 
 function contextFileInDirectory(
-  root: string,
   directory: string,
 ): { path: string; canonical: string } | undefined {
   for (const name of CONTEXT_NAMES) {
@@ -108,21 +77,10 @@ function contextFileInDirectory(
       if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
       throw error;
     }
-    let canonical: string;
-    try {
-      canonical = fs.realpathSync(candidate);
-    } catch {
-      throw new NestedContextPolicyError(
-        `cannot resolve nested context file: ${candidate}`,
-      );
-    }
-    if (!isWithin(root, canonical))
-      throw new NestedContextPolicyError(
-        `nested context file escapes the workspace: ${candidate}`,
-      );
+    const canonical = fs.realpathSync(candidate);
     if (fs.statSync(canonical).isFile()) return { path: candidate, canonical };
     if (metadata.isSymbolicLink())
-      throw new NestedContextPolicyError(
+      throw new Error(
         `nested context path is not a regular file: ${candidate}`,
       );
   }
@@ -140,11 +98,9 @@ function readBoundedContext(
   try {
     const metadata = fs.fstatSync(descriptor);
     if (!metadata.isFile())
-      throw new NestedContextPolicyError(
-        `nested context path is not a regular file: ${file}`,
-      );
+      throw new Error(`nested context path is not a regular file: ${file}`);
     if (metadata.size > MAX_FILE_BYTES)
-      throw new NestedContextPolicyError(
+      throw new Error(
         `nested context file exceeds ${MAX_FILE_BYTES} bytes: ${file}`,
       );
     const buffer = Buffer.alloc(metadata.size);
@@ -154,9 +110,7 @@ function readBoundedContext(
     try {
       content = decoder.decode(buffer.subarray(0, bytesRead));
     } catch {
-      throw new NestedContextPolicyError(
-        `nested context file is not valid UTF-8: ${file}`,
-      );
+      throw new Error(`nested context file is not valid UTF-8: ${file}`);
     }
     return { path: contextPath, content };
   } finally {
@@ -168,16 +122,20 @@ export function discoverNestedContext(
   cwd: string,
   targets: TargetPath[],
 ): NestedContextFile[] {
-  const root = fs.realpathSync(cwd);
+  // Native startup discovery already supplies these scopes. Stop at the common
+  // ancestor, not at cwd: sibling projects have their own instructions too.
+  const startupDirectories = new Set<string>();
+  for (let current = fs.realpathSync(cwd); ; current = path.dirname(current)) {
+    startupDirectories.add(current);
+    if (path.dirname(current) === current) break;
+  }
   const found = new Map<string, NestedContextFile>();
   for (const target of targets) {
-    const targetDirectory = resolveTargetDirectory(cwd, target);
-    if (!targetDirectory) continue;
-    let current = targetDirectory;
-    while (current !== root && isWithin(root, current)) {
-      const contextFile = contextFileInDirectory(root, current);
-      // A shared target supplies bytes, not scope: its link's directory owns
-      // precedence and attribution. Open the resolved file with O_NOFOLLOW.
+    let current = resolveTargetDirectory(cwd, target);
+    while (!startupDirectories.has(current)) {
+      const contextFile = contextFileInDirectory(current);
+      // A shared target supplies bytes, not scope: attribute linked instructions
+      // to the link's directory, even when the bytes live outside cwd.
       if (contextFile && !found.has(contextFile.path))
         found.set(
           contextFile.path,
@@ -189,8 +147,8 @@ export function discoverNestedContext(
     }
   }
   return [...found.values()].sort((left, right) => {
-    const leftDepth = path.relative(root, left.path).split(path.sep).length;
-    const rightDepth = path.relative(root, right.path).split(path.sep).length;
+    const leftDepth = left.path.split(path.sep).length;
+    const rightDepth = right.path.split(path.sep).length;
     if (leftDepth !== rightDepth) return leftDepth - rightDepth;
     return left.path < right.path ? -1 : left.path > right.path ? 1 : 0;
   });
@@ -202,12 +160,6 @@ function formatContext(files: NestedContextFile[]): string {
     .join("\n\n");
 }
 
-function stringArray(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string")
-    : [];
-}
-
 function observationTargets(event: {
   toolName: string;
   input: Record<string, unknown>;
@@ -217,20 +169,10 @@ function observationTargets(event: {
     if (typeof value === "string" && value.trim())
       targets.push({ path: value, assumeFile });
   };
-  if (event.toolName === "read") add(event.input.path, false);
-  if (event.toolName === "look_at") {
-    add(event.input.path, true);
-    stringArray(event.input.referenceFiles).forEach((file) => add(file, true));
-  }
+  add(event.input.path, event.toolName !== "read");
+  if (event.toolName === "look_at" && Array.isArray(event.input.referenceFiles))
+    event.input.referenceFiles.forEach((file) => add(file, true));
   return targets;
-}
-
-function mutationTargets(event: {
-  input: Record<string, unknown>;
-}): TargetPath[] {
-  return typeof event.input.path === "string"
-    ? [{ path: event.input.path, assumeFile: true }]
-    : [];
 }
 
 class ContextLedger {
@@ -261,74 +203,18 @@ class ContextLedger {
 export function createNestedAgentsExtension(): (pi: ExtensionAPI) => void {
   return function nestedAgentsExtension(pi: ExtensionAPI): void {
     const ledger = new ContextLedger();
-    let mutationBarrier = false;
     const disabled = (): boolean => pi.getFlag("no-nested-agents") === true;
 
     pi.registerFlag("no-nested-agents", {
-      description: "Disable descendant AGENTS.md context injection",
+      description: "Disable on-demand AGENTS.md context injection",
       type: "boolean",
       default: false,
     });
 
-    pi.on("turn_start", () => {
-      mutationBarrier = false;
-    });
-    pi.on("session_start", () => {
-      ledger.reset();
-      mutationBarrier = false;
-    });
-    pi.on("session_compact", () => {
-      ledger.reset();
-      mutationBarrier = false;
-    });
-    pi.on("session_tree", () => {
-      ledger.reset();
-      mutationBarrier = false;
-    });
-    pi.on("session_shutdown", () => {
-      ledger.reset();
-      mutationBarrier = false;
-    });
-
-    pi.on("tool_call", (event, ctx) => {
-      if (disabled() || !MUTATION_TOOLS.has(event.toolName)) return;
-      const targets = mutationTargets({
-        input: event.input as Record<string, unknown>,
-      });
-      if (
-        targets.some(
-          (target) => resolveTargetDirectory(ctx.cwd, target) === undefined,
-        )
-      ) {
-        mutationBarrier = true;
-        return {
-          block: true,
-          reason:
-            "Mutation paused: the target is outside the current workspace, so its project instructions cannot be established. Start Pi from that workspace before changing it.",
-        };
-      }
-      let files: NestedContextFile[];
-      try {
-        files = ledger.take(ctx.cwd, targets);
-      } catch (error) {
-        if (!(error instanceof NestedContextPolicyError)) throw error;
-        mutationBarrier = true;
-        return { block: true, reason: `Mutation paused: ${error.message}` };
-      }
-      if (files.length === 0 && !mutationBarrier) return;
-      mutationBarrier = true;
-      return {
-        block: true,
-        reason:
-          files.length > 0
-            ? [
-                "Mutation paused: nested project instructions apply to the target files.",
-                "Follow these instructions, then retry the mutation in the next turn.",
-                formatContext(files),
-              ].join("\n\n")
-            : "Mutation paused because another mutation in this tool batch required nested project instructions. Retry in the next turn.",
-      };
-    });
+    pi.on("session_start", () => ledger.reset());
+    pi.on("session_compact", () => ledger.reset());
+    pi.on("session_tree", () => ledger.reset());
+    pi.on("session_shutdown", () => ledger.reset());
 
     pi.on("tool_result", (event, ctx) => {
       if (disabled() || event.isError || !OBSERVATION_TOOLS.has(event.toolName))
@@ -343,20 +229,19 @@ export function createNestedAgentsExtension(): (pi: ExtensionAPI) => void {
           }),
         );
       } catch (error) {
-        if (!(error instanceof NestedContextPolicyError)) throw error;
-        mutationBarrier = true;
+        // Discovery annotates successful results; it must never turn a completed
+        // read or mutation into a permission failure.
         return {
           content: [
             ...event.content,
             {
               type: "text" as const,
-              text: `[Nested context unavailable: ${error.message}]`,
+              text: `[Nested context unavailable: ${error instanceof Error ? error.message : String(error)}]`,
             },
           ],
         };
       }
       if (files.length === 0) return;
-      mutationBarrier = true;
       return {
         content: [
           ...event.content,
@@ -374,9 +259,8 @@ export default nestedAgentsExtension;
 
 if (import.meta.vitest) {
   const { afterEach, describe, expect, it } = import.meta.vitest;
-  const { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } =
-    await import("node:fs");
-  const { tmpdir } = await import("node:os");
+  const { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } = fs;
+  const { homedir, tmpdir } = await import("node:os");
   const {
     createAgentSession,
     createCodemodeExtension,
@@ -400,11 +284,7 @@ if (import.meta.vitest) {
       .forEach((root) => rmSync(root, { recursive: true, force: true }));
   });
 
-  function fixture(): {
-    root: string;
-    file: string;
-    nestedContext: string;
-  } {
+  function fixture() {
     const root = fs.realpathSync(
       mkdtempSync(path.join(tmpdir(), "nested-agents-")),
     );
@@ -419,20 +299,26 @@ if (import.meta.vitest) {
     return { root, file, nestedContext };
   }
 
-  function harness(): {
-    handlers: Record<string, (...args: any[]) => any>;
-    extension: ReturnType<typeof createNestedAgentsExtension>;
-  } {
+  function harness(disabled = false) {
     const handlers: Record<string, (...args: any[]) => any> = {};
-    const extension = createNestedAgentsExtension();
-    extension({
-      getFlag: () => false,
+    createNestedAgentsExtension()({
+      getFlag: () => disabled,
       registerFlag: () => {},
       on: (event: string, handler: (...args: any[]) => any) => {
         handlers[event] = handler;
       },
     } as any);
-    return { handlers, extension };
+    return handlers;
+  }
+
+  function result(path: string, toolName = "read") {
+    return {
+      toolName,
+      input: { path },
+      content: [{ type: "text", text: "original tool result" }],
+      details: {},
+      isError: false,
+    };
   }
 
   async function sdkFixture(root: string) {
@@ -492,18 +378,15 @@ if (import.meta.vitest) {
       settingsManager,
       resourceLoader: loader,
       sessionManager: SessionManager.inMemory(root),
-      tools: ["edit", "write", "nested_edit", "codemode", "bash"],
+      tools: ["read", "edit", "write", "nested_edit", "codemode", "bash"],
     });
     await session.bindExtensions({ mode: "json" });
     async function call(tool: string, input: JsonObject, via = "direct") {
-      const name =
-        via === "direct" ? tool : via === "nested" ? "nested_edit" : "codemode";
-      const args =
+      const name = via === "direct" ? tool : "codemode";
+      const args: JsonObject =
         via === "direct"
           ? input
-          : via === "nested"
-            ? { tool, input }
-            : { code: `text(await tools.${tool}(${JSON.stringify(input)}));` };
+          : { code: `text(await tools.${tool}(${JSON.stringify(input)}));` };
       faux.setResponses([
         fauxAssistantMessage(fauxToolCall(name, args), {
           stopReason: "toolUse",
@@ -511,11 +394,9 @@ if (import.meta.vitest) {
         fauxAssistantMessage("done"),
       ]);
       await session.prompt("execute the fixture call");
-      const result = [...session.messages]
-        .reverse()
-        .find((m) => m.role === "toolResult");
-      if (!result || result.role !== "toolResult")
-        throw new Error("fixture did not produce a tool result");
+      const result = session.messages
+        .filter((m) => m.role === "toolResult")
+        .at(-1)!;
       return {
         isError: result.isError,
         text: result.content
@@ -524,106 +405,238 @@ if (import.meta.vitest) {
           .join("\n"),
       };
     }
-    return { session, call, faux };
+    return { session, faux, call };
   }
 
-  describe("native editing through shared SDK dispatch", () => {
-    it.each(["direct", "codemode"])(
-      "%s keeps sibling mutations blocked in the instruction-delivery turn",
-      async (via) => {
-        const { root, file } = fixture();
-        const sibling = path.join(root, "sibling.txt");
-        const { session, faux } = await sdkFixture(root);
-        const edit = {
-          path: file,
-          edits: [{ oldText: "export {};", newText: "export const x = 1;" }],
-        };
-        const write = { path: sibling, content: "must wait\n" };
-        const calls =
-          via === "direct"
-            ? [fauxToolCall("edit", edit), fauxToolCall("write", write)]
-            : [
-                fauxToolCall("codemode", {
-                  code: `const results = await Promise.allSettled([
-                tools.edit(${JSON.stringify(edit)}),
-                tools.write(${JSON.stringify(write)})
-              ]);
-              text(results.map(result => result.status === "rejected"
-                ? result.reason.message : result.value));`,
-                }),
-              ];
-        faux.setResponses([
-          fauxAssistantMessage(calls, { stopReason: "toolUse" }),
-          fauxAssistantMessage("done"),
+  describe("on-demand instruction discovery", () => {
+    it("discovers descendant instructions outermost first, excluding startup scopes", () => {
+      const { root, file } = fixture();
+      expect(
+        discoverNestedContext(root, [{ path: file, assumeFile: true }]).map(
+          (item) => path.relative(root, item.path),
+        ),
+      ).toEqual(["packages/AGENTS.md", "packages/app/AGENTS.md"]);
+      expect(
+        discoverNestedContext(path.dirname(file), [
+          { path: path.join(root, "AGENTS.md"), assumeFile: true },
+        ]),
+      ).toEqual([]);
+    });
+
+    it("loads sibling scopes, including ancestors of newly created paths", () => {
+      const { root } = fixture();
+      const outside = fixture();
+      const found = discoverNestedContext(root, [
+        { path: path.join(outside.root, "new/deep/file.ts"), assumeFile: true },
+        { path: outside.file, assumeFile: true },
+      ]);
+      expect(found.map((item) => item.content.trim())).toEqual([
+        "root rule",
+        "package rule",
+        "app rule",
+      ]);
+    });
+
+    it.each(["directory", "file"])(
+      "follows a %s symlink outside cwd to the target's instruction scopes",
+      (kind) => {
+        const { root } = fixture();
+        const outside = fixture();
+        const link = path.join(root, "external");
+        symlinkSync(kind === "file" ? outside.file : outside.root, link);
+        const target =
+          kind === "file" ? link : path.join(link, "packages/app/src/index.ts");
+        expect(
+          discoverNestedContext(root, [{ path: target, assumeFile: true }]).map(
+            (item) => item.content.trim(),
+          ),
+        ).toEqual(["root rule", "package rule", "app rule"]);
+      },
+    );
+
+    it("handles relative, home-prefixed and @-prefixed targets", () => {
+      const { root, file } = fixture();
+      for (const target of [
+        path.relative(root, file),
+        `@${file}`,
+        `~/${path.relative(homedir(), file)}`,
+      ])
+        expect(
+          discoverNestedContext(root, [{ path: target, assumeFile: true }]),
+        ).toHaveLength(2);
+    });
+
+    it("uses native filename precedence and strips UTF-8 BOMs", () => {
+      const { root, file } = fixture();
+      writeFileSync(
+        path.join(root, "packages/AGENTS.override.md"),
+        "\ufeffoverride\n",
+      );
+      writeFileSync(path.join(root, "packages/CLAUDE.md"), "not selected\n");
+      expect(
+        discoverNestedContext(root, [{ path: file, assumeFile: true }]).map(
+          (item) => item.content.trim(),
+        ),
+      ).toEqual(["override", "app rule"]);
+    });
+
+    it.each(["relative", "absolute", "chain", "outside"])(
+      "attributes %s linked instructions to their applicable directory",
+      (kind) => {
+        const { root, file, nestedContext } = fixture();
+        const targetRoot = kind === "outside" ? fixture().root : root;
+        const target = path.join(targetRoot, "rules.md");
+        writeFileSync(target, "linked rule\n");
+        rmSync(nestedContext);
+        if (kind === "chain") {
+          symlinkSync("rules.md", path.join(root, "link.md"));
+          symlinkSync("../link.md", nestedContext);
+        } else {
+          symlinkSync(
+            kind === "relative"
+              ? path.relative(path.dirname(nestedContext), target)
+              : target,
+            nestedContext,
+          );
+        }
+        expect(
+          discoverNestedContext(root, [{ path: file, assumeFile: true }]),
+        ).toEqual([
+          { path: nestedContext, content: "linked rule\n" },
+          {
+            path: path.join(root, "packages/app/AGENTS.md"),
+            content: "app rule\n",
+          },
         ]);
-        try {
-          await session.prompt("execute both fixture mutations");
-          const delivered = session.messages
-            .filter((m) => m.role === "toolResult")
-            .flatMap((m) => m.content)
-            .filter((item) => item.type === "text")
-            .map((item) => item.text)
-            .join("\n");
-          expect(delivered).toContain("package rule");
-          expect(delivered).toContain("another mutation");
-          expect(fs.readFileSync(file, "utf8")).toBe("export {};\n");
-          expect(fs.existsSync(sibling)).toBe(false);
-        } finally {
-          session.dispose();
-        }
       },
     );
 
-    it.each(["direct", "nested", "codemode"])(
-      "%s pauses native edit/write before instructions and preserves unrelated user content on retry",
-      async (via) => {
-        // Separate sessions prove that neither native tool relies on the other
-        // having discovered instructions first.
-        for (const tool of ["edit", "write"]) {
-          const { root, file } = fixture();
-          const created = path.join(root, "packages/app/new/deep/file.txt");
-          const original = "header\nexport {};\nuser footer\n";
-          writeFileSync(file, original);
-          const { session, call } = await sdkFixture(root);
-          const args: JsonObject =
-            tool === "edit"
-              ? {
-                  path: file,
-                  edits: [
-                    {
-                      oldText: "export {};",
-                      newText: "export const value = 1;",
-                    },
-                  ],
-                }
-              : { path: created, content: "new file\n" };
-          try {
-            const first = await call(tool, args, via);
-            expect(first.isError).toBe(true);
-            expect(first.text).toContain("Mutation paused");
-            expect(first.text).toContain("package rule");
-            expect(first.text).toContain("app rule");
-            expect(fs.readFileSync(file, "utf8")).toBe(original);
-            expect(fs.existsSync(created)).toBe(false);
-
-            // Simulate another writer between instruction delivery and retry.
-            fs.appendFileSync(file, "unpublished user addition\n");
-            const second = await call(tool, args, via);
-            expect(second.isError).toBe(false);
-            expect(fs.readFileSync(file, "utf8")).toBe(
-              (tool === "edit"
-                ? original.replace("export {};", "export const value = 1;")
-                : original) + "unpublished user addition\n",
-            );
-            if (tool === "write")
-              expect(fs.readFileSync(created, "utf8")).toBe("new file\n");
-          } finally {
-            session.dispose();
-          }
-        }
+    it.each(["read", "look_at", "edit", "write"])(
+      "appends instructions once after successful %s without registering a permission gate",
+      (tool) => {
+        const { root, file } = fixture();
+        const handlers = harness();
+        const event = result(file, tool);
+        const first = handlers.tool_result!(event, { cwd: root });
+        expect(first.content[0]).toEqual(event.content[0]);
+        expect(first.content[1].text).toContain("package rule");
+        expect(first.content[1].text).toContain("app rule");
+        expect(handlers.tool_result!(event, { cwd: root })).toBeUndefined();
+        expect(handlers.tool_call).toBeUndefined();
       },
     );
 
+    it("loads directory scope and look_at reference scopes, without duplicate ancestors", () => {
+      const { root, file } = fixture();
+      const handlers = harness();
+      const directory = handlers.tool_result!(
+        result(path.join(root, "packages/app")),
+        { cwd: root },
+      );
+      expect(directory.content[1].text).toContain("app rule");
+      const outside = fixture();
+      const observed = handlers.tool_result!(
+        {
+          ...result(file, "look_at"),
+          input: {
+            path: file,
+            referenceFiles: [outside.file, outside.file, 7],
+          },
+        },
+        { cwd: root },
+      );
+      expect(observed.content[1].text.match(/app rule/g)).toHaveLength(1);
+      expect(observed.content[1].text).toContain(outside.nestedContext);
+    });
+
+    it.each([
+      "session_start",
+      "session_compact",
+      "session_tree",
+      "session_shutdown",
+    ])("rediscovers instructions after %s", (event) => {
+      const { root, file } = fixture();
+      const handlers = harness();
+      expect(handlers.tool_result!(result(file), { cwd: root })).toBeDefined();
+      expect(
+        handlers.tool_result!(result(file), { cwd: root }),
+      ).toBeUndefined();
+      handlers[event]!();
+      expect(handlers.tool_result!(result(file), { cwd: root })).toBeDefined();
+    });
+
+    it.each(["dangling", "cycle", "directory", "oversized", "invalid UTF-8"])(
+      "warns about %s instructions without blocking tools or changing their successful status",
+      (kind) => {
+        const { root, file, nestedContext } = fixture();
+        rmSync(nestedContext);
+        if (kind === "dangling") symlinkSync("missing.md", nestedContext);
+        else if (kind === "cycle") symlinkSync("AGENTS.md", nestedContext);
+        else if (kind === "directory") symlinkSync(root, nestedContext);
+        else
+          writeFileSync(
+            nestedContext,
+            kind === "oversized"
+              ? "x".repeat(MAX_FILE_BYTES + 1)
+              : Buffer.from([0xff]),
+          );
+        const handlers = harness();
+        const event = result(file, "edit");
+        const warning = handlers.tool_result!(event, { cwd: root });
+        expect(warning.content[0]).toEqual(event.content[0]);
+        expect(warning.content[1].text).toContain(
+          "Nested context unavailable:",
+        );
+        expect(warning.block).toBeUndefined();
+        expect(warning.isError).toBeUndefined();
+        expect(handlers.tool_call).toBeUndefined();
+      },
+    );
+
+    it("defers context beyond the event byte budget without marking it delivered", () => {
+      const { root } = fixture();
+      let directory = root;
+      for (let i = 0; i < 5; i++) {
+        directory = path.join(directory, `level-${i}`);
+        mkdirSync(directory);
+        writeFileSync(
+          path.join(directory, "AGENTS.md"),
+          "x".repeat(MAX_FILE_BYTES),
+        );
+      }
+      const handlers = harness();
+      const event = result(directory);
+      const first = handlers.tool_result!(event, { cwd: root });
+      const second = handlers.tool_result!(event, { cwd: root });
+      expect(Buffer.byteLength(first.content[1].text)).toBeLessThanOrEqual(
+        MAX_EVENT_BYTES,
+      );
+      expect(first.content[1].text.match(/Directory Context:/g)).toHaveLength(
+        3,
+      );
+      expect(second.content[1].text.match(/Directory Context:/g)).toHaveLength(
+        2,
+      );
+      expect(handlers.tool_result!(event, { cwd: root })).toBeUndefined();
+    });
+
+    it("ignores failed results, unsupported tools, empty targets and the disable flag", () => {
+      const { root, file } = fixture();
+      const handlers = harness();
+      for (const event of [
+        { ...result(file), isError: true },
+        result(file, "bash"),
+        { ...result(file), input: { path: " " } },
+      ])
+        expect(handlers.tool_result!(event, { cwd: root })).toBeUndefined();
+      expect(
+        harness(true).tool_result!(result(file), { cwd: root }),
+      ).toBeUndefined();
+      expect(handlers.tool_result!(result(file), { cwd: root })).toBeDefined();
+    });
+  });
+
+  describe("native dispatch remains unrestricted", () => {
     it.each(["direct", "codemode"])(
       "%s rejects malformed, nonmatching, ambiguous and overlapping native edits without partial writes",
       async (via) => {
@@ -677,7 +690,7 @@ if (import.meta.vitest) {
       },
     );
 
-    it("runs real shell search/listing and still gates a subsequent native edit", async () => {
+    it("runs real shell search/listing without gating a subsequent native edit", async () => {
       const { root, file } = fixture();
       const spaced = path.join(root, "packages/app/src/file with spaces.ts");
       writeFileSync(spaced, "unique search needle\n");
@@ -696,324 +709,151 @@ if (import.meta.vitest) {
         expect(listing.isError, listing.text).toBe(false);
         expect(listing.text).toContain("packages/app/src/index.ts");
         expect(listing.text).toContain("file with spaces.ts");
-        const result = await call("edit", {
+        const edited = await call("edit", {
           path: file,
           edits: [{ oldText: "export {};", newText: "export const x = 1;" }],
         });
-        expect(result.isError).toBe(true);
-        expect(result.text).toContain("app rule");
-        expect(fs.readFileSync(file, "utf8")).toBe("export {};\n");
+        expect(edited.isError).toBe(false);
+        expect(edited.text).toContain("app rule");
+        expect(fs.readFileSync(file, "utf8")).toBe("export const x = 1;\n");
       } finally {
         session.dispose();
       }
     });
-  });
 
-  describe("nested AGENTS.md context", () => {
-    it("discovers descendant instructions outermost first and excludes cwd", () => {
-      const { root, file } = fixture();
-      expect(
-        discoverNestedContext(root, [{ path: file, assumeFile: true }]).map(
-          (item) => path.relative(root, item.path),
-        ),
-      ).toEqual(["packages/AGENTS.md", "packages/app/AGENTS.md"]);
-    });
-
-    it.each(["relative", "absolute", "chain"])(
-      "loads %s workspace-local context links at their applicable directory",
-      (kind) => {
-        const { root, file, nestedContext } = fixture();
-        const target = path.join(root, "config/deeper/rules.md");
-        mkdirSync(path.dirname(target), { recursive: true });
-        writeFileSync(target, "linked outer rule\n");
-        rmSync(nestedContext);
-        if (kind === "chain") {
-          symlinkSync("deeper/rules.md", path.join(root, "config/link.md"));
-          symlinkSync("../config/link.md", nestedContext);
-        } else {
-          symlinkSync(
-            kind === "absolute"
-              ? target
-              : path.relative(path.dirname(nestedContext), target),
-            nestedContext,
-          );
+    it.each(["direct", "nested", "codemode"])(
+      "%s edits and writes outside cwd on the first call, then returns instructions",
+      async (via) => {
+        for (const tool of ["edit", "write"]) {
+          const { root } = fixture();
+          const outside = fixture();
+          const { session, faux } = await sdkFixture(root);
+          const target =
+            tool === "edit"
+              ? outside.file
+              : path.join(outside.root, "packages/app/new/deep/file.txt");
+          const input: JsonObject =
+            tool === "edit"
+              ? {
+                  path: target,
+                  edits: [
+                    { oldText: "export {};", newText: "export const x = 1;" },
+                  ],
+                }
+              : { path: target, content: "created\n" };
+          const name =
+            via === "direct"
+              ? tool
+              : via === "nested"
+                ? "nested_edit"
+                : "codemode";
+          const args: JsonObject =
+            via === "direct"
+              ? input
+              : via === "nested"
+                ? { tool, input }
+                : {
+                    code: `text(await tools.${tool}(${JSON.stringify(input)}));`,
+                  };
+          faux.setResponses([
+            fauxAssistantMessage(fauxToolCall(name, args), {
+              stopReason: "toolUse",
+            }),
+            fauxAssistantMessage("done"),
+          ]);
+          try {
+            await session.prompt("execute the fixture call");
+            const results = session.messages.filter(
+              (m) => m.role === "toolResult",
+            );
+            expect(results).toHaveLength(1);
+            expect(results[0]!.isError).toBeFalsy();
+            const delivered = results[0]!.content
+              .filter((item) => item.type === "text")
+              .map((item) => item.text)
+              .join("\n");
+            expect(delivered).toContain("package rule");
+            expect(delivered).toContain("app rule");
+            expect(fs.readFileSync(target, "utf8")).toBe(
+              tool === "edit" ? "export const x = 1;\n" : "created\n",
+            );
+          } finally {
+            session.dispose();
+          }
         }
-        expect(
-          discoverNestedContext(root, [{ path: file, assumeFile: true }]),
-        ).toEqual([
-          { path: nestedContext, content: "linked outer rule\n" },
-          {
-            path: path.join(root, "packages/app/AGENTS.md"),
-            content: "app rule\n",
-          },
-        ]);
       },
     );
 
-    it("fails closed for dangling context links", () => {
-      const { root, file } = fixture();
-      const context = path.join(root, "packages/app/AGENTS.md");
-      rmSync(context);
-      symlinkSync(path.join(root, "missing-agents.md"), context);
-      expect(() =>
-        discoverNestedContext(root, [{ path: file, assumeFile: true }]).map(
-          (item) => item.content.trim(),
-        ),
-      ).toThrow("cannot resolve nested context file");
-    });
-
-    it.each(["outside", "cycle", "directory", "oversized", "invalid UTF-8"])(
-      "fails closed for %s context links",
-      (kind) => {
+    it.each(["direct", "codemode"])(
+      "%s keeps sibling writes runnable when a read discovers instructions",
+      async (via) => {
         const { root, file } = fixture();
-        const context = path.join(root, "packages/app/AGENTS.md");
-        const target = path.join(root, "rules.md");
-        rmSync(context);
-        let expected: string;
-        if (kind === "outside") {
-          const outside = mkdtempSync(
-            path.join(tmpdir(), "nested-context-outside-"),
+        const target = path.join(root, "sibling.txt");
+        const { session, faux } = await sdkFixture(root);
+        const read = { path: file };
+        const write = { path: target, content: "no permission gate\n" };
+        const calls =
+          via === "direct"
+            ? [fauxToolCall("read", read), fauxToolCall("write", write)]
+            : [
+                fauxToolCall("codemode", {
+                  code: `text(await tools.read(${JSON.stringify(read)})); text(await tools.write(${JSON.stringify(write)}));`,
+                }),
+              ];
+        faux.setResponses([
+          fauxAssistantMessage(calls, { stopReason: "toolUse" }),
+          fauxAssistantMessage("done"),
+        ]);
+        try {
+          await session.prompt("execute both fixture calls");
+          expect(fs.readFileSync(target, "utf8")).toBe("no permission gate\n");
+          const results = session.messages.filter(
+            (m) => m.role === "toolResult",
           );
-          roots.push(outside);
-          writeFileSync(path.join(outside, "rules.md"), "outside rule\n");
-          symlinkSync(path.join(outside, "rules.md"), context);
-          expected = "escapes the workspace";
-        } else if (kind === "cycle") {
-          symlinkSync("AGENTS.md", context);
-          expected = "cannot resolve nested context file";
-        } else if (kind === "directory") {
-          symlinkSync(root, context);
-          expected = "not a regular file";
-        } else {
-          writeFileSync(
-            target,
-            kind === "oversized"
-              ? "x".repeat(MAX_FILE_BYTES + 1)
-              : Buffer.from([0xff]),
-          );
-          symlinkSync(target, context);
-          expected = kind === "oversized" ? "exceeds" : "not valid UTF-8";
+          expect(results.every((m) => !m.isError)).toBe(true);
+          expect(
+            results
+              .flatMap((m) => m.content)
+              .filter((item) => item.type === "text")
+              .map((item) => item.text)
+              .join("\n"),
+          ).toContain("app rule");
+        } finally {
+          session.dispose();
         }
-        expect(() =>
-          discoverNestedContext(root, [{ path: file, assumeFile: true }]),
-        ).toThrow(expected);
-        const { handlers } = harness();
-        expect(
-          handlers.tool_call!(
-            { toolName: "edit", input: { path: file } },
-            { cwd: root },
-          ),
-        ).toMatchObject({
-          block: true,
-          reason: expect.stringContaining(expected),
-        });
       },
     );
 
-    it("delivers linked instructions before allowing a mutation on the next turn", () => {
+    it("keeps a native edit successful when context discovery fails", async () => {
       const { root, file, nestedContext } = fixture();
-      const target = path.join(root, "rules.md");
-      writeFileSync(target, "linked rule\n");
-      rmSync(nestedContext);
-      symlinkSync("../rules.md", nestedContext);
-      const { handlers } = harness();
-      const event = { toolName: "edit", input: { path: file } };
-      expect(handlers.tool_call!(event, { cwd: root })).toMatchObject({
-        block: true,
-        reason: expect.stringContaining("linked rule"),
-      });
-      expect(handlers.tool_call!(event, { cwd: root })).toMatchObject({
-        block: true,
-      });
-      handlers.turn_start!();
-      expect(handlers.tool_call!(event, { cwd: root })).toBeUndefined();
-    });
-
-    it("rejects targets that escape through a symlink", () => {
-      const { root } = fixture();
-      const outside = mkdtempSync(
-        path.join(tmpdir(), "nested-agents-outside-"),
-      );
-      roots.push(outside);
-      writeFileSync(path.join(outside, "AGENTS.md"), "outside rule\n");
-      writeFileSync(path.join(outside, "secret.ts"), "secret\n");
-      symlinkSync(outside, path.join(root, "escaped"));
-      expect(
-        discoverNestedContext(root, [
-          { path: path.join(root, "escaped/secret.ts"), assumeFile: true },
-        ]),
-      ).toEqual([]);
-    });
-
-    it("appends context once after a successful read", () => {
-      const { root, file } = fixture();
-      const { handlers } = harness();
-      const event = {
-        toolName: "read",
-        input: { path: file },
-        content: [{ type: "text", text: "file body" }],
-        details: {},
-        isError: false,
-      };
-      const first = handlers.tool_result!(event, { cwd: root });
-      expect(first.content[0]).toEqual(event.content[0]);
-      expect(first.content[1].text).toContain("package rule");
-      expect(first.content[1].text).toContain("app rule");
-      expect(handlers.tool_result!(event, { cwd: root })).toBeUndefined();
-    });
-
-    it("keeps a mutation blocked until the turn after read context is delivered", () => {
-      const { root, file } = fixture();
-      const { handlers } = harness();
-      handlers.turn_start!();
-      expect(
-        handlers.tool_result!(
-          {
-            toolName: "read",
-            input: { path: file },
-            content: [{ type: "text", text: "file body" }],
-            details: {},
-            isError: false,
-          },
-          { cwd: root },
+      writeFileSync(nestedContext, "x".repeat(MAX_FILE_BYTES + 1));
+      const { session, faux } = await sdkFixture(root);
+      faux.setResponses([
+        fauxAssistantMessage(
+          fauxToolCall("edit", {
+            path: file,
+            edits: [{ oldText: "export {};", newText: "changed" }],
+          }),
+          { stopReason: "toolUse" },
         ),
-      ).toBeDefined();
-      expect(
-        handlers.tool_call!(
-          { toolName: "edit", input: { path: file } },
-          { cwd: root },
-        ),
-      ).toMatchObject({ block: true });
-      handlers.turn_start!();
-      expect(
-        handlers.tool_call!(
-          { toolName: "edit", input: { path: file } },
-          { cwd: root },
-        ),
-      ).toBeUndefined();
-    });
-
-    it("blocks a mutation once, then permits its retry on the next turn", () => {
-      const { root, file } = fixture();
-      const { handlers } = harness();
-      const event = {
-        toolName: "edit",
-        input: {
-          path: file,
-          edits: [
-            { oldText: "export {};", newText: "export const value = 1;" },
-          ],
-        },
-      };
-      handlers.turn_start!();
-      const blocked = handlers.tool_call!(event, { cwd: root });
-      expect(blocked).toMatchObject({ block: true });
-      expect(blocked.reason).toContain("package rule");
-      expect(blocked.reason).toContain("app rule");
-      expect(
-        handlers.tool_call!(
-          {
-            toolName: "write",
-            input: { path: path.join(root, "README.md") },
-          },
-          { cwd: root },
-        ),
-      ).toMatchObject({
-        block: true,
-      });
-      handlers.turn_start!();
-      expect(handlers.tool_call!(event, { cwd: root })).toBeUndefined();
-    });
-
-    it("reloads nested instructions after compaction", () => {
-      const { root, file } = fixture();
-      const { handlers } = harness();
-      const event = {
-        toolName: "read",
-        input: { path: file },
-        content: [{ type: "text", text: "file body" }],
-        details: {},
-        isError: false,
-      };
-      expect(handlers.tool_result!(event, { cwd: root })).toBeDefined();
-      handlers.session_compact!();
-      expect(handlers.tool_result!(event, { cwd: root })).toBeDefined();
-    });
-
-    it("reloads nested instructions after tree navigation", () => {
-      const { root, file } = fixture();
-      const { handlers } = harness();
-      const event = {
-        toolName: "read",
-        input: { path: file },
-        content: [{ type: "text", text: "file body" }],
-        details: {},
-        isError: false,
-      };
-      expect(handlers.tool_result!(event, { cwd: root })).toBeDefined();
-      handlers.session_tree!();
-      expect(handlers.tool_result!(event, { cwd: root })).toBeDefined();
-    });
-
-    it("fails closed for oversized instructions and outside mutations", () => {
-      const { root, file } = fixture();
-      writeFileSync(
-        path.join(root, "packages/app/AGENTS.md"),
-        "x".repeat(MAX_FILE_BYTES + 1),
-      );
-      const { handlers } = harness();
-      expect(
-        handlers.tool_call!(
-          { toolName: "edit", input: { path: file } },
-          { cwd: root },
-        ),
-      ).toMatchObject({
-        block: true,
-        reason: expect.stringContaining("exceeds"),
-      });
-      handlers.turn_start!();
-      expect(
-        handlers.tool_call!(
-          {
-            toolName: "write",
-            input: { path: path.join(tmpdir(), "outside") },
-          },
-          { cwd: root },
-        ),
-      ).toMatchObject({
-        block: true,
-        reason: expect.stringContaining("outside"),
-      });
-      handlers.turn_start!();
-      expect(
-        handlers.tool_call!(
-          { toolName: "write", input: { path: "@~/outside.txt" } },
-          { cwd: root },
-        ),
-      ).toMatchObject({
-        block: true,
-        reason: expect.stringContaining("outside"),
-      });
-    });
-
-    it("blocks mutation through a dangling symlink", () => {
-      const { root } = fixture();
-      const outside = mkdtempSync(
-        path.join(tmpdir(), "nested-agents-dangling-"),
-      );
-      roots.push(outside);
-      const link = path.join(root, "dangling.ts");
-      symlinkSync(path.join(outside, "created.ts"), link);
-      const { handlers } = harness();
-      expect(
-        handlers.tool_call!(
-          { toolName: "write", input: { path: link } },
-          { cwd: root },
-        ),
-      ).toMatchObject({
-        block: true,
-        reason: expect.stringContaining("outside"),
-      });
+        fauxAssistantMessage("done"),
+      ]);
+      try {
+        await session.prompt("execute the fixture edit");
+        expect(fs.readFileSync(file, "utf8")).toBe("changed\n");
+        const last = session.messages
+          .filter((m) => m.role === "toolResult")
+          .at(-1)!;
+        expect(last.isError).toBeFalsy();
+        expect(
+          last.content
+            .filter((item) => item.type === "text")
+            .map((item) => item.text)
+            .join("\n"),
+        ).toContain("Nested context unavailable:");
+      } finally {
+        session.dispose();
+      }
     });
   });
 }
