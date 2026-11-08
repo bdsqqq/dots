@@ -78,8 +78,11 @@ in
 
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
+  # this dedicated host intentionally permits passwordless root, over ssh and locally.
+  security.sudo.extraConfig = ''
+    ${config.system.primaryUser} ALL=(root) NOPASSWD: ALL
+  '';
   system.autoUpgrade.supervision.enable = true;
-  system.autoUpgrade.supervision.passwordlessOperator = config.system.primaryUser;
   my.tailnetRegistry.hostChecks.upgrade = {
     enable = true;
     stateFile = "${config.system.autoUpgrade.supervision.stateDir}/status.json";
