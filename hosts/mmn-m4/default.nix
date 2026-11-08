@@ -79,6 +79,7 @@ in
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
   system.autoUpgrade.supervision.enable = true;
+  system.autoUpgrade.supervision.passwordlessOperator = config.system.primaryUser;
   my.tailnetRegistry.hostChecks.upgrade = {
     enable = true;
     stateFile = "${config.system.autoUpgrade.supervision.stateDir}/status.json";
