@@ -1,11 +1,11 @@
 // Observe existing production component renders. No component output is changed.
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync, realpathSync } from "node:fs";
+import { writeFileSync, realpathSync } from "node:fs";
 import { registerHooks } from "node:module";
 import { pathToFileURL } from "node:url";
 const source = realpathSync(
   new URL(
-    "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/tool-execution.js",
+    "../../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/tool-execution.js",
     import.meta.url,
   ),
 );
@@ -14,7 +14,7 @@ registerHooks({
     const result = nextLoad(url, context);
     if (url !== pathToFileURL(source).href) return result;
     let text = String(result.source);
-    const changes = [
+    const changes: [string, string][] = [
       [
         "createResultRegion(component) {",
         `createResultRegion(component, phase) {
@@ -51,7 +51,7 @@ registerHooks({
       );
       text = text.replaceAll(before, after);
     }
-    writeFileSync(process.env.PI_RENDER_OBSERVED_SOURCE, text);
+    writeFileSync(process.env.PI_RENDER_OBSERVED_SOURCE!, text);
     return { ...result, source: text };
   },
 });

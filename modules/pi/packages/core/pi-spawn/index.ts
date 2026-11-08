@@ -1287,7 +1287,7 @@ if (import.meta.vitest) {
       },
     });
     const rpcFixture = (records: string[], receipts = true) => {
-      const script = path.join(makeTmpDir(), "rpc-fixture.mjs");
+      const script = path.join(makeTmpDir(), "rpc-fixture.ts");
       fs.writeFileSync(
         script,
         `
@@ -1882,7 +1882,7 @@ if (import.meta.vitest) {
         path.join(cwd, "settings.json"),
         JSON.stringify(settings),
       );
-      const probe = path.join(cwd, "probe.mjs");
+      const probe = path.join(cwd, "probe.ts");
       const root = fileURLToPath(new URL("../../../", import.meta.url));
       const paths = extensionNames.map((name) =>
         path.join(

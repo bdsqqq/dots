@@ -598,7 +598,7 @@ if (import.meta.vitest) {
       );
       const before = await import(
         new URL(
-          "../../../scripts/rendering-preview-before.mjs",
+          "./rendering-preview-before.ts",
           import.meta.url,
         ).href
       );
@@ -1011,7 +1011,7 @@ if (import.meta.vitest) {
           "pi-codemode",
         );
         // Only the filesystem write boundary fails; both executors still run real QuickJS scripts.
-        const boundaryPath = `${temporary}/failed-writes.mjs`;
+        const boundaryPath = `${temporary}/failed-writes.ts`;
         await writeFile(
           boundaryPath,
           `export async function writeOutputFile() { throw new Error('WRITE_DENIED_STORAGE'); }`,

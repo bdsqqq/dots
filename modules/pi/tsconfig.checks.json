@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "lib": ["es2023"]
+  },
+  "include": [
+    "tsdown.config.ts",
+    "packages/core/box-format/*.ts",
+    "packages/core/prompt-patch/*.ts",
+    "packages/core/web-retrieval/evaluate.ts"
+  ]
+}

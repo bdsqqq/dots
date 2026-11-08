@@ -12,7 +12,7 @@ import {
 } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 export default async function renderingFixture(pi: ExtensionAPI) {
-  const boundary = await import("./codemode-boundaries.mjs");
+  const boundary = await import("../prompt-patch/codemode-boundaries.ts");
   const plan = JSON.parse(readFileSync(process.env.PI_RENDER_PLAN!, "utf8"));
   const log = (event: unknown) =>
     appendFileSync(plan.events, JSON.stringify(event) + "\n");

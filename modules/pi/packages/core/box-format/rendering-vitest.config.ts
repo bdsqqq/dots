@@ -3,8 +3,8 @@ export default defineConfig({
   test: {
     include: [],
     includeSource: [
-      "scripts/rendering-assertions.ts",
-      "scripts/rendering-markdown.ts",
+      "packages/core/box-format/rendering-assertions.ts",
+      "packages/core/box-format/rendering-markdown.ts",
     ],
   },
 });

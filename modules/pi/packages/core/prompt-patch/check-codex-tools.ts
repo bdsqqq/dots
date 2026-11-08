@@ -1,7 +1,7 @@
 /**
  * Opt-in acceptance check for every shipped tool, using existing Codex OAuth.
  * No tools execute, no session history is sent, no API-key billing fallback.
- * Run after build: node scripts/check-codex-tools.mjs --live [--built]
+ * Run after build: node packages/core/prompt-patch/check-codex-tools.ts --live [--built]
  */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -12,7 +12,7 @@ if (!process.argv.includes("--live"))
   throw new Error("explicit --live required; uses existing Codex OAuth");
 const { loadProviderContractTools, getCodexRequestTools } = await createJiti(
   import.meta.url,
-).import("../packages/core/prompt-patch/provider-contract.ts");
+).import<typeof import("./provider-contract.ts")>("./provider-contract.ts");
 const tools = await loadProviderContractTools(process.argv.includes("--built"));
 const runtime = await ModelRuntime.create({ refreshOnCreate: false });
 const signal = AbortSignal.timeout(60000);
@@ -23,9 +23,16 @@ assert.equal(
   "existing Codex OAuth required; no API-key fallback",
 );
 const model = runtime.getModel("openai-codex", "gpt-6-astra");
-assert.equal(model?.api, "openai-codex-responses");
+assert.ok(model, "Codex model missing");
+assert.equal(model.api, "openai-codex-responses");
 assert.equal(new URL(model.baseUrl).hostname, "chatgpt.com");
-let inventory;
+let inventory:
+  | {
+      model: string;
+      tools: Array<{ name: string; strict?: boolean | null; type: string }>;
+      sha256: string;
+    }
+  | undefined;
 const result = await runtime.complete(
   model,
   {

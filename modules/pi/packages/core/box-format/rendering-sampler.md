@@ -52,11 +52,11 @@ provider request hooks do not count actual transport submissions: websocket reco
 ## focused maintenance checks
 
 ```sh
-pnpm exec vitest run --config scripts/rendering-vitest.config.ts
-pnpm exec tsc -p scripts/tsconfig.rendering.json --noEmit
+pnpm exec vitest run --config packages/core/box-format/rendering-vitest.config.ts
+pnpm run typecheck:checks
 pnpm exec tsc -p tsconfig.build.json --noEmit
 pnpm run test
 pnpm run build
 ```
 
-no nix output consumes these new scripts; no host build, activation or running-session reload is needed. source-aware copying remains out of scope.
+these checks run from the working tree; no host build, activation or running-session reload is needed. source-aware copying remains out of scope.

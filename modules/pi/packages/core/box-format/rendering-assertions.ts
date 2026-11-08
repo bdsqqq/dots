@@ -102,10 +102,8 @@ export function assertBoundedCodemode(
     "bookkeeping chrome",
   );
   assert.ok(
-    result.filter((line) =>
-      /^[✓✗⊘…] (?!shortened\b)[a-zA-Z_]/.test(line),
-    ).length <=
-      (expanded ? 12 : 8),
+    result.filter((line) => /^[✓✗⊘…] (?!shortened\b)[a-zA-Z_]/.test(line))
+      .length <= (expanded ? 12 : 8),
     "unbounded activity view",
   );
 }
@@ -215,7 +213,10 @@ if (import.meta.vitest) {
     expect(() => assertBoundedCodemode(evidence, false)).not.toThrow();
     expect(() =>
       assertBoundedCodemode(
-        { ...evidence, resultLines: ["✗ read ENOENT", ...evidence.resultLines] },
+        {
+          ...evidence,
+          resultLines: ["✗ read ENOENT", ...evidence.resultLines],
+        },
         false,
       ),
     ).toThrow(/unbounded activity/);

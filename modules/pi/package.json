@@ -1,6 +1,5 @@
 {
   "name": "@bdsqqq/pi",
-  "packageManager": "pnpm@12.9.0",
   "version": "0.0.0",
   "description": "extensions and core utilities for pi-coding-agent",
   "keywords": [
@@ -31,16 +30,16 @@
     }
   },
   "scripts": {
-    "sync:pi-extensions": "node ./scripts/sync-pi-extensions-manifest.mjs",
-    "build": "node ./scripts/sync-pi-extensions-manifest.mjs && tsdown && node ./scripts/sync-pi-extensions-manifest.mjs",
+    "build": "tsdown",
+    "typecheck:checks": "tsc -p tsconfig.checks.json --noEmit",
     "lint": "oxlint --type-aware --format=stylish --type-check --report-unused-disable-directives",
     "lint:fix": "oxlint --type-aware --format=stylish --type-check --fix --report-unused-disable-directives",
     "lint:github": "oxlint --type-aware --type-check --format=github --report-unused-disable-directives",
     "format": "oxfmt --write",
     "format:check": "oxfmt --check",
     "test": "vitest run",
-    "test:rendering": "vitest run --config scripts/rendering-vitest.config.ts && node --experimental-strip-types scripts/check-rendering.ts",
-    "check": "pnpm run format:check && pnpm run lint && pnpm run test"
+    "test:rendering": "vitest run --config packages/core/box-format/rendering-vitest.config.ts && node --experimental-strip-types packages/core/box-format/check-rendering.ts",
+    "check": "pnpm run format:check && pnpm run lint && pnpm run typecheck:checks && pnpm run test"
   },
   "dependencies": {
     "defuddle": "^0.19.5",
@@ -71,6 +70,7 @@
   "engines": {
     "node": ">=22.19.0"
   },
+  "packageManager": "pnpm@12.9.0",
   "pi": {
     "extensions": [
       "./dist/extensions/agent-message.js",

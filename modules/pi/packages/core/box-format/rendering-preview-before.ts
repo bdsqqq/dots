@@ -18,11 +18,11 @@ import { Text, truncateToWidth } from "@earendil-works/pi-tui";
  * @returns The truncated visual lines and count of skipped lines
  */
 export function truncateToVisualLines(
-  text,
-  maxVisualLines,
-  width,
+  text: string,
+  maxVisualLines: number,
+  width: number,
   paddingX = 0,
-  keep = "end",
+  keep: "start" | "end" = "end",
 ) {
   if (!text) {
     return { visualLines: [], skippedCount: 0 };
@@ -46,13 +46,18 @@ export function truncateToVisualLines(
  * Caches its lines per width, since it renders on every frame for every result in the transcript.
  */
 export class VisualLinePreview {
-  options;
-  cachedWidth;
-  cachedLines;
-  constructor(options) {
+  options: {
+    text: string;
+    maxVisualLines: number;
+    keep?: "start" | "end";
+    formatHint: (count: number) => string;
+  };
+  cachedWidth: number | undefined;
+  cachedLines: string[] | undefined;
+  constructor(options: VisualLinePreview["options"]) {
     this.options = options;
   }
-  render(width) {
+  render(width: number) {
     if (this.cachedLines === undefined || this.cachedWidth !== width) {
       const { text, maxVisualLines, keep, formatHint } = this.options;
       const preview = truncateToVisualLines(
