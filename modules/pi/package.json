@@ -83,6 +83,7 @@
       "./dist/extensions/finder.js",
       "./dist/extensions/git.js",
       "./dist/extensions/github.js",
+      "./dist/extensions/inference-broker.js",
       "./dist/extensions/librarian.js",
       "./dist/extensions/look-at.js",
       "./dist/extensions/mymind.js",

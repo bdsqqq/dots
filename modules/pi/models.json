@@ -7,7 +7,6 @@
       "name": "CLIProxyAPI · Codex",
       "baseUrl": "https://mmn-m4.tail1543a7.ts.net:8317/v1",
       "api": "openai-responses",
-      "apiKey": "!inference-broker key",
       "models": [
         {
           "id": "gpt-6.1-sol",
