@@ -191,6 +191,11 @@ export function loadedAgentPid(definition: string, destination: string): number 
   if (pid && (!Number.isSafeInteger(Number(pid)) || Number(pid) <= 0)) failure("INVALID_AGENT_EVIDENCE");
   return pid ? Number(pid) : undefined;
 }
+export function listenerArguments(port: number): string[] {
+  if (!Number.isInteger(port) || port < 1 || port > 65535) failure("INVALID_AGENT_CONFIG");
+  // tailscale legitimately owns the same port on other interfaces; authenticate only the backend socket.
+  return ["-nP", `-iTCP@127.0.0.1:${port}`, "-sTCP:LISTEN", "-t"];
+}
 /** A version string is not authentication: the listener must belong to our named launchd agent. */
 export function listenerOwned(definition: string, destination: string, listeners: string): boolean {
   const pid = loadedAgentPid(definition, destination);
@@ -213,7 +218,7 @@ export async function activate(config: HostConfig, uid: number, port: number, pl
       try {
         const definition = await command("/bin/launchctl", ["print", target]);
         const pid = loadedAgentPid(definition, config.destination);
-        const listeners = await command("/usr/sbin/lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"]);
+        const listeners = await command("/usr/sbin/lsof", listenerArguments(port));
         if (listenerOwned(definition, config.destination, listeners) && await runningDeployment(port) === desired.deploymentId) return pid;
       } catch { /* Missing or mismatched evidence is not an applied generation. */ }
       return undefined;
