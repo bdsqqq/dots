@@ -546,6 +546,26 @@ async function runSampler({
     state(`direct-${name}`, [call(name, args)], needles[name]!);
   }
   state(
+    "direct-mymind_search",
+    [call("mymind_search", { q: "rendering", limit: 1 })],
+    "MYMIND_SEARCH_FIXTURE",
+  );
+  state(
+    "direct-mymind_object",
+    [call("mymind_object", { id: "fx_01" })],
+    "MYMIND_OBJECT_FIXTURE",
+  );
+  state(
+    "direct-mymind_media",
+    [call("mymind_media", { id: "fx_01", size: "64x64" })],
+    "image/png",
+  );
+  state(
+    "mymind-quota-error",
+    [call("mymind_object", { id: "fx_quota" })],
+    "quota exhausted",
+  );
+  state(
     "codemode-head-tail",
     [
       call("codemode", {
@@ -670,7 +690,13 @@ async function runSampler({
     [call("find", { path: temporary, pattern: "fixture.txt" })],
     "fixture.txt",
   );
-  state("native-ls", [call("ls", { path: temporary })], "fixture.txt");
+  // Captured grids grow with the matrix; don't let them consume ls's entry limit.
+  put(join(temporary, "native-list", "fixture.txt"), "LOCAL_FIXTURE\n");
+  state(
+    "native-ls",
+    [call("ls", { path: join(temporary, "native-list") })],
+    "fixture.txt",
+  );
   state(
     "native-powershell-platform-error",
     [call("powershell", { command: "Write-Output POWERSHELL_FIXTURE" })],
@@ -708,7 +734,7 @@ async function runSampler({
             : undefined,
         actions: ["collapsed", "ctrl+o expanded", "ctrl+o collapsed"],
         boundary:
-          "real parent/child Pi and local tools; synthetic outer/child models, HTTP and gh API responses",
+          "real parent/child Pi and local tools; synthetic outer/child models, managed mymind credential reads, HTTP/media and gh API responses",
         artifacts: `${index}-WIDTH-STATE.txt`,
       })),
       null,
@@ -766,7 +792,7 @@ async function runSampler({
         widths: [20, 80, 140],
         synthetic: [
           "outer and child model responses/usage",
-          "HTTP and gh API responses",
+          "managed mymind credential reads, HTTP/media and gh API responses",
         ],
         image: "tmux does not display image pixels; protocol/fallback only",
         screenshots: "unavailable: grid evidence only",
@@ -786,6 +812,8 @@ async function runSampler({
     PARALLEL_API_KEY: "fixture",
     PI_RENDER_PLAN: join(temporary, "plan.json"),
     PI_CODEMODE_NETWORK_LOG: join(temporary, "network.log"),
+    PI_RENDER_MYMIND_MEDIA: join(temporary, "image.png"),
+    PI_RENDER_MYMIND_CREDENTIAL_LOG: join(temporary, "credential-reads.log"),
     PATH: `${join(temporary, "bin")}:${process.env.PATH}`,
     NODE_OPTIONS: `--import=${join(root, "packages/core/prompt-patch/codemode-boundaries.ts")}${negative && !dropResults ? ` --import=${join(root, "packages/core/box-format/rendering-negative.ts")}` : ""} --import=${join(root, "packages/core/box-format/rendering-observe.ts")}`,
     PI_RENDER_OBSERVED_SOURCE: join(temporary, "observed-tool-execution.js"),
@@ -807,9 +835,9 @@ async function runSampler({
     "regular",
     "-e",
     "builtin:codemode",
-    ...extensionPaths.flatMap((p: string) => ["-e", p]),
     "-e",
     join(root, "packages/core/box-format/rendering-fixture.ts"),
+    ...extensionPaths.flatMap((p: string) => ["-e", p]),
     "--provider",
     "rendering-fixture",
     "--model",
@@ -1504,10 +1532,79 @@ async function runSampler({
           "edit-error",
           "codemode-partial-error",
           "native-powershell-platform-error",
+          "mymind-quota-error",
         ].includes(states[index].id),
         `unexpected tool failure: ${states[index].id}`,
       );
     }
+    const mymindResult = (id: string) => {
+      const index = states.findIndex((s) => s.id === id);
+      const event = lifecycle.find(
+        (e) =>
+          e.type === "tool_execution_end" &&
+          e.toolCallId === `sampler-${index}-0`,
+      );
+      assert.ok(event, `missing mymind result: ${id}`);
+      return event.result;
+    };
+    const expectedQuota = {
+      cost: 2,
+      windows: [
+        { name: "burst", remaining: 8, resetSeconds: 30 },
+        { name: "sustained", remaining: 98, resetSeconds: 3600 },
+      ],
+    };
+    for (const id of [
+      "direct-mymind_search",
+      "direct-mymind_object",
+      "direct-mymind_media",
+    ]) {
+      const result = mymindResult(id);
+      assert.deepEqual(
+        JSON.parse(result.content[0].text),
+        result.structuredContent,
+      );
+      assert.deepEqual(result.structuredContent.quota, expectedQuota);
+    }
+    const media = mymindResult("direct-mymind_media").structuredContent;
+    assert.ok(media.path.startsWith(`${temporary}/pi-mymind-`));
+    assert.equal(media.mimeType, "image/png");
+    assert.deepEqual(
+      readFileSync(media.path),
+      readFileSync(env.PI_RENDER_MYMIND_MEDIA),
+    );
+    assert.equal(media.bytes, readFileSync(media.path).length);
+    assert.equal(statSync(media.path).mode & 0o777, 0o600);
+    assert.equal(statSync(dirname(media.path)).mode & 0o777, 0o700);
+    assert.match(
+      mymindResult("mymind-quota-error").content[0].text,
+      /HTTP 429: quota exhausted; retry after 17 seconds; no automatic retry/,
+    );
+    assert.deepEqual(
+      readFileSync(env.PI_RENDER_MYMIND_CREDENTIAL_LOG, "utf8")
+        .trim()
+        .split("\n"),
+      Array.from({ length: 4 }, () => [
+        "/run/secrets/mymind_keyid",
+        "/run/secrets/mymind_privatekey",
+      ]).flat(),
+    );
+    assert.deepEqual(
+      readFileSync(env.PI_CODEMODE_NETWORK_LOG, "utf8")
+        .trim()
+        .split("\n")
+        .filter((url) =>
+          /https:\/\/(api\.mymind\.com|media\.mymind\.host)\//.test(url),
+        ),
+      [
+        "https://api.mymind.com/objects?q=rendering&limit=1&contentAs=text%2Fmarkdown",
+        "https://api.mymind.com/objects/fx_01?contentAs=text%2Fmarkdown",
+        "https://api.mymind.com/objects/fx_01/thumbnail?size=64x64",
+        "https://media.mymind.host/rendering-fixture.png",
+        "https://api.mymind.com/objects/fx_quota?contentAs=text%2Fmarkdown",
+      ],
+      "mymind request sequence changed or retried",
+    );
     const control = join(temporary, "negative-control");
     mkdirSync(control);
     // Isolated old expansion behavior: native Text renders all script/output rows.
