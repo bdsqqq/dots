@@ -4,7 +4,8 @@ CLIProxyAPI owns routing, account refresh, and its editable native config. Nix o
 
 ## boundaries
 
-- the hub is the home Mac `mmn-m4`, loopback `127.0.0.1:8317`, exposed through [Tailscale Serve](https://tailscale.com/kb/1242/tailscale-serve) at `https://mmn-m4.tail1543a7.ts.net:8317`;
+- MacBook gateways are local-first: recorder `127.0.0.1:18317`, backend `127.0.0.1:8317`, independent personal login, no published listener. declaration is not enrollment; a gateway with no account cannot infer;
+- remote clients can retain home Mac `mmn-m4`, exposed through [Tailscale Serve](https://tailscale.com/kb/1242/tailscale-serve) at `https://mmn-m4.tail1543a7.ts.net:8317`. there is no automatic fallback from a laptop to this hub;
 - each provisioned machine gets a separate client key. the management key is different and remains on the hub. Serve is tailnet-only, but intended owner access still depends on tailnet policy; API authentication remains required;
 - direct `claude`, `codex`, and existing Pi providers are unchanged. the named launchers select the broker explicitly;
 - Claude subscriptions are for Claude Code here. the Pi broker preset exposes Codex models only. official Agent SDK personal subscription usage is a separate native path, not configured by this module;
@@ -13,11 +14,15 @@ CLIProxyAPI owns routing, account refresh, and its editable native config. Nix o
 
 ## account sign-in
 
-on the hub, use its native CLIProxyAPI login flow; do not copy a laptop's live OAuth grant or refresh-token files:
+use native CLIProxyAPI login **on each gateway**, choosing the personal account:
 
 ```sh
-ssh mmn-m4 'inference-broker login codex'
+inference-broker login codex
 ```
+
+for the remote hub, run that command over SSH on `mmn-m4`. never copy live OAuth
+grants between gateways, or borrow the direct CLI's rotating grant. separate
+gateways still share their provider account's quotas.
 
 complete the device flow in your browser. for upstream Codex websockets, enable the credential's `websockets` field through native management (`PATCH /v8/management/credentials/fields`); the client's `supports_websockets` flag alone does not establish an upstream websocket connection. verify the native log's `Upstream Transport` rather than assuming it.
 
@@ -37,7 +42,7 @@ native account and configuration details: [Theo's guide](https://gist.github.com
 
 - `codex-broker …` injects a Responses provider and gateway key for that process; native homes, sessions, direct credentials, and config files stay intact.
 - `claude-broker …` injects the gateway endpoint/token for that process. an existing Claude executable wins; otherwise Nix provides the unmodified Claude Code prerequisite.
-- Pi: open `/model` to reload `modules/pi/models.json`, then choose a `CLIProxyAPI · Codex` model. catalog capability metadata comes from the pinned Pi Codex catalog; actual account/model access still needs an inference test.
+- Pi: build the package and use `/reload` to load the `inference-broker` provider extension, then choose a `CLIProxyAPI · Codex` model in `/model`. native auth resolves both origin and key from one `inference-broker connection` call at request time; a changed client selection cannot pair a cached remote URL with a new local key. catalog metadata remains in `models.json`. account/model access still needs inference verification.
 - t3: add a named **existing CLI** Codex instance with binary path `~/.local/bin/codex-broker`, or a Claude instance with `~/.local/bin/claude-broker`. use absolute expanded paths in settings. do not replace an existing instance or use t3-managed ChatGPT authentication for this route. provider settings belong to the machine executing the harness, not the viewing phone/laptop. these instance additions require the native t3 settings interface; this module does not edit t3's private state.
 
 ## private state and enrollment
@@ -48,13 +53,22 @@ client credential: `~/.config/cli-proxy-api/client.json`, directory `0700`, file
 
 on the hub, `inference-broker issue-client machine-name` registers a stable per-machine key and prints only its private file path. it waits until the serving path accepts that key. transfer just that file over SSH to the named client's private credential path, never the hub's auth directory or management key. existing client files must be inspected before replacement. revocation is through native management; re-issuing the same machine name deliberately re-registers its retained key.
 
-`inference-broker key` is a credential-command interface for Pi, NOT a diagnostic: it prints a secret. never run it in agent/tool logs.
+`inference-broker key` and `inference-broker connection` print secrets for native authentication, NOT diagnostics. never run them in agent/tool logs.
+
+for a fresh local gateway, initialize it with loopback frontend origin
+`http://127.0.0.1:18317`, enroll independently, configure upstream capture, and
+verify actual local inference before selecting it. `inference-broker use-local
+mbp-m2` (or `mbp-m5`) stages/registers a local client, checks backend/frontend
+authentication, privately backs up the previous selection, then atomically
+replaces it. those checks are discovery, not provider inference. failed staging
+preserves the prior selection. reload existing Pi broker sessions first; running
+Codex appservers retain their startup endpoint until intentionally restarted.
 
 the panel is `/management.html`. its management key is in the hub's private `management.key`; never paste it in chat. the panel is upstream-downloaded code, not bundled by this module. periodic panel auto-updates are disabled; upstream can still download it on first access.
 
 ## lifecycle
 
-`my.cliProxyApi.hub.enable` enables the home-manager user-domain LaunchAgent `dev.cli-proxy-api.broker`. the hub's existing auto-login keeps the user environment available. Serve wiring is declared in the tailnet registry; `adoptExisting` accepts only the exact bootstrap route.
+`my.cliProxyApi.hub.enable` enables the home-manager user-domain LaunchAgent `dev.cli-proxy-api.broker`. `hub.publish = false` keeps a local gateway off the tailnet registry; the default remains published for the existing hub. published Serve adoption accepts only the declared bootstrap route. account/config files remain editable.
 
 for native edits, reload just this service on the hub:
 
@@ -66,12 +80,14 @@ published runner changes change the Nix wrapper identity so normal host updates 
 
 ## fleet bootstrap boundary
 
-`fleet.ts` provisions per-machine credentials and editable, versioned bootstrap
-copies without overwriting existing native files. these isolated Linux bootstrap
-sources are not yet a verified canonical-checkout/automatic-upgrade handoff.
-changing a bootstrap source changes its launcher target; a differing existing
-launcher is intentionally rejected, not silently replaced. do not advertise
-these provisional clients as automatically converging with published updates.
+`fleet.ts` builds from the canonical checkout and leaves credentials/selection
+unchanged during tool refresh. `refresh-tools STORE [CODEX_BIN]` updates a stable
+private `managed-tools` pointer, migrates recognized owned bootstrap launchers,
+and preserves an existing direct Codex pin. differing user files are refused.
+normal home activation performs the same refresh, so published source and runtime
+source do not diverge behind a stale bootstrap copy. initial bootstrap alone does
+not establish automatic host upgrades: verify the executing source, dependency
+installation, reload and the machine's existing update path after provisioning.
 
 `t3-presets.ts` adds only `codex_personal_broker`, using the existing CLI wrapper,
 and refreshes that instance's pending status. catalog readiness is not an

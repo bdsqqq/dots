@@ -2,11 +2,13 @@
 let
   cfg = config.my.cliProxyApi;
   home = config.home-manager.users.${config.my.primaryUser}.home.homeDirectory;
-  live = "${config.my.paths.commonplace}/01_files/nix/modules/cli-proxy-api";
+  live = cfg.sourceDirectory;
   isDarwin = lib.hasSuffix "-darwin" hostSystem;
   broker = pkgs.writeShellScriptBin "inference-broker" ''
     # Published runner changes produce a new service command; local edits still run live.
     # runner: ${builtins.hashFile "sha256" ./broker.ts}
+    # Live npm CLI shims need Node even when a native harness omits it from PATH.
+    export PATH="''${PATH:-/usr/bin:/bin}:${pkgs.nodejs_24}/bin"
     ${lib.optionalString cfg.hub.enable ''
       export CLI_PROXY_API_BIN="''${CLI_PROXY_API_BIN:-${lib.getExe cfg.package}}"
       export CLI_PROXY_API_STATE_DIR="''${CLI_PROXY_API_STATE_DIR:-${cfg.stateDirectory}}"
@@ -33,7 +35,12 @@ let
 in
 {
   options.my.cliProxyApi = {
-    hub.enable = lib.mkEnableOption "the private, home-hosted CLIProxyAPI broker";
+    hub.enable = lib.mkEnableOption "a private native CLIProxyAPI gateway";
+    hub.publish = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Publish gateway model, management and health routes through the tailnet registry. Disable for loopback-only gateways.";
+    };
     package = lib.mkOption {
       type = lib.types.package;
       default = pkgs.cliproxyapi.overrideAttrs (old: {
@@ -47,6 +54,11 @@ in
       });
       description = "CLIProxyAPI with the explicit OAuth upstream-route regression fix for durable capture.";
     };
+    sourceDirectory = lib.mkOption {
+      type = lib.types.str;
+      default = "${config.my.paths.commonplace}/01_files/nix/modules/cli-proxy-api";
+      description = "Editable canonical tracked module sources used by both installation and runtime; bootstrap sets this explicitly for relocated checkouts.";
+    };
     toolsPackage = lib.mkOption { type = lib.types.package; readOnly = true; default = tools; internal = true; };
     stateDirectory = lib.mkOption {
       type = lib.types.str;
@@ -56,7 +68,7 @@ in
     baseUrl = lib.mkOption {
       type = lib.types.str;
       default = "https://mmn-m4.tail1543a7.ts.net:8317";
-      description = "Public-to-the-tailnet broker origin; contains no credential.";
+      description = "Client-facing gateway origin (HTTPS remote or numeric loopback HTTP capture frontend); contains no credential.";
     };
     codexArchiveBaseUrl = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
@@ -68,20 +80,36 @@ in
 
   config = lib.mkMerge [
     {
-      home-manager.users.${config.my.primaryUser}.home.packages =
-        [ tools ] ++ lib.optional cfg.hub.enable cfg.package;
+      home-manager.users.${config.my.primaryUser}.home = {
+        packages = [ tools ] ++ lib.optional cfg.hub.enable cfg.package;
+        # Same guarded updater as native bootstrap; absolute T3 launchers follow this
+        # stable root while live TypeScript remains in the canonical checkout.
+        activation.refreshCliProxyApiTools = {
+          after = [ "linkGeneration" ];
+          before = [ ];
+          data = ''
+            if [ -z "''${DRY_RUN_CMD:-}" ]; then
+              codex_path="$(command -v codex || true)"
+              if [ -z "$codex_path" ] && [ -x ${lib.escapeShellArg "${home}/.local/bin/codex"} ]; then
+                codex_path=${lib.escapeShellArg "${home}/.local/bin/codex"}
+              fi
+              ${pkgs.nodejs_24}/bin/node ${lib.escapeShellArg "${live}/fleet.ts"} refresh-tools ${tools} ''${codex_path:+"$codex_path"}
+            fi
+          '';
+        };
+      };
     }
     (lib.mkIf cfg.hub.enable {
       assertions = [
-        { assertion = isDarwin; message = "the CLIProxyAPI hub currently supports the home Darwin host; other platforms install client wrappers only"; }
-        { assertion = options.my ? tailnetRegistry; message = "the CLIProxyAPI hub requires the tailnet-registry module"; }
+        { assertion = isDarwin; message = "native CLIProxyAPI gateways currently support Darwin; other platforms install client wrappers only"; }
+        { assertion = !cfg.hub.publish || options.my ? tailnetRegistry; message = "publishing a CLIProxyAPI gateway requires the tailnet-registry module"; }
         {
           assertion = lib.hasPrefix "/" cfg.stateDirectory && !lib.hasPrefix "/nix/store" cfg.stateDirectory;
           message = "CLIProxyAPI state must remain private and writable outside the Nix store";
         }
       ];
     })
-    (lib.mkIf cfg.hub.enable (lib.optionalAttrs (options.my ? tailnetRegistry) {
+    (lib.mkIf (cfg.hub.enable && cfg.hub.publish) (lib.optionalAttrs (options.my ? tailnetRegistry) {
       my.tailnetRegistry.services.cli-proxy-api = {
         title = "inference broker";
         description = "CLIProxyAPI management and model routing; request logs are not the durable archive";

@@ -3,6 +3,7 @@ import { mkdir, readFile, readdir, open, rename, lstat } from 'node:fs/promises'
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { scanJournal } from './verify.ts';
+import { NODE_ID, UUID } from './replication-protocol.ts';
 import type { JournalLine } from './verify.ts';
 
 export const SCHEMA = [
@@ -13,6 +14,7 @@ export const SCHEMA = [
     method String, pathname String, parent_request_id String, payload_json String,
     data_base64 String, searchable_text String, source_prefix_sha256 FixedString(64)
   ) ENGINE = ReplacingMergeTree ORDER BY (request_id, sequence, event_id)`,
+  "ALTER TABLE inference_archive.events ADD COLUMN IF NOT EXISTS source_node String DEFAULT ''",
   // ACK must follow part persistence, not merely a successful page-cache write.
   // Apply to an existing derived index as well as a newly created table.
   'ALTER TABLE inference_archive.events MODIFY SETTING fsync_after_insert = 1, fsync_part_directory = 1',
@@ -21,14 +23,14 @@ export const SCHEMA = [
 /** ReplacingMergeTree is eventually deduplicated; correctness queries MUST use FINAL.
  * event identity includes the exact serialized record, not lossy extracted text.
  */
-export function eventRow(line: JournalLine) {
+export function eventRow(line: JournalLine, sourceNode = '') {
   const r = line.record;
   const payloadHash = createHash('sha256').update(line.raw).digest('hex');
   let searchable = '';
   // Per-chunk decoding is deliberately conservative: split UTF-8/binary stays raw-only.
   if (r.kind === 'data' && !r.binary) try { searchable = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.from(String(r.data), 'base64')); } catch { /* raw base64 is authoritative */ }
   const headers = r.headers as Record<string, unknown> | undefined;
-  return { request_id: r.requestId, sequence: r.sequence,
+  return { request_id: r.requestId, source_node: sourceNode, sequence: r.sequence,
     event_id: createHash('sha256').update(`${r.requestId}\0${r.sequence}\0${payloadHash}`).digest('hex'),
     timestamp: r.timestamp, lane: r.lane, kind: r.kind, direction: r.direction ?? '',
     method: r.method ?? '', pathname: r.pathname ?? '', parent_request_id: headers?.['x-inference-archive-parent'] ?? '',
@@ -71,6 +73,7 @@ export async function ingestFile(path: string, root: string, sink: Sink, batchSi
   await mkdir(stateDir, { recursive: true, mode: 0o700 }); await mkdir(receipts, { recursive: true, mode: 0o700 });
   let checkpoint: Checkpoint | undefined, checkpointPath = '', matched = false, last: JournalLine | undefined;
   let rows: ReturnType<typeof eventRow>[] = [], batchLast: JournalLine | undefined, count = 0;
+  let sourceNode = '';
   const flush = async () => {
     if (!rows.length || !batchLast) return;
     await sink(rows);
@@ -83,6 +86,14 @@ export async function ingestFile(path: string, root: string, sink: Sink, batchSi
       // Hash filenames: journal request IDs are data, never trusted path segments.
       checkpointPath = join(stateDir, createHash('sha256').update(line.record.requestId).digest('hex') + '.json');
       checkpoint = await loadCheckpoint(checkpointPath); matched = !checkpoint;
+      // Legacy journals may have non-UUID IDs; never turn those into paths.
+      if (UUID.test(line.record.requestId)) {
+        try {
+          const origin = JSON.parse(await privateFile(join(root, 'origins', `${line.record.requestId}.json`)));
+          if (origin.schemaVersion !== 1 || origin.requestId !== line.record.requestId || typeof origin.nodeId !== 'string' || !NODE_ID.test(origin.nodeId)) throw new Error('invalid journal origin');
+          sourceNode = origin.nodeId;
+        } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+      }
     }
     if (checkpoint && line.end <= checkpoint.offset) {
       if (line.end === checkpoint.offset) {
@@ -92,13 +103,13 @@ export async function ingestFile(path: string, root: string, sink: Sink, batchSi
       continue;
     }
     if (!matched) throw new Error('checkpoint is not a record boundary');
-    rows.push(eventRow(line)); batchLast = line;
+    rows.push(eventRow(line, sourceNode)); batchLast = line;
     if (rows.length >= batchSize) await flush();
   }
   if (checkpoint && !matched) throw new Error('source shorter than acknowledged checkpoint');
   await flush();
   if (sealed && last) await durableJson(join(receipts, createHash('sha256').update(last.record.requestId).digest('hex') + '.json'), {
-    schemaVersion: 1, requestId: last.record.requestId, sha256: last.prefixSha256, bytes: last.end, records: count,
+    schemaVersion: 1, requestId: last.record.requestId, sourceNode, sha256: last.prefixSha256, bytes: last.end, records: count,
     source: path, indexedAt: new Date().toISOString(), querySemantics: 'inference_archive.events FINAL',
   });
 }
