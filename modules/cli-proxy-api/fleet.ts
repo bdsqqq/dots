@@ -1,10 +1,12 @@
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { lstatSync, mkdirSync, readFileSync, readlinkSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isMain } from "../tool-auth/process.ts";
 
-export const HOSTS = ["mbp-m5", "lgo-z2e", "htz-lab", "htz-relay", "htz-xfs-lab"] as const;
+export const HOSTS = ["mbp-m2", "mbp-m5", "lgo-z2e", "htz-lab", "htz-relay", "htz-xfs-lab"] as const;
 export function shellQuote(value: string) { return `'${value.replaceAll("'", `'\\''`)}'`; }
 export function identity(value: any) {
   if (value.user !== "bdsqqq" || !Number.isInteger(value.uid) || value.uid < 500 || !["/home/bdsqqq", "/Users/bdsqqq"].includes(value.home) || value.owner !== value.uid || !["Linux", "Darwin"].includes(value.os)) throw new Error("unexpected native identity or home ownership");
@@ -13,16 +15,13 @@ export function identity(value: any) {
 function ssh(host: string, command: string, input?: string, timeout = 15000) {
   if (![...HOSTS, "mmn-m4"].includes(host as any)) throw new Error("host not in personal fleet");
   const result = spawnSync("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=6", host, command], { input, encoding: "utf8", timeout, maxBuffer: 2 * 1024 * 1024 });
-  if (result.status !== 0) {
-    if (command.startsWith("nix build")) console.error(result.stderr);
-    throw new Error(`SSH ${command.split(" ")[0]} operation failed on ${host} (exit ${result.status}); private output withheld`);
-  }
+  if (result.status !== 0) throw new Error(`SSH operation failed on ${host} (exit ${result.status}); private output withheld`);
   return result.stdout.trim();
 }
 const nativeNode = 'node=$(command -v node || true); if test -z "$node"; then for n in /nix/store/*nodejs-24*/bin/node; do test -x "$n" && node="$n"; done; fi; test -n "$node" || exit 127; ';
-const checkIdentity = `${nativeNode} "$node" --input-type=module -e 'import{statSync}from"node:fs";import{userInfo,type}from"node:os";console.log(JSON.stringify({user:userInfo().username,uid:process.getuid(),home:process.env.HOME,owner:statSync(process.env.HOME).uid,os:type(),node:process.execPath}))'`;
+const checkIdentity = `${nativeNode} "$node" --input-type=module -e 'import{statSync}from"node:fs";import{userInfo,type}from"node:os";console.log(JSON.stringify({user:userInfo().username,uid:process.getuid(),home:process.env.HOME,owner:statSync(process.env.HOME).uid,os:type()}))'`;
 
-export function packageExpression(root: string, repo: string) {
+export function packageExpression(repo: string) {
   return `let
     lock = builtins.fromJSON (builtins.readFile ${JSON.stringify(`${repo}/flake.lock`)});
     nixpkgs = builtins.fetchTree lock.nodes.nixpkgs.locked;
@@ -30,66 +29,147 @@ export function packageExpression(root: string, repo: string) {
     lib = pkgs.lib;
     evaluated = lib.evalModules {
       specialArgs = { inherit pkgs; hostSystem = builtins.currentSystem; };
-      modules = [ ${root}/commonplace/01_files/nix/modules/cli-proxy-api/default.nix
+      modules = [ ${JSON.stringify(`${repo}/modules/cli-proxy-api/default.nix`)}
         ({ lib, ... }: {
           options.my.primaryUser = lib.mkOption { type = lib.types.str; };
           options.my.paths = lib.mkOption { type = lib.types.attrs; };
           options.home-manager.users.bdsqqq.home.homeDirectory = lib.mkOption { type = lib.types.str; };
           options.home-manager.users.bdsqqq.home.packages = lib.mkOption { type = lib.types.listOf lib.types.package; default = []; };
+          options.home-manager.users.bdsqqq.home.activation = lib.mkOption { type = lib.types.attrs; default = {}; };
           options.home-manager.users.bdsqqq.launchd = lib.mkOption { type = lib.types.attrs; default = {}; };
           options.assertions = lib.mkOption { type = lib.types.listOf lib.types.attrs; default = []; };
           config.my.primaryUser = "bdsqqq";
-          config.my.paths.commonplace = ${JSON.stringify(`${root}/commonplace`)};
+          config.my.cliProxyApi.sourceDirectory = ${JSON.stringify(`${repo}/modules/cli-proxy-api`)};
           config.home-manager.users.bdsqqq.home.homeDirectory = builtins.getEnv "HOME";
         }) ];
     };
   in evaluated.config.my.cliProxyApi.toolsPackage`;
 }
 
-/** Exclusive transfer prevents both duplicate token installation and clobbering native edits. */
-export const receive = `import assert from "node:assert/strict"; import{readFileSync,mkdirSync,lstatSync,writeFileSync}from"node:fs";import{dirname}from"node:path";
+/** Exclusive transfer preserves native edits. Contents travel on stdin, never argv.
+ * Preflight the entire batch so a differing tracked source blocks all writes. */
+export const receive = `import assert from "node:assert/strict"; import{readFileSync,mkdirSync,lstatSync,writeFileSync}from"node:fs";import{dirname,isAbsolute}from"node:path";
 const p=JSON.parse(readFileSync(0,"utf8"));
 assert.equal(process.getuid(),p.uid);assert.equal(process.env.HOME,p.home);assert.equal(lstatSync(p.home).uid,p.uid);
+const root=p.sourceRoot??p.home,rootInfo=lstatSync(root);
+assert.ok(isAbsolute(root)&&root!=="/"&&!root.startsWith("/nix/store/")&&!root.split("/").includes("..")&&rootInfo.isDirectory()&&!rootInfo.isSymbolicLink()&&rootInfo.uid===p.uid);
 for(const [path,content] of Object.entries(p.files)) {
- assert.ok(path.startsWith(p.home+"/")); mkdirSync(dirname(path),{recursive:true,mode:0o700});assert.ok(!lstatSync(dirname(path)).isSymbolicLink());
- try{writeFileSync(path,content,{flag:"wx",mode:p.executable?0o700:0o600});}catch(e){if(e.code!=="EEXIST")throw e;assert.ok(!lstatSync(path).isSymbolicLink());assert.equal(lstatSync(path).uid,p.uid);assert.equal(readFileSync(path,"utf8"),content,"existing file differs; preserve and inspect");}
- assert.equal(lstatSync(path).mode&0o777,p.executable?0o700:0o600);
-} console.log("private files verified");`;
+ assert.ok(path.startsWith(root+"/")&&!path.split("/").includes(".."));
+ for(let dir=dirname(path);dir!==root;dir=dirname(dir)){try{assert.ok(lstatSync(dir).isDirectory()&&!lstatSync(dir).isSymbolicLink());}catch(e){if(e.code!=="ENOENT")throw e;}}
+ try{const s=lstatSync(path);assert.ok(s.isFile()&&!s.isSymbolicLink()&&s.uid===p.uid);if(readFileSync(path,"utf8")!==content)throw Error("existing file differs; preserve and inspect");}catch(e){if(e.code!=="ENOENT")throw e;}
+}
+for(const [path,content] of Object.entries(p.files)) {
+ mkdirSync(dirname(path),{recursive:true,mode:0o700});
+ try{writeFileSync(path,content,{flag:"wx",mode:0o600});}catch(e){if(e.code!=="EEXIST")throw e;const s=lstatSync(path);if(!s.isFile()||s.isSymbolicLink()||s.uid!==p.uid||readFileSync(path,"utf8")!==content)throw Error("existing file differs; preserve and inspect");}
+} console.log("source files verified");`;
+
+const storePattern = /^\/nix\/store\/[a-z0-9]+-cli-proxy-api-tools$/;
+const pinPattern = /^\/[A-Za-z0-9/._+-]+$/;
+export const managedToolsRoot = (home: string) => join(home, ".local/share/cli-proxy-api/managed-tools");
+function info(path: string) {
+  try { return lstatSync(path); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; return undefined; }
+}
+function launcher(target: string, codex?: string, marked = true): string {
+  return `#!/bin/sh\n${marked ? "# managed by cli-proxy-api fleet\n" : ""}${codex ? `export CODEX_BIN="\${CODEX_BIN:-${codex}}"\n` : ""}exec ${shellQuote(target)} "$@"\n`;
+}
+function legacyTarget(home: string, target: string, program: string): boolean {
+  const prefix = `${home}/.local/share/cli-proxy-api/client-bootstrap/`;
+  return target.startsWith(prefix) && new RegExp(`^[a-f0-9]{16}/tools/bin/${program}-broker$`).test(target.slice(prefix.length));
+}
+
+/** Exact generated shapes, not just a marker, authorize replacing a launcher.
+ * Retain an existing CODEX_BIN pin because T3 may not inherit the login PATH. */
+export function ownedLauncher(home: string, program: string, contents: string): { codex?: string } | undefined {
+  const pin = contents.match(/^export CODEX_BIN="\$\{CODEX_BIN:-(\/[^"\n]+)\}"$/m)?.[1];
+  if (pin && (program !== "codex" || !pinPattern.test(pin))) return undefined;
+  const target = contents.match(/^exec '([^'\n]+)' "\$@"$/m)?.[1];
+  if (!target) return undefined;
+  if (target === `${managedToolsRoot(home)}/bin/${program}-broker` && contents === launcher(target, pin)) return { codex: pin };
+  if (legacyTarget(home, target, program) && contents === launcher(target, pin, false)) return { codex: pin };
+  return undefined;
+}
+
+/** Only wiring is mutable here: never touch native CLI config or OAuth grants. */
+export function refreshTools(home: string, store: string, codex?: string): string {
+  if (!storePattern.test(store) || (codex !== undefined && !pinPattern.test(codex))) throw new Error("invalid tools output or native Codex path");
+  const root = managedToolsRoot(home);
+  const rootInfo = info(root);
+  if (rootInfo && (!rootInfo.isSymbolicLink() || (process.getuid && rootInfo.uid !== process.getuid()) || !storePattern.test(readlinkSync(root)))) throw new Error("unrecognized tools root; preserve and inspect");
+  const files: { path: string; content: string }[] = [];
+  // Preflight everything before replacing either the root or any launcher.
+  for (const program of ["codex", "claude", "inference"]) {
+    const path = join(home, `.local/bin/${program}-broker`);
+    const stat = info(path);
+    let pin = program === "codex" ? codex : undefined;
+    if (stat) {
+      if (process.getuid && stat.uid !== process.getuid()) throw new Error("launcher is not owned; preserve and inspect");
+      if (stat.isSymbolicLink()) {
+        const target = readlinkSync(path);
+        const oldManaged = [".local/share/cli-proxy-api-client-tools", ".local/share/cli-proxy-api/tools"].some(directory => {
+          const oldRoot = join(home, directory), oldRootInfo = info(oldRoot);
+          return target === `${oldRoot}/bin/${program}-broker` && oldRootInfo?.isSymbolicLink() && storePattern.test(readlinkSync(oldRoot));
+        });
+        if (target !== `${root}/bin/${program}-broker` && !legacyTarget(home, target, program) && !oldManaged) throw new Error("unrecognized launcher symlink; preserve and inspect");
+      } else {
+        if (!stat.isFile()) throw new Error("unrecognized launcher; preserve and inspect");
+        const owned = ownedLauncher(home, program, readFileSync(path, "utf8"));
+        if (!owned) throw new Error("launcher differs; preserve and inspect");
+        pin = owned.codex || pin;
+      }
+    }
+    files.push({ path, content: launcher(`${root}/bin/${program}-broker`, pin) });
+  }
+  for (const path of [root, ...files.map(file => file.path)]) {
+    // Do not follow a user-created symlink in the managed directory hierarchy.
+    for (let dir = dirname(path); dir !== home; dir = dirname(dir)) {
+      if (dir === dirname(dir)) throw new Error("managed tools must be inside home");
+      const stat = info(dir);
+      if (stat && (!stat.isDirectory() || (process.getuid && stat.uid !== process.getuid()))) throw new Error("unsafe managed tools directory");
+    }
+  }
+  const suffix = `.staged-${randomBytes(16).toString("hex")}`;
+  mkdirSync(dirname(root), { recursive: true, mode: 0o700 });
+  mkdirSync(join(home, ".local/bin"), { recursive: true, mode: 0o700 });
+  symlinkSync(store, root + suffix);
+  renameSync(root + suffix, root);
+  for (const file of files) {
+    writeFileSync(file.path + suffix, file.content, { flag: "wx", mode: 0o700 });
+    renameSync(file.path + suffix, file.path);
+  }
+  return root;
+}
 
 export function deploy(host: string) {
   const native = identity(JSON.parse(ssh(host, checkIdentity)));
   const repo = ssh(host, 'cd "$HOME/commonplace/01_files/nix" && pwd -P');
-  const sources = Object.fromEntries(["cli-proxy-api/broker.ts", "cli-proxy-api/default.nix", "cli-proxy-api/codex-archive-route.patch", "tool-auth/process.ts"].map(path => [path, readFileSync(fileURLToPath(new URL(`../${path}`, import.meta.url)), "utf8")]));
-  const digest = createHash("sha256").update("native-tools-v3").update(JSON.stringify(sources)).digest("hex").slice(0, 16);
-  const root = `${native.home}/.local/share/cli-proxy-api/client-bootstrap/${digest}`;
-  const clientPath = `${native.home}/.config/cli-proxy-api/client.json`;
-  // The hub prints only the credential path. Read it within this captured SSH channel.
-  const credential = ssh("mmn-m4", `p=$(inference-broker issue-client ${shellQuote(host)}) && test -f "$p" && node -e 'process.stdout.write(require("node:fs").readFileSync(process.argv[1],"utf8"))' "$p"`, undefined, 25000);
-  const parsed = JSON.parse(credential);
-  if (parsed.name !== host || parsed.baseUrl !== "https://mmn-m4.tail1543a7.ts.net:8317") throw new Error("hub credential does not match intended machine/endpoint");
-  const files: Record<string,string> = Object.fromEntries(Object.entries(sources).map(([path, content]) => [`${root}/commonplace/01_files/nix/modules/${path}`, content]));
-  files[clientPath] = `${JSON.stringify(parsed)}\n`;
-  files[`${root}/tools.nix`] = packageExpression(root, repo);
-  ssh(host, `${nativeNode} "$node" --input-type=module -e ${shellQuote(receive)}`, JSON.stringify({ ...native, files }));
-  const output = ssh(host, `nix build --impure --no-link --no-write-lock-file --print-out-paths --file ${shellQuote(`${root}/tools.nix`)}`, undefined, 180000);
+  if (!repo.startsWith("/") || repo === "/" || repo.startsWith("/nix/store/") || repo.split("/").includes("..")) throw new Error("invalid canonical repository");
+  const sources = Object.fromEntries(["cli-proxy-api/broker.ts", "cli-proxy-api/fleet.ts", "cli-proxy-api/default.nix", "cli-proxy-api/codex-archive-route.patch", "tool-auth/process.ts"].map(path => [`${repo}/modules/${path}`, readFileSync(fileURLToPath(new URL(`../${path}`, import.meta.url)), "utf8")]));
+  ssh(host, `${nativeNode} "$node" --input-type=module -e ${shellQuote(receive)}`, JSON.stringify({ ...native, sourceRoot: repo, files: sources }));
+  const output = ssh(host, `nix build --impure --no-link --no-write-lock-file --print-out-paths --expr ${shellQuote(packageExpression(repo))}`, undefined, 180000);
   const store = output.split("\n").at(-1)!;
-  if (!/^\/nix\/store\/[a-z0-9]+-cli-proxy-api-tools$/.test(store)) throw new Error("unexpected native tools derivation output");
-  const codex = ssh(host, 'command -v codex || { test -x "$HOME/.local/bin/codex" && printf "%s\\n" "$HOME/.local/bin/codex"; }');
-  if (!codex.startsWith("/") || codex.includes("\n")) throw new Error("native Codex prerequisite unavailable");
-  ssh(host, `nix-store --add-root ${shellQuote(`${root}/tools`)} --realise ${shellQuote(store)} >/dev/null`);
-  const launchers: Record<string,string> = {};
-  for (const program of ["codex", "claude"]) launchers[`${native.home}/.local/bin/${program}-broker`] = `#!/bin/sh\n${program === "codex" ? `export CODEX_BIN="\${CODEX_BIN:-${codex}}"\n` : ""}exec ${shellQuote(`${root}/tools/bin/${program}-broker`)} "$@"\n`;
-  ssh(host, `${nativeNode} "$node" --input-type=module -e ${shellQuote(receive)}`, JSON.stringify({ ...native, files: launchers, executable: true }));
+  if (!storePattern.test(store)) throw new Error("unexpected native tools derivation output");
+  let codex = ssh(host, 'command -v codex || { test -x "$HOME/.local/bin/codex" && printf "%s\\n" "$HOME/.local/bin/codex"; } || true');
+  // A provisioned host may expose Codex only through its retained launcher pin.
+  if (!codex) codex = ssh(host, `${nativeNode} "$node" --input-type=module -e ${shellQuote(`import { readFileSync, accessSync, constants } from 'node:fs'; import { ownedLauncher } from ${JSON.stringify(`${repo}/modules/cli-proxy-api/fleet.ts`)}; const pin = ownedLauncher(process.env.HOME, 'codex', readFileSync(process.env.HOME + '/.local/bin/codex-broker', 'utf8'))?.codex; if (pin) { accessSync(pin, constants.X_OK); process.stdout.write(pin); }`)}`);
+  if (!pinPattern.test(codex)) throw new Error("native Codex prerequisite unavailable");
+  const root = ssh(host, `${nativeNode} "$node" ${shellQuote(`${repo}/modules/cli-proxy-api/fleet.ts`)} refresh-tools ${shellQuote(store)} ${shellQuote(codex)}`);
+  ssh(host, `nix-store --add-root ${shellQuote(root)} --indirect --realise ${shellQuote(store)} >/dev/null`);
+  // Credential provisioning is intentionally separate: local Macs enroll via
+  // native login + use-local; remote clients may retain their existing selection.
   const version = ssh(host, `${shellQuote(`${native.home}/.local/bin/codex-broker`)} --version`);
-  let models: unknown;
-  try { models = JSON.parse(ssh(host, `${shellQuote(`${root}/tools/bin/inference-broker`)} status`, undefined, 25000)); }
-  catch { models = { blocked: "authenticated discovery failed; inspect native tailnet reachability and broker availability", inferenceTested: false }; }
-  return { host, ...native, root, store, privateClient: "0600", version, models };
+  return { host, ...native, root, store, version, credentials: "unchanged; explicit provisioning required" };
 }
 
 if (isMain(import.meta.url)) {
-  for (const host of process.argv.slice(2)) {
-    try { console.log(JSON.stringify(deploy(host))); }
-    catch (error) { console.error(JSON.stringify({ host, error: error instanceof Error ? error.message : "deployment failed" })); process.exitCode = 1; }
+  if (process.argv[2] === "refresh-tools") {
+    try {
+      if (process.argv.length < 4 || process.argv.length > 5) throw new Error("usage: fleet.ts refresh-tools store-path [native-codex-path]");
+      console.log(refreshTools(homedir(), process.argv[3]!, process.argv[4]));
+    } catch { console.error("managed tools refresh refused; inspect launcher/root ownership and native edits"); process.exitCode = 1; }
+  } else {
+    for (const host of process.argv.slice(2)) {
+      try { console.log(JSON.stringify(deploy(host))); }
+      catch { console.error(JSON.stringify({ host, error: "bootstrap failed; private output withheld; inspect native source/wiring" })); process.exitCode = 1; }
+    }
   }
 }

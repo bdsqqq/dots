@@ -42,6 +42,7 @@ in
     ../../modules/direnv
     ../../modules/tmux
     ../../modules/agents
+    ../../modules/inference-archive
     ../../modules/gog
     ../../modules/wacli
     ../../modules/goplaces
@@ -84,6 +85,18 @@ in
   users.users.bdsqqq.home = "/Users/bdsqqq";
   system.primaryUser = "bdsqqq";
   my.primaryUser = "bdsqqq";
+  my.cliProxyApi = {
+    hub = {
+      enable = true;
+      publish = false;
+    };
+    baseUrl = "http://127.0.0.1:18317";
+  };
+  my.inferenceArchive = {
+    enable = true;
+    nodeId = "mbp-m5";
+    replication.enable = true;
+  };
   my.openDisplay = {
     launchAtLogin = false;
     mode = "mirror";

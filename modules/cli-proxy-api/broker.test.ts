@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, chmodSync, symlinkSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, mkdirSync, chmodSync, symlinkSync, readdirSync, unlinkSync } from "node:fs";
 import { createServer } from "node:http";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
-import { clientCommand, hubPaths, initializeHub, issueClient, readClient, readHub } from "./broker.ts";
+import { clientCommand, hubPaths, initializeHub, issueClient, readClient, readHub, useLocalClient } from "./broker.ts";
 
 const directories: string[] = [];
 function fixture() { const dir = mkdtempSync(join(tmpdir(), "cli-proxy-api-")); directories.push(dir); return dir; }
@@ -117,13 +117,13 @@ test("management redirects and error bodies never leak secrets or follow redirec
   } finally { await new Promise<void>(resolve => server.close(() => resolve())); }
 });
 
-test("native CLIProxyAPI accepts the seed, rewrites YAML, and authenticates registered clients", { skip: !process.env.CLI_PROXY_API_TEST_BINARY }, async () => {
+for (const baseUrl of [URL, "http://127.0.0.1:18317"]) test(`native CLIProxyAPI accepts ${baseUrl}, rewrites YAML, and authenticates registered clients`, { skip: !process.env.CLI_PROXY_API_TEST_BINARY }, async () => {
   const reservation = createServer();
   await new Promise<void>(resolve => reservation.listen(0, "127.0.0.1", resolve));
   const port = (reservation.address() as { port: number }).port;
   await new Promise<void>(resolve => reservation.close(() => resolve()));
   const dir = fixture();
-  initializeHub(dir, URL, port);
+  initializeHub(dir, baseUrl, port);
   const paths = hubPaths(dir);
   const child = spawn(process.env.CLI_PROXY_API_TEST_BINARY!, ["-config", paths.config, "-local-model"], { cwd: dir, stdio: "ignore" });
   const exited = new Promise<void>(resolve => child.once("exit", () => resolve()));
@@ -145,7 +145,7 @@ test("native CLIProxyAPI accepts the seed, rewrites YAML, and authenticates regi
     assert.equal((await fetch(`http://127.0.0.1:${port}/v8/management/credentials`)).status, 401);
     const yaml = readFileSync(paths.config, "utf8");
     assert.ok(!yaml.trimStart().startsWith("{"), "native saves should be exercised, not just JSON parsing");
-    initializeHub(dir, URL, port);
+    initializeHub(dir, baseUrl, port);
     assert.equal(readFileSync(paths.config, "utf8"), yaml);
   } finally {
     child.kill("SIGTERM");
@@ -159,7 +159,7 @@ test("Pi broker presets expose only native Codex model capabilities and no inlin
   const provider = config.providers.cliproxyapi;
   assert.equal(provider.api, "openai-responses");
   assert.equal(provider.baseUrl, "https://mmn-m4.tail1543a7.ts.net:8317/v1");
-  assert.equal(provider.apiKey, "!inference-broker key");
+  assert.ok(provider.apiKey === undefined || provider.apiKey === "!inference-broker key", "no inline secret or static route/key bundle");
   assert.ok(provider.models.length > 0);
   const native = openaiCodexProvider().getModels();
   for (const model of provider.models) {
@@ -167,6 +167,118 @@ test("Pi broker presets expose only native Codex model capabilities and no inlin
     const baseline = native.find(m => m.id === model.id);
     assert.ok(baseline, "broker model must exist in the pinned native Codex catalog");
     for (const field of ["reasoning", "input", "contextWindow", "maxTokens", "thinkingLevelMap"] as const) assert.deepEqual(model[field], baseline[field]);
+  }
+});
+
+test("only explicitly spelled numeric loopback origins permit HTTP", () => {
+  const dir = fixture();
+  const file = join(dir, "client.json");
+  for (const baseUrl of ["http://127.0.0.1:18317", "http://[::1]:18317", URL]) {
+    writeFileSync(file, JSON.stringify({ ...client, baseUrl }), { mode: 0o600 });
+    assert.equal(readClient(file).baseUrl, baseUrl);
+    const state = join(dir, String(Math.random()));
+    initializeHub(state, baseUrl);
+    assert.equal(readHub(state).baseUrl, baseUrl);
+  }
+  for (const baseUrl of ["http://localhost:18317", "http://127.1:18317", "http://2130706433:18317", "http://0x7f000001:18317", "http://127.0.0.2:18317", "http://example.test", "http://[::ffff:127.0.0.1]", "http://127.0.0.1/path", "http://127.0.0.1?key=x", "http://user@127.0.0.1"]) {
+    writeFileSync(file, JSON.stringify({ ...client, baseUrl }));
+    assert.throws(() => readClient(file));
+    assert.throws(() => initializeHub(join(dir, "rejected"), baseUrl));
+  }
+});
+
+test("unmanaged upstream grants require fresh gateway state, never silent adoption", () => {
+  const dir = fixture();
+  const auth = hubPaths(dir).auth;
+  mkdirSync(auth);
+  writeFileSync(join(auth, "existing-grant.json"), "fixture grant");
+  assert.throws(() => initializeHub(dir, "http://127.0.0.1:18317"), /fresh gateway state/);
+  assert.equal(readFileSync(join(auth, "existing-grant.json"), "utf8"), "fixture grant");
+  assert.throws(() => readFileSync(hubPaths(dir).config));
+});
+
+test("metadata prevents endpoint migration even when config is missing", () => {
+  const dir = fixture();
+  initializeHub(dir, URL);
+  const paths = hubPaths(dir);
+  const original = readFileSync(paths.metadata, "utf8");
+  unlinkSync(paths.config);
+  assert.throws(() => initializeHub(dir, "http://127.0.0.1:18317"), /differs/);
+  assert.equal(readFileSync(paths.metadata, "utf8"), original);
+});
+
+test("use-local stages native watcher and frontend readiness, backs up privately, and is idempotent", async () => {
+  let registered: string | undefined;
+  let unauthorized = 2;
+  let failFrontend = true;
+  let failManagement = false;
+  const backend = createServer(async (req, res) => {
+    if (req.url === "/v0/management/api-keys") {
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      if (failManagement) { res.writeHead(500); res.end("withheld"); return; }
+      registered = JSON.parse(body).new;
+      res.end('{"status":"ok"}');
+    } else if (unauthorized-- > 0 || req.headers.authorization !== `Bearer ${registered}`) {
+      res.writeHead(401); res.end("{}");
+    } else { res.end('{"data":[]}'); }
+  });
+  const frontend = createServer((req, res) => {
+    if (failFrontend || req.headers.authorization !== `Bearer ${registered}`) { res.writeHead(503); res.end("{}"); }
+    else res.end('{"data":[]}');
+  });
+  await new Promise<void>(r => backend.listen(0, "127.0.0.1", r));
+  await new Promise<void>(r => frontend.listen(0, "127.0.0.1", r));
+  try {
+    const dir = fixture();
+    const state = join(dir, "local-state");
+    const baseUrl = `http://127.0.0.1:${(frontend.address() as { port: number }).port}`;
+    initializeHub(state, baseUrl, (backend.address() as { port: number }).port);
+    const selected = join(dir, "selection", "client.json");
+    const remote = join(dir, "remote");
+    initializeHub(remote, URL);
+    const before = readFileSync(hubPaths(remote).config, "utf8");
+    const selectionDir = join(dir, "selection");
+    // A prior remote selection is only changed by this explicit command.
+    mkdirSync(selectionDir, { mode: 0o700 });
+    const previous = JSON.stringify(client) + "\n";
+    writeFileSync(selected, previous, { mode: 0o600 });
+    await assert.rejects(useLocalClient(remote, "fixture", selected), /loopback/);
+    failManagement = true;
+    await assert.rejects(useLocalClient(state, "fixture", selected), /HTTP 500/);
+    assert.equal(readFileSync(selected, "utf8"), previous);
+    failManagement = false;
+    await assert.rejects(useLocalClient(state, "fixture", selected), /HTTP 503/);
+    assert.equal(readFileSync(selected, "utf8"), previous);
+    assert.deepEqual(readdirSync(selectionDir), ["client.json"]);
+    failFrontend = false;
+    await useLocalClient(state, "fixture", selected);
+    assert.equal(readClient(selected).baseUrl, baseUrl);
+    assert.equal(readClient(selected).apiKey, registered);
+    const backup = readdirSync(selectionDir).find(p => p.startsWith("client.json.backup-"))!;
+    assert.ok(backup);
+    assert.equal(readFileSync(join(selectionDir, backup), "utf8"), previous);
+    assert.equal(statSync(join(selectionDir, backup)).mode & 0o777, 0o600);
+    assert.equal(statSync(selected).mode & 0o777, 0o600);
+    const entries = readdirSync(selectionDir);
+    await useLocalClient(state, "fixture", selected);
+    assert.deepEqual(readdirSync(selectionDir), entries);
+    assert.equal(readFileSync(hubPaths(remote).config, "utf8"), before);
+    assert.deepEqual(readdirSync(hubPaths(state).auth), [], "no upstream OAuth grants copied or created");
+  } finally {
+    await Promise.all([backend, frontend].map(server => new Promise<void>(r => server.close(() => r()))));
+  }
+});
+
+test("connection credential command emits only a single selected route/key JSON bundle", () => {
+  const file = join(fixture(), "client.json");
+  const broker = new globalThis.URL("./broker.ts", import.meta.url);
+  for (const baseUrl of [URL, "http://127.0.0.1:18317"]) {
+    writeFileSync(file, JSON.stringify({ ...client, baseUrl }), { mode: 0o600 });
+    const result = spawnSync(process.execPath, [broker.pathname, "connection"], { encoding: "utf8", env: { ...process.env, CLI_PROXY_API_CLIENT_FILE: file } });
+    assert.equal(result.status, 0);
+    assert.equal(result.stderr, "");
+    assert.deepEqual(JSON.parse(result.stdout), { baseUrl, apiKey: client.apiKey });
   }
 });
 

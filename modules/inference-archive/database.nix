@@ -59,6 +59,7 @@ let
     name = "inference-archive-indexer";
     text = ''
       # live indexer: ${builtins.hashFile "sha256" ./ingest.ts}
+      # origin contract: ${builtins.hashFile "sha256" ./replication-protocol.ts}
       # verifier: ${builtins.hashFile "sha256" ./verify.ts}
       umask 077
       exec ${pkgs.nodejs_24}/bin/node ${lib.escapeShellArg "${cfg.indexer.sourceDirectory}/ingest.ts"} \

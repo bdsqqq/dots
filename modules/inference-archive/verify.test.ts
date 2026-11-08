@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { scanJournal, verifyJournal } from './verify.ts';
+import { scanReplicationJournal } from './replication-store.ts';
 
 export function fixture(id = 'request-a') {
   const base = { schemaVersion: 1, requestId: id, timestamp: '2026-11-07T00:00:00.000Z', lane: 'client' };
@@ -27,6 +28,24 @@ test('sealed source SHA, parser and future control records', async () => {
   await writeFile(file, bytes.replace('coding', 'editing').replace('control-future', 'tampered-control'));
   await assert.rejects(verifyJournal(file, hash), /sha256/);
   await writeFile(file, bytes.slice(0, -2)); await assert.rejects(verifyJournal(file), /truncated/);
+});
+
+test('large records use the same bounded parser for indexing and replication', async () => {
+  const file = join(await mkdtemp(join(tmpdir(), 'archive-large-')), 'large.jsonl');
+  const records = fixture().trim().split('\n').map(line => JSON.parse(line));
+  const replicated = async () => { let count = 0; for await (const _ of scanReplicationJournal(file, 'request-a', true)) count++; return count; };
+  records[1].data = 'A'.repeat(22 * 1024 * 1024);
+  await writeFile(file, records.map(line => JSON.stringify(line) + '\n').join(''), { mode: 0o600 });
+  assert.equal((await verifyJournal(file)).records, 4);
+  assert.equal(await replicated(), 4);
+  records[1].data += '!';
+  await writeFile(file, records.map(line => JSON.stringify(line) + '\n').join(''));
+  await assert.rejects(verifyJournal(file), /invalid data/);
+  await assert.rejects(replicated(), /invalid data/);
+  records[1].data = 'A'.repeat(24 * 1024 * 1024);
+  await writeFile(file, records.map(line => JSON.stringify(line) + '\n').join(''));
+  await assert.rejects(verifyJournal(file), /exceeds bound/);
+  await assert.rejects(replicated(), /exceeds bound/);
 });
 
 test('active incomplete last line waits; sealed rejects sequence gaps and missing finish', async () => {

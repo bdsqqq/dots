@@ -89,14 +89,12 @@ in
   };
   my.primaryUser = "bdsqqq";
   my.cliProxyApi.hub.enable = true;
+  my.cliProxyApi.baseUrl = "https://mmn-m4.tail1543a7.ts.net:8317";
   my.inferenceArchive = {
     enable = true;
     backup.enable = true;
-    database.indexer = {
-      enable = true;
-      endpoint = "https://htz-lab.tail1543a7.ts.net:18923";
-      passwordFile = "/Users/bdsqqq/.config/inference-archive-indexer/password";
-    };
+    nodeId = "mmn-m4";
+    replication.enable = true;
   };
   my.openDisplay = {
     launchAtLogin = true;

@@ -41,6 +41,21 @@ test('source truncation fails closed and raw payload/base64 preserved', async ()
   await assert.rejects(ingestFile(path, root, async () => {}), /shorter/);
 });
 
+test('authenticated collector provenance becomes query metadata without rewriting raw records', async t => {
+  const { root, path } = await setup(); t.after(() => rm(root, { recursive: true, force: true }));
+  const id = '79e125e4-58f5-4bc7-8627-7ac8f59e6c61';
+  await writeFile(path, fixture(id), { mode: 0o600 });
+  await mkdir(join(root, 'origins'), { mode: 0o700 });
+  const origin = join(root, 'origins', `${id}.json`);
+  await writeFile(origin, JSON.stringify({ schemaVersion: 1, requestId: id, nodeId: 'mbp-m2' }), { mode: 0o600 });
+  const rows: ReturnType<typeof eventRow>[] = [];
+  await ingestFile(path, root, async batch => { rows.push(...batch); });
+  assert.equal(rows.length, 4); assert.ok(rows.every(row => row.source_node === 'mbp-m2'));
+  assert.equal(rows[0].payload_json, fixture(id).split('\n')[0]);
+  await writeFile(origin, JSON.stringify({ schemaVersion: 1, requestId: id, nodeId: '../../unsafe' }), { mode: 0o600 });
+  await assert.rejects(ingestFile(path, root, async () => {}), /invalid journal origin/);
+});
+
 test('unchanged-file cache skips receipts, changed sources revalidate acknowledged prefixes', async t => {
   const { root, path } = await setup(); t.after(() => rm(root, { recursive: true, force: true }));
   const sealed = path.replace('.open', '.jsonl');

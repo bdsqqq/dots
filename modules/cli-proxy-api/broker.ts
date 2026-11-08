@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdirSync, openSync, closeSync, fsyncSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, openSync, closeSync, fsyncSync, writeFileSync, renameSync, unlinkSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { isMain, privateFile } from "../tool-auth/process.ts";
 
 export const HUB_URL = "https://mmn-m4.tail1543a7.ts.net:8317";
@@ -12,10 +12,16 @@ export const defaultClientFile = () => process.env.CLI_PROXY_API_CLIENT_FILE || 
 export type Client = { version: 1; name: string; baseUrl: string; apiKey: string };
 export type Hub = { version: 1; baseUrl: string; port: number };
 
+function isLoopbackOrigin(value: string): boolean {
+  // Check the spelling before URL normalization: 127.1, integers and hex are not
+  // explicit loopback addresses, even though WHATWG URL accepts them.
+  return /^http:\/\/(?:127\.0\.0\.1|\[::1\])(?::[0-9]+)?\/?$/.test(value);
+}
+
 function origin(value: string): string {
   const url = new URL(value);
-  if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || url.pathname !== "/") {
-    throw new Error("the broker requires an HTTPS origin without credentials or a path");
+  if ((url.protocol !== "https:" && !isLoopbackOrigin(value)) || url.username || url.password || url.search || url.hash || url.pathname !== "/") {
+    throw new Error("the broker requires an HTTPS origin or numeric loopback HTTP origin without credentials or a path");
   }
   return url.origin;
 }
@@ -68,6 +74,15 @@ export function initializeHub(directory: string, baseUrl = HUB_URL, port = HUB_P
   baseUrl = origin(baseUrl);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("invalid hub port");
   const paths = hubPaths(directory);
+  // Check metadata even after a partial/failed bootstrap. Never repurpose a hub
+  // directory (and its upstream OAuth grants) for a different endpoint.
+  if (existsSync(paths.metadata)) {
+    const existing = readHub(directory);
+    if (existing.baseUrl !== baseUrl || existing.port !== port) throw new Error("existing hub endpoint differs; use separate fresh state for a local gateway");
+  }
+  if (!existsSync(paths.metadata) && !existsSync(paths.config) && existsSync(paths.auth) && readdirSync(paths.auth).length) {
+    throw new Error("unmanaged upstream grants exist; use separate fresh gateway state and native login");
+  }
   privateDirectory(directory);
   privateDirectory(paths.auth);
   privateDirectory(paths.clients);
@@ -83,6 +98,7 @@ export function initializeHub(directory: string, baseUrl = HUB_URL, port = HUB_P
   const localClientFile = join(paths.clients, "hub.json");
   seed(localClientFile, `${JSON.stringify({ version: 1, name: "hub", baseUrl, apiKey: key() })}\n`);
   const client = readClient(localClientFile);
+  if (client.baseUrl !== baseUrl) throw new Error("existing hub client endpoint differs; use separate fresh state");
   seed(paths.metadata, `${JSON.stringify({ version: 1, baseUrl, port })}\n`);
   // JSON is accepted by upstream's YAML loader. Native saves may convert it to
   // block YAML, so subsequent maintenance uses its management API, not JSON.parse.
@@ -146,6 +162,37 @@ export async function issueClient(directory: string, name: string): Promise<stri
   throw new Error("native broker did not activate the issued client credential");
 }
 
+/** Select only after both native live-auth and the local capture frontend accept
+ * the credential. Failed staging leaves the prior selection byte-for-byte intact.
+ * This creates client keys, NEVER upstream account grants; login remains native. */
+export async function useLocalClient(directory: string, name: string, selected = defaultClientFile()): Promise<void> {
+  const hub = readHub(directory);
+  if (!isLoopbackOrigin(hub.baseUrl)) throw new Error("use-local requires an initialized numeric loopback HTTP gateway; use separate fresh state, not the remote hub directory");
+  const issued = await issueClient(directory, name);
+  const client = readClient(issued);
+  if (client.baseUrl !== hub.baseUrl) throw new Error("issued client endpoint changed during staging");
+  const next = `${JSON.stringify(client)}\n`;
+  await request(`${client.baseUrl}/v1/models`, client.apiKey);
+  privateDirectory(dirname(selected));
+  let previous: string | undefined;
+  let stat;
+  try { stat = lstatSync(selected); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  if (stat) {
+    if (!stat.isFile() || (process.getuid && stat.uid !== process.getuid())) throw new Error("client selection must be an owned regular file");
+    readClient(selected);
+    previous = privateFile(selected);
+    if (previous === next) return;
+  }
+  const temporary = `${selected}.staged-${randomBytes(16).toString("hex")}`;
+  seed(temporary, next);
+  try {
+    if (previous !== undefined) seed(`${selected}.backup-${randomBytes(16).toString("hex")}`, previous);
+    renameSync(temporary, selected);
+  } finally {
+    if (existsSync(temporary)) unlinkSync(temporary);
+  }
+}
+
 export function clientCommand(client: Client, program: "claude" | "codex", args: string[], env: NodeJS.ProcessEnv = process.env): { program: string; args: string[]; env: NodeJS.ProcessEnv } {
   if (program === "claude") {
     // Credential injection is process-local; the direct CLI and its config stay intact.
@@ -204,6 +251,18 @@ export async function main(args: string[]): Promise<number> {
       if (rest.length !== 1) throw new Error("usage: inference-broker issue-client machine-name (on the hub)");
       console.log(await issueClient(directory, rest[0]!));
       return 0;
+    case "use-local":
+      if (rest.length !== 1) throw new Error("usage: inference-broker use-local machine-name (on an initialized local gateway)");
+      await useLocalClient(directory, rest[0]!);
+      console.log("local gateway client selected; prior selection preserved privately when changed; upstream login is separate");
+      return 0;
+    case "connection": {
+      // SECRET credential-command output; never invoke in agent/tool logs.
+      // Route and key MUST come from one file read during an atomic selection.
+      const { baseUrl, apiKey } = readClient(defaultClientFile());
+      process.stdout.write(JSON.stringify({ baseUrl, apiKey }));
+      return 0;
+    }
     case "key":
       // For native credential-command consumers only; never call this in agent logs.
       process.stdout.write(readClient(defaultClientFile()).apiKey);
@@ -229,7 +288,7 @@ export async function main(args: string[]): Promise<number> {
       return 0;
     }
     default:
-      console.log("inference-broker: init | serve | login claude|codex | issue-client machine | status | accounts\nclaude-broker / codex-broker preserve direct CLI settings. request logs are best-effort, not a durable archive.");
+      console.log("inference-broker: init | serve | login claude|codex | issue-client machine | use-local machine | status | accounts\nclaude-broker / codex-broker preserve direct CLI settings. request logs are best-effort, not a durable archive.");
       return command ? 1 : 0;
   }
 }
