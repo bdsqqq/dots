@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { access, mkdtemp, mkdir, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, readdir, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -173,6 +173,26 @@ test("materializes only indexed files and symlinks", async () => {
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }
+});
+
+test("batched publication completes all files and drains a failed batch before cleanup", async () => {
+  const temporary = await mkdtemp(join(tmpdir(), "files-browser-batches-"));
+  const source = join(temporary, "source"), snapshots = join(temporary, "snapshots");
+  await mkdir(source); await mkdir(snapshots);
+  const entries = Array.from({ length: 40 }, (_, index) => ({
+    name: `file-${index}.txt`, type: "FILE_INFO_TYPE_FILE", size: 4, modTime: "2026-01-01T00:00:00Z",
+  }));
+  try {
+    await Promise.all(entries.map(entry => writeFile(join(source, entry.name), "keep")));
+    const published = await materializeSnapshot(source, snapshots, entries);
+    assert.equal(published.itemCount, 40);
+    for (const entry of entries) assert.equal(await readFile(join(published.snapshot, entry.name), "utf8"), "keep");
+    await assert.rejects(materializeSnapshot(source, snapshots, [
+      ...entries.slice(0, 5), { ...entries[5], name: "missing.txt" }, ...entries.slice(6),
+    ]), { code: "ENOENT" });
+    assert.deepEqual(await readdir(snapshots), [published.snapshot.split("/").at(-1)]);
+    assert.equal(await readFile(join(published.snapshot, entries[0].name), "utf8"), "keep");
+  } finally { await rm(temporary, { recursive: true, force: true }); }
 });
 
 test("rejects indexed symlinks that escape the source root", async () => {

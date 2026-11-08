@@ -225,11 +225,18 @@ async function buildSnapshot(sourceRoot, snapshotsRoot, entries) {
 
   await mkdir(temporary, { recursive: true });
   try {
-    for (const item of items.filter((item) => item.type === "FILE_INFO_TYPE_DIRECTORY")) {
-      await publishItem(sourceRoot, temporary, item);
-    }
-    for (const item of items.filter((item) => item.type !== "FILE_INFO_TYPE_DIRECTORY")) {
-      await publishItem(sourceRoot, temporary, item);
+    for (const group of [
+      items.filter((item) => item.type === "FILE_INFO_TYPE_DIRECTORY"),
+      items.filter((item) => item.type !== "FILE_INFO_TYPE_DIRECTORY"),
+    ]) {
+      for (let offset = 0; offset < group.length; offset += 16) {
+        // Bound filesystem pressure and let the whole batch settle before
+        // cleanup on failure; otherwise late links can race removal of .next.
+        const results = await Promise.allSettled(group.slice(offset, offset + 16)
+          .map((item) => publishItem(sourceRoot, temporary, item)));
+        const failure = results.find((result) => result.status === "rejected");
+        if (failure) throw failure.reason;
+      }
     }
     await rename(temporary, snapshot);
   } finally {
@@ -461,6 +468,7 @@ export function createPublicationManager(config, snapshotsRoot, dependencies = {
   let active = null;
   let generation = 0;
   let lastModelToken = null;
+  let candidate = null;
   let refreshing = false;
   const backends = new Set();
   const recovery = new BackendRecoveryBudget(join(config.state, "backend-recovery.json"), dependencies.now);
@@ -500,6 +508,10 @@ export function createPublicationManager(config, snapshotsRoot, dependencies = {
         return;
       }
       const token = modelToken(status);
+      if (candidate && candidate.token !== token) {
+        await rm(candidate.publication.snapshot, { recursive: true, force: true });
+        candidate = null;
+      }
       if (active && token === lastModelToken) {
         operation.finish("skipped", { reasonCode: "UNCHANGED", ready: true, generation });
         return;
@@ -510,21 +522,31 @@ export function createPublicationManager(config, snapshotsRoot, dependencies = {
         operation.finish("skipped", { ready: active !== null, reasonCode: permit.reasonCode, retryInMs: permit.retryInMs });
         return;
       }
-      const entries = await syncthingRequest(
-        config,
-        `/rest/db/browse?folder=${encodeURIComponent(FOLDER_ID)}`
-      );
-      const publication = await materializeSnapshot(config.source, snapshotsRoot, entries);
+      if (!candidate) {
+        const entries = await syncthingRequest(
+          config,
+          `/rest/db/browse?folder=${encodeURIComponent(FOLDER_ID)}`
+        );
+        candidate = { token, publication: await materializeSnapshot(config.source, snapshotsRoot, entries) };
+      }
+      const publication = candidate.publication;
       const statusAfter = await syncthingRequest(
         config,
         `/rest/db/status?folder=${encodeURIComponent(FOLDER_ID)}`
       );
-      if (!folderReady(statusAfter) || modelToken(statusAfter) !== token) {
-        await rm(publication.snapshot, { recursive: true, force: true });
-        operation.finish("skipped", { reasonCode: "SOURCE_CHANGED", ready: active !== null });
+      const changed = modelToken(statusAfter) !== token;
+      if (!folderReady(statusAfter) || changed) {
+        // Scanning alone does not invalidate the indexed model. Retain at most
+        // one candidate until idle, but never publish across a token change.
+        if (changed) {
+          await rm(publication.snapshot, { recursive: true, force: true });
+          candidate = null;
+        }
+        operation.finish("skipped", { reasonCode: changed ? "SOURCE_CHANGED" : "SOURCE_SYNCING", ready: active !== null });
         return;
       }
 
+      candidate = null;
       generation += 1;
       const backend = startOwned(config, generation, publication.snapshot);
       backend.signature = publication.signature;
