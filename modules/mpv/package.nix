@@ -5,22 +5,43 @@
 
 let
   isDarwin = pkgs.stdenv.hostPlatform.isDarwin;
-  mpvPatch =
-    commit: hash:
-    pkgs.fetchpatch {
-      url = "https://github.com/mpv-player/mpv/commit/${commit}.patch";
-      inherit hash;
+  # 0.42 fixes coreaudio channel mapping on macOS 27 and includes the alpha
+  # surface support previously backported here. keep the dependency bump local.
+  libplacebo = pkgs.libplacebo.overrideAttrs {
+    version = "7.387.0";
+    src = pkgs.fetchFromGitLab {
+      domain = "code.videolan.org";
+      owner = "videolan";
+      repo = "libplacebo";
+      tag = "v7.387.0";
+      hash = "sha256-PYi21y7uAZUsbn9nqn4ZP8QB9iQ9pRvnIKdOtG0WeIw=";
     };
-  # nixpkgs' mpv 0.41 predates the macOS alpha-surface path. These are the
-  # three commits from upstream PR #17173; drop them once nixpkgs includes it.
+  };
   mpv-unwrapped =
     if isDarwin then
-      pkgs.mpv-unwrapped.overrideAttrs (old: {
-        patches = (old.patches or [ ]) ++ [
-          (mpvPatch "80448329045be1262c8b63fb05f8b60380adc8f7" "sha256-qr0CmNPTS37WgcBpMYA8yQ4PAAxv3i+zvVvm5Regpig=")
-          (mpvPatch "4b4a291a28743fe3a364ce7e82e14f38c1d38b53" "sha256-WwY6O4LQNuH6JQWQX6CxCyvgN5g3K5del7ddU+OXPfQ=")
-          (mpvPatch "13eca7a59de7ece3537f05ec9f325b74e909ef47" "sha256-hlnLZb081VtSjWRvSnpzJFF7S+iN1CYCrhfF/b3vHUY=")
-        ];
+      (pkgs.mpv-unwrapped.override { inherit libplacebo; }).overrideAttrs (old: {
+        version = "0.42.0";
+        src = pkgs.fetchFromGitHub {
+          owner = "mpv-player";
+          repo = "mpv";
+          tag = "v0.42.0";
+          hash = "sha256-kOVHFAuwGpV+Zz04FnzvjPq2tmEpvSDkHWUXoinEeSQ=";
+        };
+        postPatch =
+          builtins.replaceStrings
+            [ "meson.build_options())" ]
+            [ ''meson.build_options().strip().replace('\\\\', '\\\\\\\\'))'' ]
+            old.postPatch;
+        buildInputs = old.buildInputs ++ [ pkgs.curl ];
+        mesonFlags = old.mesonFlags ++ [ (lib.mesonEnable "libcurl" true) ];
+        nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.rcodesign ];
+        postFixup = (old.postFixup or "") + ''
+          # rcodesign excludes git placeholders, but apple's verifier sees them
+          # as unsealed additions. they serve no purpose in the installed app.
+          find "$out/Applications/mpv.app" -name .gitkeep -delete
+          rcodesign sign "$out/Applications/mpv.app"
+          /usr/bin/codesign --verify --deep --strict "$out/Applications/mpv.app"
+        '';
       })
     else
       pkgs.mpv-unwrapped;
@@ -34,7 +55,7 @@ let
       "${mpv-unwrapped}/Applications/mpv.app/Contents/MacOS/mpv"
     else
       "${mpv-unwrapped}/bin/mpv";
-  package = pkgs.mpv.override {
+  wrapped = pkgs.mpv.override {
     inherit mpv-unwrapped;
     scripts = with pkgs.mpvScripts; [
       quality-menu
@@ -50,6 +71,23 @@ let
       "--script-opts-append=thumbfast-mpv_path=${thumbfastMpv}"
     ];
   };
+  # symlinkJoin replaces the app executable with a wrapper. seal a private,
+  # fully materialized bundle after that replacement, not just the mach-o file.
+  package =
+    if isDarwin then
+      wrapped.overrideAttrs (old: {
+        nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.rcodesign ];
+        buildCommand = old.buildCommand + ''
+          cp -RL "$out/Applications/mpv.app" "$TMPDIR/mpv.app"
+          chmod -R u+w "$TMPDIR/mpv.app"
+          rm -r "$out/Applications/mpv.app"
+          mv "$TMPDIR/mpv.app" "$out/Applications/mpv.app"
+          rcodesign sign "$out/Applications/mpv.app"
+          /usr/bin/codesign --verify --deep --strict "$out/Applications/mpv.app"
+        '';
+      })
+    else
+      wrapped;
   transparentArgs = [
     "--vo=gpu-next"
     "--background=none"
