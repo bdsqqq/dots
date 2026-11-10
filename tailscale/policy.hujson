@@ -1,6 +1,7 @@
 {
 	"tagOwners": {
-		// Service hosts use a device identity rather than a person's identity.
+		// portable Tailscale Services require tagged hosts; mini stays tagged.
+		// grant peer access explicitly instead of restoring owner-wide access.
 		"tag:service-host": ["autogroup:owner", "tag:service-host"],
 		"tag:exit-client": ["autogroup:owner"],
 		"tag:ssh-accept": ["autogroup:owner"],
@@ -67,6 +68,12 @@
 			"dst": ["mmn-m4"],
 			"ip":  ["8317"],
 		},
+		// Enrolled prototype peers exchange inference, never management or OAuth grants.
+		{
+			"src": ["mbp-m2", "mmn-m4"],
+			"dst": ["mbp-m2", "mmn-m4"],
+			"ip":  ["18817"],
+		},
 		// Only the raw-journal hub writes the authenticated derived query index.
 		{
 			"src": ["mmn-m4"],
@@ -124,12 +131,12 @@
 		},
 		{
 			"src": "100.99.140.27",
-			"accept": ["htz-lab:18923"],
-			"deny": ["htz-lab:22", "htz-lab:9000"],
+			"accept": ["htz-lab:18923", "mbp-m2:18817"],
+			"deny": ["htz-lab:22", "htz-lab:9000", "mbp-m2:8317"],
 		},
 		{
 			"src": "tag:cf-ingress",
-			"deny": ["mmn-m4:8317", "htz-lab:18923"],
+			"deny": ["mmn-m4:8317", "htz-lab:18923", "mbp-m2:18817", "mmn-m4:18817"],
 		},
 		{
 			"src":    "tag:exit-client",
