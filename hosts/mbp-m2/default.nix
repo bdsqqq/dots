@@ -90,6 +90,7 @@ in
   ];
 
   my.cliProxyApi = {
+    peering.enable = true;
     hub = {
       enable = true;
       publish = false;

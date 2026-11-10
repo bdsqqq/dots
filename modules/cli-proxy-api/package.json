@@ -1,0 +1,9 @@
+{
+  "name": "inference-broker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:peering": "../pi/node_modules/.bin/vitest run --config vitest.config.ts",
+    "typecheck": "../pi/node_modules/.bin/tsc --noEmit"
+  }
+}

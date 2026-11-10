@@ -99,9 +99,67 @@ native request logs under the private hub's `auth/logs/` remain best-effort debu
 
 only explicitly broker-selected routes are covered. native/direct sessions and other provider upstreams are not implicitly archived. the account-level `websockets` flag alone does not prove upstream capture; the patched Codex recorder route must also be active. see the archive's coverage, failure, and recovery boundaries before enrolling another provider.
 
+## execution-only peering prototype
+
+`my.cliProxyApi.peering.enable` adds a separate user agent,
+`dev.cli-proxy-api.peering`, and an authenticated private HTTPS endpoint on
+port `18817`. it does not replace the native gateway, change selected clients,
+share OAuth files, or expose native management. m2 and mini are the initial
+participants; their distinct native grants still share the provider account's
+quota. the tailnet policy must allow this port between enrolled participants.
+
+`peering.ts NODE_ID PORT PRIVATE_CONFIG.json` binds only numeric loopback.
+Tailscale Serve supplies private TLS. configuration stays outside the store:
+
+```json
+{
+  "localClientFile": "/absolute/private/local-client.json",
+  "callerKeyFile": "/absolute/private/caller.key",
+  "incoming": [{ "nodeId": "other-node", "keyFile": "/absolute/private/incoming-other.key" }],
+  "peers": [{ "nodeId": "other-node", "clientFile": "/absolute/private/peer-other.json" }]
+}
+```
+
+paths must be expanded and private. client files use the existing broker
+connection format. the local connection must point at a distinct loopback
+capture frontend, with a client key registered on that node's native gateway.
+peer client files contain only the other peer's HTTPS origin and execution key,
+not its management key or upstream grant. incoming keys and the local caller key
+must differ. membership changes require reloading only this new agent; key files
+are reread for each request.
+
+- `POST /v1/responses` requires the local caller key. discovery checks the local
+  gateway first, then enrolled peers. an authenticated local caller may prefer
+  one enrolled node using `X-Inference-Prefer-Node`; it cannot supply an arbitrary
+  destination URL.
+- `POST /peer/v1/responses` requires an incoming peer key and executes **locally
+  only**, ignoring routing preferences. cyclic membership cannot add another hop.
+- `GET /v1/models` and `/peer/v1/models` use their corresponding credentials and
+  report only the local gateway's model catalog. there is no union catalog,
+  automatic discovery, quota scheduler, or strict distributed concurrency limit.
+- read-only model discovery can skip an unavailable owner. once an inference
+  POST is attempted, errors, quota responses, and broken streams are surfaced
+  **without replay**. this conservative boundary avoids duplicate execution;
+  it does not promise automatic recovery from every failed request.
+- HTTP/SSE bodies are passed through without protocol translation. WebSocket
+  upgrades return `501`; existing WebSocket-capable broker clients remain on
+  their current routes. do not select this prototype as their default.
+- the default bounds are eight active requests, a 16 MiB request body, a 2-second
+  discovery timeout, and a 5-minute execution deadline. private configuration can
+  set `maxConcurrent`, `maxBodyBytes`, `probeTimeoutMs`, and `requestTimeoutMs`.
+
+an executing node still writes through its existing capture frontend. an opaque
+correlation UUID links peer events to that node's capture journals; keys, bodies,
+and native errors are absent from routing logs. the caller does **not** gain a
+second raw journal copy for a remotely executed request. native session files,
+receiver journals, asynchronous replication, and backups keep their separate
+retention boundaries. local gateways must not themselves be configured to route
+back through peer endpoints.
+
 ## verification
 
 ```sh
+(cd modules/cli-proxy-api && pnpm run typecheck && pnpm run test:peering)
 node --test modules/cli-proxy-api/broker.test.ts
 CLI_PROXY_API_TEST_BINARY=/absolute/path/to/cliproxyapi node --test modules/cli-proxy-api/broker.test.ts
 (cd modules/pi && pnpm exec tsc -p ../cli-proxy-api/tsconfig.json)

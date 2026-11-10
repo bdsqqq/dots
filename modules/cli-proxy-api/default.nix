@@ -34,6 +34,7 @@ let
   };
 in
 {
+  imports = [ ./peering.nix ];
   options.my.cliProxyApi = {
     hub.enable = lib.mkEnableOption "a private native CLIProxyAPI gateway";
     hub.publish = lib.mkOption {

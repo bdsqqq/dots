@@ -91,6 +91,7 @@ in
   };
   my.primaryUser = "bdsqqq";
   my.cliProxyApi.hub.enable = true;
+  my.cliProxyApi.peering.enable = true;
   my.cliProxyApi.baseUrl = "https://mmn-m4.tail1543a7.ts.net:8317";
   my.inferenceArchive = {
     enable = true;

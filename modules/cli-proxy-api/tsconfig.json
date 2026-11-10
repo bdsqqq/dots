@@ -1,5 +1,6 @@
 {
   "extends": "../tool-auth/tsconfig.json",
   "compilerOptions": { "skipLibCheck": true, "erasableSyntaxOnly": true, "typeRoots": ["../pi/node_modules/@types"] },
+  "files": ["../pi/node_modules/vitest/importMeta.d.ts"],
   "include": ["./*.ts", "../tool-auth/process.ts"]
 }
