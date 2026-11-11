@@ -74,12 +74,6 @@
 			"dst": ["mbp-m2", "mmn-m4"],
 			"ip":  ["18817"],
 		},
-		// Only the raw-journal hub writes the authenticated derived query index.
-		{
-			"src": ["mmn-m4"],
-			"dst": ["htz-lab"],
-			"ip":  ["18923"],
-		},
 		// Exit-node use is opt-in without granting personal-device access.
 		{
 			"src": ["tag:exit-client"],
@@ -131,8 +125,8 @@
 		},
 		{
 			"src": "100.99.140.27",
-			"accept": ["htz-lab:18923", "mbp-m2:18817"],
-			"deny": ["htz-lab:22", "htz-lab:9000", "mbp-m2:8317"],
+			"accept": ["mbp-m2:18817"],
+			"deny": ["htz-lab:18923", "htz-lab:22", "htz-lab:9000", "mbp-m2:8317"],
 		},
 		{
 			"src": "tag:cf-ingress",

@@ -42,7 +42,6 @@ in
     ../../modules/direnv
     ../../modules/tmux
     ../../modules/agents
-    ../../modules/inference-archive
     ../../modules/gog
     ../../modules/wacli
     ../../modules/goplaces
@@ -90,12 +89,7 @@ in
       enable = true;
       publish = false;
     };
-    baseUrl = "http://127.0.0.1:18317";
-  };
-  my.inferenceArchive = {
-    enable = true;
-    nodeId = "mbp-m5";
-    replication.enable = true;
+    baseUrl = "http://127.0.0.1:8317";
   };
   my.openDisplay = {
     launchAtLogin = false;

@@ -4,6 +4,7 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, openSync, closeSync, fsync
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { isMain, privateFile } from "../tool-auth/process.ts";
+import { operation, failure, journalId, destination, type EventSink, type EventFields } from "./events.ts";
 
 export const HUB_URL = "https://mmn-m4.tail1543a7.ts.net:8317";
 export const HUB_PORT = 8317;
@@ -104,7 +105,8 @@ export function initializeHub(directory: string, baseUrl = HUB_URL, port = HUB_P
   // block YAML, so subsequent maintenance uses its management API, not JSON.parse.
   seed(paths.config, `${JSON.stringify({
     "config-version": 8,
-    server: { host: "127.0.0.1", port, "trusted-proxies": ["127.0.0.1", "::1"] },
+    // request-log=false still records failed bodies upstream; omit that middleware entirely.
+    server: { host: "127.0.0.1", port, "trusted-proxies": ["127.0.0.1", "::1"], "commercial-mode": true },
     management: {
       "allow-remote": true,
       "secret-key": privateFile(paths.managementKey).trim(),
@@ -114,7 +116,7 @@ export function initializeHub(directory: string, baseUrl = HUB_URL, port = HUB_P
     access: { "api-keys": [client.apiKey] },
     oauth: { "auth-dir": paths.auth, providers: { aistudio: { "ws-auth": true } } },
     routing: { strategy: "round-robin", "session-affinity": true, "session-affinity-ttl": "1h", retry: { "request-retry": 3, "max-retry-interval": 30 } },
-    observability: { logs: { "request-log": true, "logging-to-file": false, "logs-max-total-size-mb": 0, "error-logs-max-files": 0 } },
+    observability: { logs: { "request-log": false, "logging-to-file": false, "logs-max-total-size-mb": 0, "error-logs-max-files": 0 } },
   }, null, 2)}\n`);
 }
 
@@ -132,47 +134,67 @@ async function request(url: string, apiKey: string, method = "GET", body?: unkno
       headers: { Authorization: `Bearer ${apiKey}`, ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-  } catch { throw new Error("broker connection failed; check the service and private network"); }
+  } catch (error) { throw new Error("broker connection failed; check the service and private network", { cause: error }); }
   if (!response.ok) { await response.body?.cancel(); throw new BrokerHttpError(response.status); }
   try { return await response.json(); } catch { throw new Error("broker returned an invalid JSON response"); }
 }
 
-export async function issueClient(directory: string, name: string): Promise<string> {
+export async function issueClient(directory: string, name: string, eventSink?: EventSink, parentOperationId?: string): Promise<string> {
+  const completion = operation("inference.broker.client.issue", { command: "issue-client", clientId: journalId(name), parentOperationId }, eventSink);
+  let stage = "validate";
+  let attempts = 0;
+  try {
   if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(name) || name === "hub") throw new Error("use a lowercase machine name, not a path or hub");
+  stage = "metadata";
   const paths = hubPaths(directory);
   const hub = readHub(directory);
+  stage = "credential";
   const file = join(paths.clients, `${name}.json`);
   seed(file, `${JSON.stringify({ version: 1, name, baseUrl: hub.baseUrl, apiKey: key() })}\n`);
   const client = readClient(file);
   if (client.baseUrl !== hub.baseUrl) throw new Error("client endpoint differs from this hub");
   // Upstream PATCH replaces a matching old value, or appends new when absent.
   // This avoids replacing the whole key list and losing concurrent GUI changes.
+  stage = "register";
   await request(`http://127.0.0.1:${hub.port}/v0/management/api-keys`, privateFile(paths.managementKey).trim(), "PATCH", { old: client.apiKey, new: client.apiKey });
   // A successful config write precedes the native watcher's live-auth refresh.
   // Do not distribute a credential until the serving path actually accepts it.
+  stage = "verify-live-auth";
   for (let attempt = 0; attempt < 30; attempt++) {
+    attempts++;
     try {
       await request(`http://127.0.0.1:${hub.port}/v1/models`, client.apiKey);
+      completion.finish({ outcome: "success", stage, counts: { attempts } });
       return file;
     } catch (error) {
       if (!(error instanceof BrokerHttpError) || error.status !== 401) throw error;
       await new Promise(resolve => setTimeout(resolve, 200));
     }
   }
-  throw new Error("native broker did not activate the issued client credential");
+  throw Object.assign(new Error("native broker did not activate the issued client credential"), { name: "TimeoutError" });
+  } catch (error) {
+    completion.finish({ outcome: stage === "validate" ? "rejected" : "failure", stage, counts: { attempts }, ...failure(error, stage === "register" || stage === "verify-live-auth" ? "transport" : "configuration") });
+    throw error;
+  }
 }
 
 /** Select only after both native live-auth and the local capture frontend accept
  * the credential. Failed staging leaves the prior selection byte-for-byte intact.
  * This creates client keys, NEVER upstream account grants; login remains native. */
-export async function useLocalClient(directory: string, name: string, selected = defaultClientFile()): Promise<void> {
+export async function useLocalClient(directory: string, name: string, selected = defaultClientFile(), eventSink?: EventSink, parentOperationId?: string): Promise<void> {
+  const completion = operation("inference.broker.client.select", { command: "use-local", clientId: journalId(name), parentOperationId }, eventSink);
+  let stage = "validate";
+  try {
   const hub = readHub(directory);
   if (!isLoopbackOrigin(hub.baseUrl)) throw new Error("use-local requires an initialized numeric loopback HTTP gateway; use separate fresh state, not the remote hub directory");
-  const issued = await issueClient(directory, name);
+  stage = "issue-client";
+  const issued = await issueClient(directory, name, eventSink, completion.operationId);
   const client = readClient(issued);
   if (client.baseUrl !== hub.baseUrl) throw new Error("issued client endpoint changed during staging");
   const next = `${JSON.stringify(client)}\n`;
+  stage = "verify-frontend";
   await request(`${client.baseUrl}/v1/models`, client.apiKey);
+  stage = "selection-preflight";
   privateDirectory(dirname(selected));
   let previous: string | undefined;
   let stat;
@@ -181,8 +203,9 @@ export async function useLocalClient(directory: string, name: string, selected =
     if (!stat.isFile() || (process.getuid && stat.uid !== process.getuid())) throw new Error("client selection must be an owned regular file");
     readClient(selected);
     previous = privateFile(selected);
-    if (previous === next) return;
+    if (previous === next) { completion.finish({ outcome: "skipped", stage: "selection-unchanged" }); return; }
   }
+  stage = "selection-write";
   const temporary = `${selected}.staged-${randomBytes(16).toString("hex")}`;
   seed(temporary, next);
   try {
@@ -190,6 +213,11 @@ export async function useLocalClient(directory: string, name: string, selected =
     renameSync(temporary, selected);
   } finally {
     if (existsSync(temporary)) unlinkSync(temporary);
+  }
+  completion.finish({ outcome: "success", stage: "selected", counts: { backups: Number(previous !== undefined) } });
+  } catch (error) {
+    completion.finish({ outcome: stage === "validate" || stage === "selection-preflight" ? "rejected" : "failure", stage, ...failure(error, stage === "verify-frontend" ? "transport" : "configuration") });
+    throw error;
   }
 }
 
@@ -214,89 +242,215 @@ export function clientCommand(client: Client, program: "claude" | "codex", args:
   };
 }
 
-async function run(program: string, args: string[], env = process.env, cwd?: string): Promise<number> {
+async function run(program: string, args: string[], env = process.env, cwd?: string, context: EventFields = {}, sink?: EventSink): Promise<number> {
+  const childOperation = operation("inference.broker.child", { ...context, stage: "spawn" }, sink);
+  const startup = operation("inference.broker.child.start", { ...context, parentOperationId: childOperation.operationId, stage: "spawn" }, sink);
   return new Promise((resolve, reject) => {
-    const child = spawn(program, args, { env, cwd, stdio: "inherit" });
+    let child: ReturnType<typeof spawn>;
+    try { child = spawn(program, args, { env, cwd, stdio: "inherit" }); }
+    catch (error) {
+      startup.finish({ outcome: "failure", stage: "spawn", ...failure(error, "process") });
+      childOperation.finish({ outcome: "failure", stage: "spawn", ...failure(error, "process") });
+      reject(new Error("native executable unavailable; install the configured prerequisite", { cause: error })); return;
+    }
+    child.once("spawn", () => startup.finish({ outcome: "success", stage: "spawned", childPid: child.pid }));
     const interrupt = () => child.kill("SIGINT");
     const terminate = () => child.kill("SIGTERM");
     process.on("SIGINT", interrupt); process.on("SIGTERM", terminate);
-    child.once("error", () => { cleanup(); reject(new Error("native executable unavailable; install the configured prerequisite")); });
-    child.once("exit", (code) => { cleanup(); resolve(code ?? 1); });
+    child.once("error", error => {
+      cleanup(); startup.finish({ outcome: "failure", stage: "spawn", ...failure(error, "process") });
+      childOperation.finish({ outcome: "failure", stage: "spawn", ...failure(error, "process") });
+      reject(new Error("native executable unavailable; install the configured prerequisite", { cause: error }));
+    });
+    child.once("exit", (code, signal) => {
+      cleanup(); childOperation.finish({ outcome: signal ? "cancelled" : code === 0 ? "success" : "failure", stage: "exit", childPid: child.pid, exitCode: code ?? undefined, ...(signal ? { signal } : {}), ...(signal || code !== 0 ? { errorCategory: "process" } : {}) });
+      resolve(code ?? 1);
+    });
     function cleanup() { process.off("SIGINT", interrupt); process.off("SIGTERM", terminate); }
   });
 }
 
-export async function main(args: string[]): Promise<number> {
+export async function main(args: string[], eventSink?: EventSink): Promise<number> {
   const [command, ...rest] = args;
+  const known = ["init", "serve", "login", "issue-client", "use-local", "connection", "key", "run", "status", "accounts"].includes(command ?? "");
+  const context: EventFields = { command: known ? command : command ? "unknown" : "help", stage: "arguments", credentialOutput: command === "connection" || command === "key" };
+  if ((command === "issue-client" || command === "use-local") && rest[0]) context.clientId = journalId(rest[0]);
+  const completion = operation("inference.broker.command", context, eventSink);
+  try {
+    const code = await execute();
+    completion.finish({ ...context, outcome: code === 0 ? "success" : known ? "failure" : "rejected", exitCode: code,
+      ...(code !== 0 ? { errorCategory: known ? "process" : "configuration" } as EventFields : {}) });
+    return code;
+  } catch (error) {
+    completion.finish({ ...context, outcome: context.stage === "arguments" ? "rejected" : "failure", ...failure(error, context.stage === "child" ? "process" : "configuration") });
+    throw error;
+  }
+  async function execute(): Promise<number> {
   const directory = process.env.CLI_PROXY_API_STATE_DIR || defaultHubDirectory();
   const paths = hubPaths(directory);
   const binary = process.env.CLI_PROXY_API_BIN || "cliproxyapi";
   switch (command) {
     case "init":
+      context.stage = "initialize";
       initializeHub(directory, process.env.CLI_PROXY_API_BASE_URL || HUB_URL, Number(process.env.CLI_PROXY_API_PORT || HUB_PORT));
       console.log("private hub config initialized; existing native config is preserved");
       return 0;
     case "serve":
+      context.stage = "initialize";
       initializeHub(directory, process.env.CLI_PROXY_API_BASE_URL || HUB_URL, Number(process.env.CLI_PROXY_API_PORT || HUB_PORT));
       process.umask(0o077);
-      return run(binary, ["-config", paths.config], process.env, directory);
+      context.stage = "child";
+      return run(binary, ["-config", paths.config], process.env, directory, { command, parentOperationId: completion.operationId }, eventSink);
     case "login": {
       const flag = rest[0] === "claude" ? "-claude-login" : rest[0] === "codex" ? "-codex-device-login" : null;
       if (!flag || rest.length !== 1) throw new Error("usage: inference-broker login claude|codex (on the hub)");
+      context.stage = "credential";
       privateFile(paths.config);
       process.umask(0o077);
-      return run(binary, ["-config", paths.config, flag, "-no-browser"], process.env, directory);
+      context.stage = "child";
+      return run(binary, ["-config", paths.config, flag, "-no-browser"], process.env, directory, { command, parentOperationId: completion.operationId }, eventSink);
     }
     case "issue-client":
       if (rest.length !== 1) throw new Error("usage: inference-broker issue-client machine-name (on the hub)");
-      console.log(await issueClient(directory, rest[0]!));
+      context.stage = "issue-client";
+      console.log(await issueClient(directory, rest[0]!, eventSink, completion.operationId));
       return 0;
     case "use-local":
       if (rest.length !== 1) throw new Error("usage: inference-broker use-local machine-name (on an initialized local gateway)");
-      await useLocalClient(directory, rest[0]!);
+      context.stage = "select-client";
+      await useLocalClient(directory, rest[0]!, defaultClientFile(), eventSink, completion.operationId);
       console.log("local gateway client selected; prior selection preserved privately when changed; upstream login is separate");
       return 0;
     case "connection": {
       // SECRET credential-command output; never invoke in agent/tool logs.
       // Route and key MUST come from one file read during an atomic selection.
-      const { baseUrl, apiKey } = readClient(defaultClientFile());
+      context.stage = "credential";
+      const { baseUrl, apiKey, name } = readClient(defaultClientFile());
+      context.clientId = journalId(name); context.destination = destination(baseUrl);
       process.stdout.write(JSON.stringify({ baseUrl, apiKey }));
       return 0;
     }
-    case "key":
+    case "key": {
       // For native credential-command consumers only; never call this in agent logs.
-      process.stdout.write(readClient(defaultClientFile()).apiKey);
+      context.stage = "credential";
+      const client = readClient(defaultClientFile());
+      context.clientId = journalId(client.name); context.destination = destination(client.baseUrl);
+      process.stdout.write(client.apiKey);
       return 0;
+    }
     case "run": {
       const program = rest[0];
       if (program !== "claude" && program !== "codex") throw new Error("usage: inference-broker run claude|codex [native arguments]");
-      const command = clientCommand(readClient(defaultClientFile()), program, rest.slice(1));
-      return run(command.program, command.args, command.env);
+      context.stage = "credential";
+      const client = readClient(defaultClientFile());
+      context.clientId = journalId(client.name); context.destination = destination(client.baseUrl);
+      const native = clientCommand(client, program, rest.slice(1));
+      context.stage = "child";
+      return run(native.program, native.args, native.env, undefined, { command, parentOperationId: completion.operationId }, eventSink);
     }
     case "status": {
+      context.stage = "credential";
       const client = readClient(defaultClientFile());
+      context.clientId = journalId(client.name); context.destination = destination(client.baseUrl);
+      context.stage = "models";
       const response = await request(`${client.baseUrl}/v1/models`, client.apiKey) as { data?: { id?: string }[] };
       if (!Array.isArray(response.data) || response.data.some(m => typeof m.id !== "string")) throw new Error("broker returned an invalid model list");
       console.log(JSON.stringify({ endpoint: client.baseUrl, client: client.name, models: response.data.map(m => m.id), inferenceTested: false }, null, 2));
       return 0;
     }
     case "accounts": {
+      context.stage = "credential";
       const hub = readHub(directory);
+      context.stage = "accounts";
       const response = await request(`http://127.0.0.1:${hub.port}/v8/management/credentials`, privateFile(paths.managementKey).trim()) as { files?: { provider?: string; disabled?: boolean; status?: string }[] };
       if (!Array.isArray(response.files)) throw new Error("broker returned an invalid account list");
       console.log(JSON.stringify({ accounts: response.files.map(f => ({ provider: f.provider, disabled: f.disabled, status: f.status })) }, null, 2));
       return 0;
     }
     default:
-      console.log("inference-broker: init | serve | login claude|codex | issue-client machine | use-local machine | status | accounts\nclaude-broker / codex-broker preserve direct CLI settings. request logs are best-effort, not a durable archive.");
+      console.log("inference-broker: init | serve | login claude|codex | issue-client machine | use-local machine | status | accounts\nclaude-broker / codex-broker preserve direct CLI settings. request-body recording is disabled for newly initialized gateways.");
       return command ? 1 : 0;
   }
+  }
+}
+
+if (import.meta.vitest) {
+  const { test, expect, vi } = import.meta.vitest;
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { createServer } = await import("node:http");
+  test("credential and issue-client stdout is unchanged while completion events exclude private outputs", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "broker-events-"));
+    const server = createServer((_req, res) => { res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ data: [] })); });
+    await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as { port: number }).port;
+    const sink: import("./events.ts").OperationEvent[] = [];
+    let stdout = "";
+    const output = vi.spyOn(process.stdout, "write").mockImplementation(chunk => { stdout += String(chunk); return true; });
+    const log = vi.spyOn(console, "log").mockImplementation((...args) => { stdout += args.join(" ") + "\n"; });
+    try {
+      initializeHub(directory, `http://127.0.0.1:${port}`, port);
+      const selected = join(hubPaths(directory).clients, "hub.json");
+      const client = readClient(selected);
+      vi.stubEnv("CLI_PROXY_API_STATE_DIR", directory); vi.stubEnv("CLI_PROXY_API_CLIENT_FILE", selected);
+      expect(await main(["connection"], e => sink.push(e))).toBe(0);
+      expect(stdout).toBe(JSON.stringify({ baseUrl: client.baseUrl, apiKey: client.apiKey })); stdout = "";
+      expect(await main(["key"], e => sink.push(e))).toBe(0);
+      expect(stdout).toBe(client.apiKey); stdout = "";
+      expect(await main(["issue-client", "fixture-client"], e => sink.push(e))).toBe(0);
+      expect(stdout).toBe(join(hubPaths(directory).clients, "fixture-client.json") + "\n");
+      expect(sink.filter(e => e.event === "inference.broker.command").map(e => e.command)).toEqual(["connection", "key", "issue-client"]);
+      expect(sink.find(e => e.event === "inference.broker.client.issue")).toMatchObject({ outcome: "success", stage: "verify-live-auth", counts: { attempts: 1 }, parentOperationId: sink.at(-1)!.operationId });
+      expect(sink.every(e => e.outcome === "success" && e.durationMs >= 0)).toBe(true);
+      expect(sink.filter(e => e.event === "inference.broker.command").every(e => e.exitCode === 0)).toBe(true);
+      for (const secret of [client.apiKey, readClient(join(hubPaths(directory).clients, "fixture-client.json")).apiKey, directory]) expect(JSON.stringify(sink)).not.toContain(secret);
+      expect(await main(["key"], () => { throw new Error("SENTINEL_OBSERVER_SECRET"); })).toBe(0);
+    } finally {
+      output.mockRestore(); log.mockRestore(); vi.unstubAllEnvs();
+      await new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections(); });
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+  test("child lifecycle retains exit semantics and classifies native failures without native errors", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "broker-child-events-"));
+    const sink: import("./events.ts").OperationEvent[] = [];
+    const file = join(directory, "child.ts");
+    try {
+      writeFileSync(file, "const code: number = 0; process.exit(code);\n");
+      expect(await run(process.execPath, [file], process.env, undefined, { command: "serve" }, e => sink.push(e))).toBe(0);
+      writeFileSync(file, 'const signal: NodeJS.Signals = "SIGTERM"; process.kill(process.pid, signal);\n');
+      expect(await run(process.execPath, [file], process.env, undefined, { command: "serve" }, e => sink.push(e))).toBe(1);
+      await expect(run(join(directory, "SENTINEL_KEY"), [], process.env, undefined, {}, e => sink.push(e))).rejects.toThrow("native executable unavailable");
+      const terminals = sink.filter(e => e.event === "inference.broker.child");
+      expect(terminals.map(e => e.outcome)).toEqual(["success", "cancelled", "failure"]);
+      expect(terminals[1]).toMatchObject({ signal: "SIGTERM" });
+      expect(terminals[1]!.exitCode).toBe(undefined);
+      expect(terminals[2]).toMatchObject({ stage: "spawn", errorCode: "ENOENT" });
+      expect(sink.filter(e => e.event === "inference.broker.child.start").map(e => e.outcome)).toEqual(["success", "success", "failure"]);
+      expect(JSON.stringify(sink)).not.toContain("SENTINEL_KEY");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+  test("argument rejection and native transport errors are safely classified", async () => {
+    const sink: import("./events.ts").OperationEvent[] = [];
+    await expect(main(["login", "SENTINEL_KEY"], e => sink.push(e))).rejects.toThrow();
+    expect(sink[0]).toMatchObject({ command: "login", stage: "arguments", outcome: "rejected" });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockRejectedValue(Object.assign(new Error("SENTINEL_NATIVE_BODY https://user:SENTINEL_KEY@example.com/?key=SENTINEL_KEY"), { code: "ECONNREFUSED" }));
+    const directory = mkdtempSync(join(tmpdir(), "broker-error-events-"));
+    const selected = join(directory, "client.json");
+    writeFileSync(selected, JSON.stringify({ version: 1, name: "fixture", baseUrl: "https://example.com", apiKey: "broker-" + "s".repeat(43) }), { mode: 0o600 });
+    vi.stubEnv("CLI_PROXY_API_CLIENT_FILE", selected);
+    try {
+      await expect(main(["status"], event => sink.push(event))).rejects.toThrow("broker connection failed");
+      expect(sink[1]).toMatchObject({ command: "status", outcome: "failure", stage: "models", errorCategory: "transport", errorCode: "ECONNREFUSED" });
+      expect(JSON.stringify(sink)).not.toContain("SENTINEL");
+      expect(JSON.stringify(sink)).not.toContain(directory);
+    } finally { fetchMock.mockRestore(); vi.unstubAllEnvs(); rmSync(directory, { recursive: true, force: true }); }
+  });
 }
 
 if (isMain(import.meta.url)) {
   main(process.argv.slice(2)).then(code => { process.exitCode = code; }).catch(() => {
     // Native/network errors can contain credentials; do not print arbitrary error text.
-    console.error("broker operation failed; check private runtime files, service availability, and command arguments");
     process.exitCode = 1;
   });
 }

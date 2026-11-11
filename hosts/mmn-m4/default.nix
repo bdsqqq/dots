@@ -63,8 +63,6 @@ in
     ../../modules/media-feeds
     ../../modules/backup/ssd-01
     ../../modules/backup/terraria
-    ../../modules/inference-archive
-    ../../modules/inference-archive/backup.nix
     ../../modules/files-browser/service.nix
     ../../modules/photo-gallery/service.nix
     ../../modules/photo-intelligence/service.nix
@@ -93,12 +91,6 @@ in
   my.cliProxyApi.hub.enable = true;
   my.cliProxyApi.peering.enable = true;
   my.cliProxyApi.baseUrl = "https://mmn-m4.tail1543a7.ts.net:8317";
-  my.inferenceArchive = {
-    enable = true;
-    backup.enable = true;
-    nodeId = "mmn-m4";
-    replication.enable = true;
-  };
   my.openDisplay = {
     launchAtLogin = true;
     wifiServiceName = "iPad";

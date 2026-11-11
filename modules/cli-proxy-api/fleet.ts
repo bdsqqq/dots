@@ -5,13 +5,16 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isMain } from "../tool-auth/process.ts";
+import { operation, failure, journalId, type EventSink } from "./events.ts";
+
+class FleetCommandError extends Error {}
 
 /** flake output names own membership without forcing host configurations. */
 export function configuredHosts(flakeRef = `git+${new URL("../../", import.meta.url).href}`): string[] {
   const result = spawnSync("nix", ["eval", "--json", "--impure", "--no-write-lock-file", "--expr",
     `let flake = builtins.getFlake ${JSON.stringify(flakeRef)}; in builtins.attrNames ((flake.darwinConfigurations or {}) // (flake.nixosConfigurations or {}))`],
     { encoding: "utf8", timeout: 30000, maxBuffer: 1024 * 1024 });
-  if (result.status !== 0) throw new Error("cannot read the configured fleet; Nix output withheld");
+  if (result.status !== 0) throw new FleetCommandError("cannot read the configured fleet; Nix output withheld", { cause: result.error });
   const hosts: unknown = JSON.parse(result.stdout);
   if (!Array.isArray(hosts) || hosts.some(host => typeof host !== "string")) throw new Error("invalid fleet inventory");
   return hosts;
@@ -23,7 +26,7 @@ export function identity(value: any) {
 }
 function ssh(host: string, command: string, input?: string, timeout = 15000) {
   const result = spawnSync("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=6", host, command], { input, encoding: "utf8", timeout, maxBuffer: 2 * 1024 * 1024 });
-  if (result.status !== 0) throw new Error(`SSH operation failed on ${host} (exit ${result.status}); private output withheld`);
+  if (result.status !== 0) throw new FleetCommandError(`SSH operation failed on ${host} (exit ${result.status}); private output withheld`, { cause: result.error });
   return result.stdout.trim();
 }
 const nativeNode = 'node=$(command -v node || true); if test -z "$node"; then for n in /nix/store/*nodejs-24*/bin/node; do test -x "$n" && node="$n"; done; fi; test -n "$node" || exit 127; ';
@@ -98,11 +101,15 @@ export function ownedLauncher(home: string, program: string, contents: string): 
 }
 
 /** Only wiring is mutable here: never touch native CLI config or OAuth grants. */
-export function refreshTools(home: string, store: string, codex?: string): string {
+export function refreshTools(home: string, store: string, codex?: string, eventSink?: EventSink): string {
+  const completion = operation("inference.fleet.refresh", { command: "refresh-tools" }, eventSink);
+  let stage = "validate";
+  try {
   if (!storePattern.test(store) || (codex !== undefined && !pinPattern.test(codex))) throw new Error("invalid tools output or native Codex path");
   const root = managedToolsRoot(home);
   const rootInfo = info(root);
   if (rootInfo && (!rootInfo.isSymbolicLink() || (process.getuid && rootInfo.uid !== process.getuid()) || !storePattern.test(readlinkSync(root)))) throw new Error("unrecognized tools root; preserve and inspect");
+  stage = "preflight";
   const files: { path: string; content: string }[] = [];
   // Preflight everything before replacing either the root or any launcher.
   for (const program of ["codex", "claude", "inference"]) {
@@ -135,50 +142,107 @@ export function refreshTools(home: string, store: string, codex?: string): strin
       if (stat && (!stat.isDirectory() || (process.getuid && stat.uid !== process.getuid()))) throw new Error("unsafe managed tools directory");
     }
   }
+  stage = "replace-root";
   const suffix = `.staged-${randomBytes(16).toString("hex")}`;
   mkdirSync(dirname(root), { recursive: true, mode: 0o700 });
   mkdirSync(join(home, ".local/bin"), { recursive: true, mode: 0o700 });
   symlinkSync(store, root + suffix);
   renameSync(root + suffix, root);
+  stage = "replace-launchers";
   for (const file of files) {
     writeFileSync(file.path + suffix, file.content, { flag: "wx", mode: 0o700 });
     renameSync(file.path + suffix, file.path);
   }
+  completion.finish({ outcome: "success", stage: "verified", counts: { launchers: files.length } });
   return root;
+  } catch (error) {
+    completion.finish({ outcome: stage === "validate" || stage === "preflight" ? "rejected" : "failure", stage, ...failure(error, stage === "validate" || stage === "preflight" ? "configuration" : "filesystem") });
+    throw error;
+  }
 }
 
-export function deploy(host: string) {
+export function deploy(host: string, eventSink?: EventSink) {
+  const completion = operation("inference.fleet.deploy", { command: "deploy", clientId: journalId(host) }, eventSink);
+  let stage = "inventory";
+  let selectedNode: string | undefined;
+  try {
   if (!/^[a-z0-9][a-z0-9._-]*$/.test(host) || !configuredHosts().includes(host)) throw new Error("host not in configured fleet");
+  selectedNode = host;
+  stage = "identity";
   const native = identity(JSON.parse(ssh(host, checkIdentity)));
+  stage = "repository";
   const repo = ssh(host, 'cd "$HOME/commonplace/01_files/nix" && pwd -P');
   if (!repo.startsWith("/") || repo === "/" || repo.startsWith("/nix/store/") || repo.split("/").includes("..")) throw new Error("invalid canonical repository");
-  const sources = Object.fromEntries(["cli-proxy-api/broker.ts", "cli-proxy-api/fleet.ts", "cli-proxy-api/default.nix", "cli-proxy-api/codex-archive-route.patch", "tool-auth/process.ts"].map(path => [`${repo}/modules/${path}`, readFileSync(fileURLToPath(new URL(`../${path}`, import.meta.url)), "utf8")]));
+  stage = "source-transfer";
+  const sources = Object.fromEntries(["cli-proxy-api/broker.ts", "cli-proxy-api/fleet.ts", "cli-proxy-api/default.nix", "cli-proxy-api/events.ts", "tool-auth/process.ts"].map(path => [`${repo}/modules/${path}`, readFileSync(fileURLToPath(new URL(`../${path}`, import.meta.url)), "utf8")]));
   ssh(host, `${nativeNode} "$node" --input-type=module -e ${shellQuote(receive)}`, JSON.stringify({ ...native, sourceRoot: repo, files: sources }));
+  stage = "build";
   const output = ssh(host, `nix build --impure --no-link --no-write-lock-file --print-out-paths --expr ${shellQuote(packageExpression(repo))}`, undefined, 180000);
   const store = output.split("\n").at(-1)!;
   if (!storePattern.test(store)) throw new Error("unexpected native tools derivation output");
+  stage = "native-prerequisite";
   let codex = ssh(host, 'command -v codex || { test -x "$HOME/.local/bin/codex" && printf "%s\\n" "$HOME/.local/bin/codex"; } || true');
   // A provisioned host may expose Codex only through its retained launcher pin.
   if (!codex) codex = ssh(host, `${nativeNode} "$node" --input-type=module -e ${shellQuote(`import { readFileSync, accessSync, constants } from 'node:fs'; import { ownedLauncher } from ${JSON.stringify(`${repo}/modules/cli-proxy-api/fleet.ts`)}; const pin = ownedLauncher(process.env.HOME, 'codex', readFileSync(process.env.HOME + '/.local/bin/codex-broker', 'utf8'))?.codex; if (pin) { accessSync(pin, constants.X_OK); process.stdout.write(pin); }`)}`);
   if (!pinPattern.test(codex)) throw new Error("native Codex prerequisite unavailable");
+  stage = "refresh-tools";
   const root = ssh(host, `${nativeNode} "$node" ${shellQuote(`${repo}/modules/cli-proxy-api/fleet.ts`)} refresh-tools ${shellQuote(store)} ${shellQuote(codex)}`);
   ssh(host, `nix-store --add-root ${shellQuote(root)} --indirect --realise ${shellQuote(store)} >/dev/null`);
   // Credential provisioning is intentionally separate: local Macs enroll via
   // native login + use-local; remote clients may retain their existing selection.
+  stage = "verify-native";
   const version = ssh(host, `${shellQuote(`${native.home}/.local/bin/codex-broker`)} --version`);
+  completion.finish({ outcome: "success", stage, selectedNode, counts: { sources: Object.keys(sources).length } });
   return { host, ...native, root, store, version, credentials: "unchanged; explicit provisioning required" };
+  } catch (error) {
+    completion.finish({ outcome: error instanceof FleetCommandError ? "failure" : stage === "inventory" || stage === "identity" || stage === "repository" ? "rejected" : "failure", stage, selectedNode, ...failure(error, error instanceof FleetCommandError ? "process" : "configuration") });
+    throw error;
+  }
+}
+
+if (import.meta.vitest) {
+  const { test, expect } = import.meta.vitest;
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  test("refresh emits one completion and observer failure cannot interrupt launcher installation", () => {
+    const home = mkdtempSync(join(tmpdir(), "fleet-events-"));
+    const events: import("./events.ts").OperationEvent[] = [];
+    const store = "/nix/store/aaaaaaaa-cli-proxy-api-tools";
+    try {
+      expect(refreshTools(home, store, undefined, event => { events.push(event); throw new Error("SENTINEL_OBSERVER_KEY"); })).toBe(managedToolsRoot(home));
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ outcome: "success", command: "refresh-tools", stage: "verified", counts: { launchers: 3 } });
+      expect(readlinkSync(managedToolsRoot(home))).toBe(store);
+      expect(events[0]!.durationMs).toBeGreaterThanOrEqual(0);
+      expect(JSON.stringify(events)).not.toContain(home);
+      expect(JSON.stringify(events)).not.toContain("SENTINEL");
+    } finally { rmSync(home, { recursive: true, force: true }); }
+  });
+  test("fleet rejection records stage without untrusted node, config paths or errors", () => {
+    const events: import("./events.ts").OperationEvent[] = [];
+    const secret = "SENTINEL_KEY";
+    expect(() => deploy(secret, event => events.push(event))).toThrow("host not in configured fleet");
+    expect(() => refreshTools(`/private/${secret}`, `https://user:${secret}@example.com/?key=${secret}`, undefined, event => events.push(event))).toThrow();
+    expect(events.map(event => event.outcome)).toEqual(["rejected", "rejected"]);
+    expect(events[0]).toMatchObject({ command: "deploy", stage: "inventory", errorCategory: "configuration" });
+    expect(events[1]).toMatchObject({ command: "refresh-tools", stage: "validate", errorCategory: "configuration" });
+    expect(JSON.stringify(events)).not.toContain(secret);
+  });
 }
 
 if (isMain(import.meta.url)) {
   if (process.argv[2] === "refresh-tools") {
     try {
-      if (process.argv.length < 4 || process.argv.length > 5) throw new Error("usage: fleet.ts refresh-tools store-path [native-codex-path]");
+      if (process.argv.length < 4 || process.argv.length > 5) {
+        operation("inference.fleet.refresh", { command: "refresh-tools", stage: "arguments" }).finish({ outcome: "rejected", errorCategory: "configuration" });
+        throw new Error("usage: fleet.ts refresh-tools store-path [native-codex-path]");
+      }
       console.log(refreshTools(homedir(), process.argv[3]!, process.argv[4]));
-    } catch { console.error("managed tools refresh refused; inspect launcher/root ownership and native edits"); process.exitCode = 1; }
+    } catch { process.exitCode = 1; }
   } else {
     for (const host of process.argv.slice(2)) {
       try { console.log(JSON.stringify(deploy(host))); }
-      catch { console.error(JSON.stringify({ host, error: "bootstrap failed; private output withheld; inspect native source/wiring" })); process.exitCode = 1; }
+      catch { process.exitCode = 1; }
     }
   }
 }

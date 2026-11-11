@@ -9,6 +9,7 @@ let
     # peering: ${builtins.hashFile "sha256" ./peering.ts}
     # broker: ${builtins.hashFile "sha256" ./broker.ts}
     # credentials: ${builtins.hashFile "sha256" ../tool-auth/process.ts}
+    # events: ${builtins.hashFile "sha256" ./events.ts}
     exec ${pkgs.nodejs_24}/bin/node ${lib.escapeShellArg "${live}/peering.ts"} \
       ${lib.escapeShellArg cfg.nodeId} ${toString cfg.port} ${lib.escapeShellArg cfg.configFile}
   '';

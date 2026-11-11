@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "test:peering": "../pi/node_modules/.bin/vitest run --config vitest.config.ts",
+    "test:events": "../pi/node_modules/.bin/vitest run --config vitest.config.ts",
     "typecheck": "../pi/node_modules/.bin/tsc --noEmit"
   }
 }

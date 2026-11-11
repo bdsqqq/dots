@@ -4,7 +4,7 @@ CLIProxyAPI owns routing, account refresh, and its editable native config. Nix o
 
 ## boundaries
 
-- MacBook gateways are local-first: recorder `127.0.0.1:18317`, backend `127.0.0.1:8317`, independent personal login, no published listener. declaration is not enrollment; a gateway with no account cannot infer;
+- MacBook gateways are local-first: native gateway `127.0.0.1:8317`, independent personal login, no published listener. declaration is not enrollment; a gateway with no account cannot infer;
 - remote clients can retain home Mac `mmn-m4`, exposed through [Tailscale Serve](https://tailscale.com/kb/1242/tailscale-serve) at `https://mmn-m4.tail1543a7.ts.net:8317`. there is no automatic fallback from a laptop to this hub;
 - each provisioned machine gets a separate client key. the management key is different and remains on the hub. Serve is tailnet-only, but intended owner access still depends on tailnet policy; API authentication remains required;
 - direct `claude`, `codex`, and existing Pi providers are unchanged. the named launchers select the broker explicitly;
@@ -55,9 +55,9 @@ on the hub, `inference-broker issue-client machine-name` registers a stable per-
 
 `inference-broker key` and `inference-broker connection` print secrets for native authentication, NOT diagnostics. never run them in agent/tool logs.
 
-for a fresh local gateway, initialize it with loopback frontend origin
-`http://127.0.0.1:18317`, enroll independently, configure upstream capture, and
-verify actual local inference before selecting it. `inference-broker use-local
+for a fresh local gateway, initialize it with loopback origin
+`http://127.0.0.1:8317`, enroll independently, and verify actual local inference
+before selecting it. `inference-broker use-local
 mbp-m2` (or `mbp-m5`) stages/registers a local client, checks backend/frontend
 authentication, privately backs up the previous selection, then atomically
 replaces it. those checks are discovery, not provider inference. failed staging
@@ -93,11 +93,21 @@ installation, reload and the machine's existing update path after provisioning.
 and refreshes that instance's pending status. catalog readiness is not an
 inference check; defaults and other instances remain unchanged.
 
-## capture is separate
+## retention boundary
 
-native request logs under the private hub's `auth/logs/` remain best-effort debug output, not the archive. [inference retention](../inference-archive/README.md) adds independent client/upstream journals, a derived ClickHouse index, and encrypted backups. its disk budget does not cap these native debug logs.
+this gateway routes inference; it is not a conversation archive. repeated request
+prefixes and before/after body copies inflated a 657 KB native Pi session into
+55 MB of wire journals. that transport recorder, its shared index, and scheduled
+raw-archive backups have been retired. existing recordings and snapshots are
+retained; retirement does not authorize deleting them.
 
-only explicitly broker-selected routes are covered. native/direct sessions and other provider upstreams are not implicitly archived. the account-level `websockets` flag alone does not prove upstream capture; the patched Codex recorder route must also be active. see the archive's coverage, failure, and recovery boundaries before enrolling another provider.
+new gateways disable native request-body logging too: `request-log=false` alone
+still retains failed request bodies, so `server.commercial-mode=true` omits that
+middleware entirely. existing gateways need the same editable config change and
+a targeted restart. metadata-only broker and peer events remain on stderr.
+
+Pi's native session JSONL remains its conversation record. extending it with
+request metadata is separate work, not an implemented replacement yet.
 
 ## execution-only peering prototype
 
