@@ -4,6 +4,7 @@ import { request as httpsRequest } from "node:https";
 import { pipeline } from "node:stream/promises";
 import { readClient, type Client } from "./broker.ts";
 import { isMain, privateFile } from "../tool-auth/process.ts";
+import { operation, failure, destination, journalId, type EventSink, type EventFields, type Outcome } from "./events.ts";
 
 export interface PeeringConfig {
   localClientFile: string;
@@ -15,7 +16,7 @@ export interface PeeringConfig {
   maxBodyBytes?: number;
   maxConcurrent?: number;
 }
-interface Options { nodeId: string; port: number; config: PeeringConfig; event?: (event: RouteEvent) => void }
+interface Options { nodeId: string; port: number; config: PeeringConfig; event?: (event: RouteEvent) => void; eventSink?: EventSink }
 interface RouteEvent { event: "inference.peer.route"; nodeId: string; delegationId: string; selected?: string; delegated: boolean; dispatched: boolean; status: number; elapsedMs: number }
 const idPattern = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const hop = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade"]);
@@ -30,14 +31,14 @@ function key(file: string): string {
 function equal(a: string, b: string): boolean {
   return timingSafeEqual(createHash("sha256").update(a).digest(), createHash("sha256").update(b).digest());
 }
-function authenticate(req: IncomingMessage, config: PeeringConfig, delegated: boolean): boolean {
+function authenticate(req: IncomingMessage, config: PeeringConfig, delegated: boolean): string | undefined {
   const match = /^Bearer ([a-zA-Z0-9_-]{32,128})$/.exec(req.headers.authorization ?? "");
-  if (!match) return false;
-  if (!delegated) return equal(match[1]!, key(config.callerKeyFile));
-  return config.incoming.some(peer => {
+  if (!match) return undefined;
+  if (!delegated) return equal(match[1]!, key(config.callerKeyFile)) ? "caller" : undefined;
+  return config.incoming.find(peer => {
     // Removing one peer's credential revokes that peer, not every other peer.
     try { return equal(match[1]!, key(peer.keyFile)); } catch { return false; }
-  });
+  })?.nodeId;
 }
 function localClient(config: PeeringConfig, port: number): Client {
   const client = readClient(config.localClientFile);
@@ -88,66 +89,109 @@ function connect(client: Client, pathname: string, method: string, signal: Abort
     request.end(body);
   });
 }
-async function models(client: Client, delegated: boolean, signal: AbortSignal, timeout: number): Promise<Buffer> {
-  const response = await connect(client, delegated ? "/peer/v1/models" : "/v1/models", "GET", AbortSignal.any([signal, AbortSignal.timeout(timeout)]));
-  if (response.statusCode !== 200) { response.destroy(); throw new Error("model discovery unavailable"); }
+async function models(client: Client, delegated: boolean, signal: AbortSignal, timeout: number, delegationId: string): Promise<Buffer> {
+  const bounded = AbortSignal.any([signal, AbortSignal.timeout(timeout)]);
+  try {
+  const response = await connect(client, delegated ? "/peer/v1/models" : "/v1/models", "GET", bounded, undefined, {
+    "x-inference-delegation-id": delegationId, "x-correlation-id": delegationId,
+  });
+  if (response.statusCode !== 200) { response.destroy(); throw Object.assign(new Error("model discovery unavailable"), { status: response.statusCode }); }
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const part of response) {
     size += part.length;
-    if (size > 512 * 1024) { response.destroy(); throw new Error("model discovery too large"); }
+    if (size > 512 * 1024) { response.destroy(); throw Object.assign(new Error("model discovery too large"), { code: "catalog-bound" }); }
     chunks.push(Buffer.from(part));
   }
   const bytes = Buffer.concat(chunks);
-  const value = JSON.parse(bytes.toString()) as { data?: { id?: string }[] };
-  if (!Array.isArray(value.data) || value.data.some(row => typeof row.id !== "string")) throw new Error("invalid model discovery");
+  let value: unknown;
+  try { value = JSON.parse(bytes.toString()); } catch { throw Object.assign(new Error("invalid model discovery"), { code: "catalog-invalid" }); }
+  if (!value || typeof value !== "object" || !("data" in value) || !Array.isArray(value.data)
+    || value.data.some(row => !row || typeof row !== "object" || typeof row.id !== "string"))
+    throw Object.assign(new Error("invalid model discovery"), { code: "catalog-invalid" });
   return bytes;
+  } catch (error) { throw bounded.aborted ? bounded.reason : error; }
 }
 
 /** Delegation is an execution-only capability: a peer request never enters route
  * selection. Discovery may fail over; once a POST is attempted, no replay is safe
  * merely because a response or transport failed. Native gateways remain separate. */
-export async function startPeering({ nodeId, port, config, event }: Options) {
-  validatePeering(config, nodeId, port);
+export async function startPeering({ nodeId, port, config, event, eventSink }: Options) {
+  const startup = operation("inference.peer.start", { nodeId: idPattern.test(nodeId) ? nodeId : journalId(nodeId), stage: "validate", websockets: false }, eventSink);
+  try { validatePeering(config, nodeId, port); }
+  catch (error) { startup.finish({ outcome: "rejected", ...failure(error, "configuration") }); throw error; }
   const active = new Set<AbortController>();
   const server = createServer(async (req, res) => {
     const delegated = req.url === "/peer/v1/responses" || req.url === "/peer/v1/models";
     const isModels = req.url === "/v1/models" || req.url === "/peer/v1/models";
     const isResponse = req.url === "/v1/responses" || req.url === "/peer/v1/responses";
     if (req.url === "/health" && req.method === "GET") { res.end(JSON.stringify({ nodeId, live: true, inferenceTested: false })); return; }
-    if ((!isModels && !isResponse) || req.method !== (isModels ? "GET" : "POST")) { reply(res, 404, "unsupported peering route"); return; }
+    if ((!isModels && !isResponse) || req.method !== (isModels ? "GET" : "POST")) {
+      operation("inference.peer.route", { nodeId, stage: "route", route: "unsupported", dispatched: false }, eventSink).finish({ outcome: "rejected", httpStatus: 404 });
+      reply(res, 404, "unsupported peering route"); return;
+    }
     const started = Date.now();
     const suppliedId = req.headers["x-inference-delegation-id"];
     const delegationId = delegated && typeof suppliedId === "string" && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(suppliedId) ? suppliedId : randomUUID();
     const record: RouteEvent = { event: "inference.peer.route", nodeId, delegationId, delegated, dispatched: false, status: 500, elapsedMs: 0 };
+    const route = operation("inference.peer.route", { nodeId, delegationId, delegated, lane: delegated ? "execution" : "caller", route: req.url!, method: isModels ? "GET" : "POST" }, eventSink);
+    let stage = "authenticate", requestBytes = 0, responseBytes = 0;
+    let completionFields: EventFields = {};
+    const counts = { discoveryAttempts: 0, discoveryFailures: 0 };
+    let cancellation: "timeout" | "cancelled" = "cancelled";
     let controller: AbortController | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const discover = async (candidate: { nodeId: string; file: string; peer: boolean }, signal: AbortSignal, timeout: number, model?: string) => {
+      counts.discoveryAttempts++;
+      const discovery = operation("inference.peer.discovery", { nodeId, delegationId, parentOperationId: route.operationId, selectedNode: candidate.nodeId, delegated: candidate.peer, stage: "credential" }, eventSink);
+      let target: string | undefined;
+      let discoveryStage = "credential";
+      try {
+        const client = candidate.peer ? readClient(candidate.file) : localClient(config, port);
+        target = destination(client.baseUrl);
+        discoveryStage = "models";
+        const bytes = await models(client, candidate.peer, signal, timeout, delegationId);
+        const available = JSON.parse(bytes.toString()) as { data: { id: string }[] };
+        const matched = model === undefined || available.data.some(row => row.id === model);
+        discovery.finish({ outcome: matched ? "success" : "skipped", stage: discoveryStage, destination: target, counts: { models: available.data.length }, httpStatus: 200 });
+        return { client, bytes, matched };
+      } catch (error) {
+        counts.discoveryFailures++;
+        discovery.finish({ outcome: signal.aborted ? "cancelled" : "failure", stage: discoveryStage, destination: target, ...failure(error, discoveryStage === "credential" ? "configuration" : "transport") });
+        throw error;
+      }
+    };
     try {
-      if (!authenticate(req, config, delegated)) { record.status = 401; reply(res, 401, "inference credential required"); return; }
+      const authenticated = authenticate(req, config, delegated);
+      if (!authenticated) { record.status = 401; reply(res, 401, "inference credential required"); return; }
+      if (delegated) completionFields.sourceNode = authenticated;
+      stage = "capacity";
       if (active.size >= (config.maxConcurrent ?? 8)) { record.status = 503; reply(res, 503, "peering capacity unavailable"); return; }
       controller = new AbortController();
       active.add(controller);
       const abort = () => controller!.abort();
       req.once("aborted", abort);
       res.once("close", () => { if (!res.writableFinished) abort(); });
-      timer = setTimeout(abort, config.requestTimeoutMs ?? 300_000).unref();
+      timer = setTimeout(() => { cancellation = "timeout"; abort(); }, config.requestTimeoutMs ?? 300_000).unref();
       const signal = controller.signal;
       signal.addEventListener("abort", () => { if (!req.complete) req.destroy(); }, { once: true });
       const timeout = config.probeTimeoutMs ?? 2000;
       if (isModels) {
-        const bytes = await models(localClient(config, port), false, signal, timeout);
+        stage = "discovery";
+        const { bytes } = await discover({ nodeId, file: config.localClientFile, peer: false }, signal, timeout);
         record.selected = nodeId;
         record.status = 200;
         res.writeHead(200, { "content-type": "application/json" }); res.end(bytes); return;
       }
+      stage = "validate-body";
       if (req.headers["content-encoding"] || !/^application\/json(?:\s*;|$)/i.test(req.headers["content-type"] ?? "")) { record.status = 415; reply(res, 415, "an uncompressed JSON request is required"); return; }
       const maximum = config.maxBodyBytes ?? 16 * 1024 * 1024;
       if (Number(req.headers["content-length"]) > maximum) { record.status = 413; reply(res, 413, "request body too large"); return; }
       const parts: Buffer[] = [];
       let size = 0;
-      req.setTimeout(30_000, abort);
+      req.setTimeout(30_000, () => { cancellation = "timeout"; abort(); });
       for await (const part of req) {
-        size += part.length;
+        size += part.length; requestBytes = size;
         if (size > maximum) { record.status = 413; reply(res, 413, "request body too large"); return; }
         parts.push(Buffer.from(part));
       }
@@ -156,6 +200,7 @@ export async function startPeering({ nodeId, port, config, event }: Options) {
       let model: unknown;
       try { model = (JSON.parse(body.toString()) as { model?: unknown }).model; } catch { /* report only our fixed message, never parser input */ }
       if (typeof model !== "string" || !model.length || model.length > 256) { record.status = 400; reply(res, 400, "a JSON model identifier is required"); return; }
+      stage = "select";
       const preferred = req.headers[routeHeader];
       if (!delegated && preferred !== undefined && (typeof preferred !== "string" || (preferred !== nodeId && !config.peers.some(peer => peer.nodeId === preferred)))) { record.status = 400; reply(res, 400, "unknown preferred peer"); return; }
       const candidates = delegated ? [{ nodeId, file: config.localClientFile, peer: false }] : [
@@ -167,44 +212,71 @@ export async function startPeering({ nodeId, port, config, event }: Options) {
       for (const candidate of candidates) {
         if (signal.aborted) break;
         try {
-          const client = candidate.peer ? readClient(candidate.file) : localClient(config, port);
-          const available = JSON.parse((await models(client, candidate.peer, signal, timeout)).toString()) as { data: { id: string }[] };
-          if (available.data.some(row => row.id === model)) { selected = { nodeId: candidate.nodeId, client, peer: candidate.peer }; break; }
-        } catch { /* discovery is read-only: skipping an unavailable candidate cannot duplicate inference */ }
+          const { client, matched } = await discover(candidate, signal, timeout, model);
+          if (matched) { selected = { nodeId: candidate.nodeId, client, peer: candidate.peer }; break; }
+        } catch { /* Discovery completion records the failure; only read-only discovery can fail over. */ }
       }
       if (!selected) { record.status = 503; reply(res, 503, "no reachable execution owner for this model"); return; }
       record.selected = selected.nodeId;
+      completionFields.destination = destination(selected.client.baseUrl);
       record.dispatched = true;
+      stage = "dispatch";
       const response = await connect(selected.client, selected.peer ? "/peer/v1/responses" : "/v1/responses", "POST", signal, body, {
         ...headers(req), "x-inference-delegation-id": delegationId, "x-correlation-id": delegationId,
       });
       const status = response.statusCode ?? 502;
-      if (status >= 300 && status < 400) { response.destroy(); record.status = 502; reply(res, 502, "execution redirects are not supported"); return; }
+      if (status >= 300 && status < 400) { response.destroy(); record.status = 502; completionFields.errorCode = "execution-redirect-refused"; reply(res, 502, "execution redirects are not supported"); return; }
       record.status = status;
       res.writeHead(status, { ...headers(response), "x-inference-executed-by": selected.nodeId, "x-inference-delegation-id": delegationId });
+      stage = "stream";
+      response.on("data", (chunk: Buffer) => { responseBytes += chunk.length; });
       await pipeline(response, res, { signal });
-    } catch {
+    } catch (error) {
+      completionFields = { ...completionFields, ...failure(error, stage === "authenticate" ? "configuration" : "transport") };
       record.status = 502;
       reply(res, 502, "execution interrupted; request was not replayed");
     } finally {
       if (timer) clearTimeout(timer);
       if (controller) active.delete(controller);
-      if (!isModels) { record.elapsedMs = Date.now() - started; event?.(record); }
+      const cancelled = controller?.signal.aborted;
+      let outcome: Outcome = "success";
+      const errors: EventFields = {};
+      if (record.status >= 400) {
+        const unavailable = stage === "select" && counts.discoveryFailures > 0;
+        outcome = record.dispatched || isModels && record.status === 502 || unavailable ? "failure" : "rejected";
+        errors.errorCategory = record.status === 503 && stage === "capacity" ? "capacity" : unavailable ? "transport" : record.dispatched ? "http" : "configuration";
+      }
+      if (cancelled) outcome = "cancelled";
+      route.finish({ outcome, stage, selectedNode: record.selected, dispatched: record.dispatched,
+        httpStatus: res.headersSent ? res.statusCode : record.status, requestBytes, responseBytes, activeRequests: active.size, counts,
+        ...errors, ...completionFields, ...(cancelled ? { errorCategory: cancellation } : {}) });
+      if (!isModels) {
+        record.elapsedMs = Date.now() - started;
+        try { event?.(record); } catch { /* Legacy observers cannot change response/dispatch semantics. */ }
+      }
     }
   });
   server.on("upgrade", (_req, socket) => {
+    operation("inference.peer.websocket", { nodeId, stage: "upgrade", websockets: false, dispatched: false }, eventSink).finish({ outcome: "rejected", httpStatus: 501 });
     socket.end("HTTP/1.1 501 Not Implemented\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
   });
   server.headersTimeout = 30_000;
   server.requestTimeout = 30_000;
-  await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(port, "127.0.0.1", resolve); });
+  try {
+    await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(port, "127.0.0.1", resolve); });
+    startup.finish({ outcome: "success", stage: "listen", port: (server.address() as { port: number }).port });
+  } catch (error) { startup.finish({ outcome: "failure", stage: "listen", ...failure(error, "process") }); throw error; }
   let closing: Promise<void> | undefined;
   return {
     port: (server.address() as { port: number }).port,
     close() {
       return closing ??= (async () => {
-        for (const controller of active) controller.abort();
-        await new Promise<void>((resolve, reject) => { server.close(error => error ? reject(error) : resolve()); server.closeAllConnections(); });
+        const shutdown = operation("inference.peer.stop", { nodeId, stage: "shutdown", activeRequests: active.size }, eventSink);
+        try {
+          for (const controller of active) controller.abort();
+          await new Promise<void>((resolve, reject) => { server.close(error => error ? reject(error) : resolve()); server.closeAllConnections(); });
+          shutdown.finish({ outcome: "success" });
+        } catch (error) { shutdown.finish({ outcome: "failure", ...failure(error, "process") }); throw error; }
       })();
     },
   };
@@ -212,16 +284,20 @@ export async function startPeering({ nodeId, port, config, event }: Options) {
 
 if (isMain(import.meta.url)) {
   const [nodeId, port, file] = process.argv.slice(2);
+  const command = operation("inference.peer.command", { command: "serve", stage: "configuration" });
   try {
     if (!nodeId || !port || !file) throw new Error("usage: peering.ts node-id port private-config.json");
-    const service = await startPeering({ nodeId, port: Number(port), config: JSON.parse(privateFile(file)) as PeeringConfig, event: record => console.log(JSON.stringify(record)) });
-    console.log(JSON.stringify({ event: "inference.peer.ready", nodeId, port: service.port, websockets: false }));
+    const service = await startPeering({ nodeId, port: Number(port), config: JSON.parse(privateFile(file)) as PeeringConfig });
+    command.finish({ outcome: "success", stage: "started", port: service.port });
     for (const signal of ["SIGINT", "SIGTERM"] as const) process.once(signal, () => { void service.close().then(() => process.exit(0)); });
-  } catch { console.error("peering service failed; inspect private configuration and listener availability"); process.exitCode = 1; }
+  } catch (error) {
+    command.finish({ outcome: "failure", ...failure(error, "configuration") });
+    process.exitCode = 1;
+  }
 }
 
 if (import.meta.vitest) {
-  const { test, expect, afterEach } = import.meta.vitest;
+  const { test, expect, afterEach, vi } = import.meta.vitest;
   const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
   const { join } = await import("node:path");
@@ -251,7 +327,7 @@ if (import.meta.vitest) {
     cleanups.push(() => new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections(); }));
     return { url: `http://127.0.0.1:${(server.address() as { port: number }).port}`, calls, server };
   }
-  async function peer(nodeId: string, target: string, configure?: (config: PeeringConfig, file: ReturnType<typeof privateState>["file"]) => void) {
+  async function peer(nodeId: string, target: string, configure?: (config: PeeringConfig, file: ReturnType<typeof privateState>["file"]) => void, observers?: Pick<Options, "event" | "eventSink">) {
     const { file } = privateState();
     const caller = "caller_" + randomUUID().replaceAll("-", "");
     const incoming = "broker-" + randomBytes(32).toString("base64url");
@@ -263,9 +339,12 @@ if (import.meta.vitest) {
     };
     configure?.(config, file);
     const events: RouteEvent[] = [];
-    const service = await startPeering({ nodeId, port: 0, config, event: value => events.push(value) });
+    const operationEvents: import("./events.ts").OperationEvent[] = [];
+    const service = await startPeering({ nodeId, port: 0, config,
+      event: value => { events.push(value); observers?.event?.(value); },
+      eventSink: value => { operationEvents.push(value); observers?.eventSink?.(value); } });
     cleanups.push(() => service.close());
-    return { ...service, url: `http://127.0.0.1:${service.port}`, caller, incoming, localKey, config, file, events };
+    return { ...service, url: `http://127.0.0.1:${service.port}`, caller, incoming, localKey, config, file, events, operationEvents };
   }
   const body = JSON.stringify({ model: "test-model", stream: true, input: "synthetic" });
   const send = (node: { url: string; caller: string }, extra: Record<string, string> = {}, pathname = "/v1/responses") => fetch(`${node.url}${pathname}`, { method: "POST", headers: { authorization: `Bearer ${node.caller}`, "content-type": "application/json", ...extra }, body });
@@ -291,6 +370,9 @@ if (import.meta.vitest) {
     expect(bGateway.calls[0]!.headers.cookie).toBeUndefined(); expect(bGateway.calls[0]!.headers["x-api-key"]).toBeUndefined();
     expect(b.events[0]?.delegated).toBe(true);
     expect(bGateway.calls[0]!.headers["x-correlation-id"]).toBe(response.headers.get("x-inference-delegation-id"));
+    await vi.waitFor(() => expect(a.events).toHaveLength(1));
+    const caller = a.operationEvents.find(e => e.event === "inference.peer.route")!;
+    expect(b.operationEvents).toContainEqual(expect.objectContaining({ event: "inference.peer.route", outcome: "success", lane: "execution", delegated: true, delegationId: caller.delegationId, sourceNode: "other" }));
   });
   test("a delegated request cannot forward onward even with a preferred peer and cyclic membership", async () => {
     const { a, b, aGateway, bGateway } = await pair();
@@ -327,6 +409,7 @@ if (import.meta.vitest) {
     const { a, aGateway, bGateway } = await pair((req) => req.socket.destroy());
     const response = await send(a, { [routeHeader]: "node-b" }); expect(response.status).toBe(502); await response.text();
     expect(aGateway.calls).toHaveLength(0); expect(bGateway.calls).toHaveLength(1);
+    await vi.waitFor(() => expect(a.operationEvents).toContainEqual(expect.objectContaining({ event: "inference.peer.route", outcome: "failure", dispatched: true, selectedNode: "node-b", httpStatus: 502 })));
   });
   test("truncated streamed responses surface the failure without local replay", async () => {
     const { a, aGateway, bGateway } = await pair((_req, res) => {
@@ -361,6 +444,7 @@ if (import.meta.vitest) {
     expect(upstream.calls).toHaveLength(1);
     await first.body!.cancel();
     await Promise.race([closed, new Promise((_, reject) => setTimeout(() => reject(new Error("execution was not cancelled")), 1000))]);
+    await vi.waitFor(() => expect(node.operationEvents).toContainEqual(expect.objectContaining({ event: "inference.peer.route", outcome: "cancelled", dispatched: true, errorCategory: "cancelled" })));
   });
   test("a stalled request body is cancelled before inference dispatch", async () => {
     const upstream = await gateway(); const node = await peer("node-a", upstream.url, config => { config.requestTimeoutMs = 50; });
@@ -370,6 +454,7 @@ if (import.meta.vitest) {
       request.on("error", () => { clearTimeout(timer); resolve(); }); request.flushHeaders();
     });
     expect(upstream.calls).toHaveLength(0);
+    await vi.waitFor(() => expect(node.operationEvents).toContainEqual(expect.objectContaining({ event: "inference.peer.route", outcome: "cancelled", dispatched: false, errorCategory: "timeout", stage: "validate-body" })));
   });
   test("websocket upgrades are explicitly unsupported, never silently replayed as HTTP", async () => {
     const upstream = await gateway(); const node = await peer("node-a", upstream.url);
@@ -378,6 +463,7 @@ if (import.meta.vitest) {
       request.on("error", reject); request.end();
     });
     expect(status).toBe(501); expect(upstream.calls).toHaveLength(0);
+    expect(node.operationEvents).toContainEqual(expect.objectContaining({ event: "inference.peer.websocket", outcome: "rejected", httpStatus: 501, dispatched: false }));
   });
   test("invalid private membership and remote local execution targets fail closed", async () => {
     const upstream = await gateway(); const node = await peer("node-a", upstream.url);
@@ -391,5 +477,64 @@ if (import.meta.vitest) {
     const unknown = await send(node, { [routeHeader]: "not-enrolled" }); expect(unknown.status).toBe(400); await unknown.text();
     const management = await fetch(`${node.url}/v0/management/auth-files`, { headers: { authorization: `Bearer ${node.caller}` } });
     expect(management.status).toBe(404); await management.text(); expect(upstream.calls).toHaveLength(0);
+  });
+  test("route completions correlate discovery and survive throwing new and legacy observers", async () => {
+    const upstream = await gateway();
+    const node = await peer("node-a", upstream.url, undefined, {
+      event: () => { throw new Error("SENTINEL_OBSERVER_KEY"); },
+      eventSink: () => { throw new Error("SENTINEL_OBSERVER_KEY"); },
+    });
+    const response = await send(node); expect(response.status).toBe(200); await response.text();
+    await vi.waitFor(() => expect(node.events).toHaveLength(1));
+    expect(upstream.calls).toHaveLength(1);
+    const route = node.operationEvents.find(e => e.event === "inference.peer.route")!;
+    const discovery = node.operationEvents.find(e => e.event === "inference.peer.discovery")!;
+    expect(route).toMatchObject({ outcome: "success", selectedNode: "node-a", delegated: false, dispatched: true, httpStatus: 200, stage: "stream" });
+    expect(discovery).toMatchObject({ parentOperationId: route.operationId, delegationId: route.delegationId, outcome: "success", counts: { models: 1 }, destination: upstream.url });
+    expect(route.durationMs).toBeGreaterThanOrEqual(0);
+    expect(node.events[0]).toMatchObject({ selected: "node-a", status: 200 });
+    await node.close();
+    expect(node.operationEvents.filter(e => e.event === "inference.peer.start")).toHaveLength(1);
+    expect(node.operationEvents.filter(e => e.event === "inference.peer.stop")).toHaveLength(1);
+    expect(JSON.stringify(node.operationEvents)).not.toContain("SENTINEL_OBSERVER_KEY");
+  });
+  test("refusals and unavailable discovery are completed without exposing keys, bodies or URL errors", async () => {
+    const upstream = await gateway(); const node = await peer("node-a", upstream.url);
+    const refused = await send(node, { authorization: "Bearer SENTINEL_AUTH_KEY" });
+    expect(refused.status).toBe(401); await refused.text();
+    const sentinel = "SENTINEL_NATIVE_KEY";
+    node.file("local.json", { version: 1, name: "node-a", baseUrl: `https://user:${sentinel}@example.com/${sentinel}?key=${sentinel}`, apiKey: node.localKey });
+    for (const pathname of ["/v1/responses", "/v1/models"]) {
+      const response = pathname.endsWith("models") ? await fetch(`${node.url}${pathname}`, { headers: { authorization: `Bearer ${node.caller}` } }) : await send(node);
+      expect(response.status).toBe(pathname.endsWith("models") ? 502 : 503); await response.text();
+    }
+    await vi.waitFor(() => expect(node.operationEvents.filter(e => e.event === "inference.peer.route")).toHaveLength(3));
+    expect(node.operationEvents).toContainEqual(expect.objectContaining({ outcome: "rejected", stage: "authenticate", httpStatus: 401 }));
+    expect(node.operationEvents.filter(e => e.event === "inference.peer.discovery")).toHaveLength(2);
+    expect(node.operationEvents).toContainEqual(expect.objectContaining({ event: "inference.peer.discovery", outcome: "failure", stage: "credential", errorCategory: "configuration" }));
+    const serialized = JSON.stringify(node.operationEvents);
+    for (const secret of [sentinel, "SENTINEL_AUTH_KEY", node.localKey, node.caller, node.config.localClientFile, body]) expect(serialized).not.toContain(secret);
+    expect(upstream.calls).toHaveLength(0);
+  });
+  test("unavailable discovery completes caller and execution models routes with transport context", async () => {
+    const node = await peer("node-a", "http://127.0.0.1:1");
+    const response = await send(node); expect(response.status).toBe(503); await response.text();
+    const modelsResponse = await fetch(`${node.url}/peer/v1/models`, { headers: { authorization: `Bearer ${node.incoming}` } });
+    expect(modelsResponse.status).toBe(502); await modelsResponse.text();
+    await vi.waitFor(() => expect(node.operationEvents.filter(e => e.event === "inference.peer.route")).toHaveLength(2));
+    const routes = node.operationEvents.filter(e => e.event === "inference.peer.route");
+    expect(routes[0]).toMatchObject({ lane: "caller", outcome: "failure", dispatched: false, counts: { discoveryAttempts: 1, discoveryFailures: 1 } });
+    expect(routes[1]).toMatchObject({ lane: "execution", outcome: "failure", sourceNode: "other", stage: "discovery", errorCategory: "transport", errorCode: "ECONNREFUSED" });
+    expect(node.operationEvents.filter(e => e.event === "inference.peer.discovery").every(e => e.outcome === "failure" && e.errorCode === "ECONNREFUSED")).toBe(true);
+  });
+  test("startup validation and listener refusals each finish once without leaking private paths", async () => {
+    const upstream = await gateway(); const node = await peer("node-a", upstream.url);
+    const events: import("./events.ts").OperationEvent[] = [];
+    await expect(startPeering({ nodeId: "node-a", port: node.port, config: node.config, eventSink: e => events.push(e) })).rejects.toThrow();
+    await expect(startPeering({ nodeId: "node-a", port: 0, config: { ...node.config, callerKeyFile: "/SENTINEL_PRIVATE_PATH" }, eventSink: e => events.push(e) })).rejects.toThrow();
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({ event: "inference.peer.start", outcome: "failure", stage: "listen", errorCode: "EADDRINUSE" });
+    expect(events[1]).toMatchObject({ event: "inference.peer.start", outcome: "rejected", stage: "validate", errorCategory: "configuration" });
+    expect(JSON.stringify(events)).not.toContain("SENTINEL_PRIVATE_PATH");
   });
 }

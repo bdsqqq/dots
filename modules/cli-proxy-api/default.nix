@@ -7,6 +7,7 @@ let
   broker = pkgs.writeShellScriptBin "inference-broker" ''
     # Published runner changes produce a new service command; local edits still run live.
     # runner: ${builtins.hashFile "sha256" ./broker.ts}
+    # events: ${builtins.hashFile "sha256" ./events.ts}
     # Live npm CLI shims need Node even when a native harness omits it from PATH.
     export PATH="''${PATH:-/usr/bin:/bin}:${pkgs.nodejs_24}/bin"
     ${lib.optionalString cfg.hub.enable ''
@@ -14,9 +15,6 @@ let
       export CLI_PROXY_API_STATE_DIR="''${CLI_PROXY_API_STATE_DIR:-${cfg.stateDirectory}}"
       export CLI_PROXY_API_BASE_URL="''${CLI_PROXY_API_BASE_URL:-${cfg.baseUrl}}"
       export CLI_PROXY_API_PORT="''${CLI_PROXY_API_PORT:-${toString cfg.port}}"
-      ${lib.optionalString (cfg.codexArchiveBaseUrl != null) ''
-        export CLI_PROXY_API_CODEX_ARCHIVE_BASE_URL=${lib.escapeShellArg cfg.codexArchiveBaseUrl}
-      ''}
     ''}
     exec ${pkgs.nodejs_24}/bin/node ${lib.escapeShellArg "${live}/broker.ts"} "$@"
   '';
@@ -44,16 +42,8 @@ in
     };
     package = lib.mkOption {
       type = lib.types.package;
-      default = pkgs.cliproxyapi.overrideAttrs (old: {
-        patches = (old.patches or [ ]) ++ [ ./codex-archive-route.patch ];
-        doCheck = true;
-        checkPhase = ''
-          runHook preCheck
-          go test ./internal/runtime/executor -run '^TestArchiveCodexCreds' -count=1
-          runHook postCheck
-        '';
-      });
-      description = "CLIProxyAPI with the explicit OAuth upstream-route regression fix for durable capture.";
+      default = pkgs.cliproxyapi;
+      description = "Native CLIProxyAPI gateway without a recording transport.";
     };
     sourceDirectory = lib.mkOption {
       type = lib.types.str;
@@ -69,12 +59,7 @@ in
     baseUrl = lib.mkOption {
       type = lib.types.str;
       default = "https://mmn-m4.tail1543a7.ts.net:8317";
-      description = "Client-facing gateway origin (HTTPS remote or numeric loopback HTTP capture frontend); contains no credential.";
-    };
-    codexArchiveBaseUrl = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
-      default = null;
-      description = "Default OAuth Codex upstream recorder; account refresh remains native and outside inference capture.";
+      description = "Client-facing gateway origin (HTTPS remote or numeric loopback HTTP); contains no credential.";
     };
     port = lib.mkOption { type = lib.types.port; default = 8317; };
   };
@@ -113,7 +98,7 @@ in
     (lib.mkIf (cfg.hub.enable && cfg.hub.publish) (lib.optionalAttrs (options.my ? tailnetRegistry) {
       my.tailnetRegistry.services.cli-proxy-api = {
         title = "inference broker";
-        description = "CLIProxyAPI management and model routing; request logs are not the durable archive";
+        description = "CLIProxyAPI management and model routing";
         target = "http://127.0.0.1:${toString cfg.port}";
         scheme = "https";
         port = cfg.port;

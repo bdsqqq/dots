@@ -51,37 +51,12 @@ in
     ../../modules/fairy-name
     ../../modules/pi
     ../../modules/t3-code/server.nix
-    ../../modules/inference-archive
-    ../../modules/inference-archive/shared-backup.nix
   ];
 
   nixpkgs.hostPlatform = "x86_64-linux";
   my.primaryUser = "bdsqqq";
   my.paths.commonplace = "/home/bdsqqq/commonplace";
   my.t3Code.nativeService.enable = true;
-  my.inferenceArchive = {
-    collector = {
-      enable = true;
-      # Keep the registry-owned ingress stable; only the private database moves.
-      routerPort = 18923;
-    };
-    sharedBackup.enable = true;
-    database = {
-      enable = true;
-      port = 18926;
-      indexer.enable = true;
-    };
-  };
-  my.tailnetRegistry.services.inference-archive-database = {
-    title = "inference query index";
-    description = "authenticated query and upload ingress; raw journals remain on producers and shared collector";
-    target = "http://127.0.0.1:18923";
-    scheme = "https";
-    port = 18923;
-    healthPath = "/ping";
-    access.tailnet = "owner";
-    adoptExisting = true;
-  };
 
   # Install the CLI, but don't transfer the old runner's Google authorization.
   my.gog.enable = false;

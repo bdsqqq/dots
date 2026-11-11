@@ -23,7 +23,8 @@ test("bootstrap is private, loopback-only, sticky, and never overwrites native Y
   assert.equal(config.routing["session-affinity"], true);
   assert.equal(config.oauth["auth-dir"], paths.auth);
   assert.equal(config.observability.logs["logs-max-total-size-mb"], 0);
-  assert.equal(config.observability.logs["request-log"], true);
+  assert.equal(config.observability.logs["request-log"], false);
+  assert.equal(config.server["commercial-mode"], true);
   assert.notEqual(config.management["secret-key"], config.access["api-keys"][0]);
   assert.equal(statSync(root).mode & 0o777, 0o700);
   assert.equal(statSync(paths.auth).mode & 0o777, 0o700);
@@ -277,7 +278,12 @@ test("connection credential command emits only a single selected route/key JSON 
     writeFileSync(file, JSON.stringify({ ...client, baseUrl }), { mode: 0o600 });
     const result = spawnSync(process.execPath, [broker.pathname, "connection"], { encoding: "utf8", env: { ...process.env, CLI_PROXY_API_CLIENT_FILE: file } });
     assert.equal(result.status, 0);
-    assert.equal(result.stderr, "");
+    const events = result.stderr.trim().split("\n").map(line => JSON.parse(line));
+    assert.equal(events.length, 1);
+    assert.equal(events[0].event, "inference.broker.command");
+    assert.equal(events[0].outcome, "success");
+    assert.equal(events[0].command, "connection");
+    assert.equal(result.stderr.includes(client.apiKey), false);
     assert.deepEqual(JSON.parse(result.stdout), { baseUrl, apiKey: client.apiKey });
   }
 });
