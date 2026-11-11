@@ -18,6 +18,7 @@ overrides:
   undici@<6.29.1: 6.29.1
 
 allowBuilds:
+  "@anthropic-ai/claude-code": true
   "@google/genai": true
   "@sentry/cli": true
   agent-browser: true
