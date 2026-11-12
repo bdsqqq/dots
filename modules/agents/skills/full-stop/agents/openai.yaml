@@ -1,0 +1,4 @@
+interface:
+  display_name: "Full Stop"
+  short_description: "Prove, review, and prepare a PR without merging"
+  default_prompt: "Use $full-stop to make this PR ready for me to merge."

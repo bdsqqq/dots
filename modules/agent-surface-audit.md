@@ -48,8 +48,8 @@ worth adding when it changes a recurring decision, not merely to advertise
 every executable on `PATH`. ordinary `rg`, `jq`, and `fd` use does not need
 one skill per tool.
 
-Linear and Hunk already have vendored [Linear](agents/skills/linear/SKILL.md)
-and [Hunk](agents/skills/hunk-review/SKILL.md) entrypoints.
+Linear already has a vendored [Linear](agents/skills/linear/SKILL.md)
+entrypoint.
 [Git](agents/skills/git/SKILL.md),
 [company money](agents/skills/company-money/SKILL.md), and Axiom have shared guidance.
 REA stays with its installed release via [Pi's native skills path](pi/settings.json#L8);
