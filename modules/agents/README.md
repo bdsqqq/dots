@@ -40,11 +40,11 @@ the collection root owns these aliases; feature modules must not add nested
 feature imports. a discoverable skill does not establish binary installation,
 runtime availability, account access, or authorization to act.
 
-external skills are vendored, not fetched: `linear` from `bdsqqq/lnr`,
-`hunk-review` from `modem-dev/hunk`, and `vercel-react-best-practices` /
-`web-design-guidelines` from `vercel-labs/agent-skills`. update them by copying
-upstream. skills that other programs install into an agent's skills directory
-land in this checkout as untracked files; commit or discard them.
+external skills are vendored, not fetched: `linear` from `bdsqqq/lnr`, and
+`vercel-react-best-practices` / `web-design-guidelines` from
+`vercel-labs/agent-skills`. update them by copying upstream. skills that other
+programs install into an agent's skills directory land in this checkout as
+untracked files; commit or discard them.
 `reverse-engineer-anything` stays with its installed REA release through
 [`../pi/settings.json`](../pi/settings.json), not this collection.
 
