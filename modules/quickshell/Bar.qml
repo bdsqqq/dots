@@ -41,13 +41,36 @@ PanelWindow {
         anchors.rightMargin: 8
         spacing: 0
 
-        Text {
-            id: logo
-            text: "∗"
-            color: "#ffffff"
-            font.family: "Berkeley Mono"
-            font.pixelSize: 24
-            Layout.alignment: Qt.AlignVCenter
+        Rectangle {
+            id: launcherButton
+            Layout.preferredWidth: 44
+            Layout.fillHeight: true
+            radius: 4
+            color: launcherMouse.pressed ? "#242424" : launcherMouse.containsMouse ? "#171717" : "transparent"
+
+            function activate() {
+                Quickshell.execDetached(["vicinae", "toggle"])
+            }
+
+            Accessible.role: Accessible.Button
+            Accessible.name: "Open application launcher"
+            Accessible.onPressAction: launcherButton.activate()
+
+            Text {
+                anchors.centerIn: parent
+                text: "∗"
+                color: "#ffffff"
+                font.family: "Berkeley Mono"
+                font.pixelSize: 24
+            }
+
+            MouseArea {
+                id: launcherMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: launcherButton.activate()
+            }
         }
 
         Item { Layout.preferredWidth: 8 }
