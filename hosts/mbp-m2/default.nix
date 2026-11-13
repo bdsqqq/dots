@@ -73,6 +73,7 @@ in
     ../../modules/go
     ../../modules/fairy-name
     ../../modules/pi
+    ../../modules/t3-code/native-credentials.nix
     ../../modules/e-ink-glass
     ../../modules/ghostty
     ../../modules/rex
@@ -96,6 +97,7 @@ in
     };
     baseUrl = "http://127.0.0.1:8317";
   };
+  my.t3Code.credentialSync.enable = true;
   my.cloudflare.credential.required = true;
   my.annasArchive.enable = true;
   my.depot = {
