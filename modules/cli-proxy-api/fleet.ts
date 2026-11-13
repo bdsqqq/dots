@@ -25,7 +25,8 @@ export function identity(value: any) {
   return value as { user: string; uid: number; home: string; owner: number; os: string };
 }
 function ssh(host: string, command: string, input?: string, timeout = 15000) {
-  const result = spawnSync("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=6", host, command], { input, encoding: "utf8", timeout, maxBuffer: 2 * 1024 * 1024 });
+  // Keep maintenance probes independent of stale interactive control sockets.
+  const result = spawnSync("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=6", "-o", "ControlMaster=no", "-o", "ControlPath=none", host, command], { input, encoding: "utf8", timeout, maxBuffer: 2 * 1024 * 1024 });
   if (result.status !== 0) throw new FleetCommandError(`SSH operation failed on ${host} (exit ${result.status}); private output withheld`, { cause: result.error });
   return result.stdout.trim();
 }
@@ -201,9 +202,24 @@ export function deploy(host: string, eventSink?: EventSink) {
 }
 
 if (import.meta.vitest) {
-  const { test, expect } = import.meta.vitest;
-  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { test, expect, vi } = import.meta.vitest;
+  const { mkdtempSync, rmSync, symlinkSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
+  test("SSH bypasses shared control sockets and withholds private failure output", () => {
+    const directory = mkdtempSync(join(tmpdir(), "fleet-ssh-"));
+    const executable = join(directory, "ssh.ts"), argv = join(directory, "argv"), fail = join(directory, "fail");
+    writeFileSync(executable, `#!${process.execPath}\nimport { writeFileSync, existsSync } from "node:fs";\nconst args: string[] = process.argv.slice(2);\nwriteFileSync(${JSON.stringify(argv)}, JSON.stringify(args));\nif (existsSync(${JSON.stringify(fail)})) { console.log("SENTINEL_PRIVATE"); console.error("SENTINEL_PRIVATE"); process.exitCode = 255; } else console.log("verified");\n`, { mode: 0o700 });
+    symlinkSync(executable, join(directory, "ssh"));
+    vi.stubEnv("PATH", `${directory}:${process.env.PATH ?? ""}`);
+    try {
+      expect(ssh("fixture", "read-only-command")).toBe("verified");
+      expect(JSON.parse(readFileSync(argv, "utf8"))).toEqual([
+        "-o", "BatchMode=yes", "-o", "ConnectTimeout=6", "-o", "ControlMaster=no", "-o", "ControlPath=none", "fixture", "read-only-command",
+      ]);
+      writeFileSync(fail, "");
+      expect(() => ssh("fixture", "read-only-command")).toThrow(new FleetCommandError("SSH operation failed on fixture (exit 255); private output withheld"));
+    } finally { vi.unstubAllEnvs(); rmSync(directory, { recursive: true, force: true }); }
+  });
   test("refresh emits one completion and observer failure cannot interrupt launcher installation", () => {
     const home = mkdtempSync(join(tmpdir(), "fleet-events-"));
     const events: import("./events.ts").OperationEvent[] = [];
