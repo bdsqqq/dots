@@ -219,8 +219,8 @@
   {
     "id": "animated-not-ui-motion-polish",
     "prompt": "Polish this button's hover and press animation so the interaction feels snappy. Keep the existing component API.",
-    "expectedSkills": ["emil-design-eng"],
+    "expectedSkills": [],
     "forbiddenSkills": ["explaining-with-animations", "html-thingy"],
-    "expectedBehavior": "Use the UI motion workflow, not an educational animation or explanatory page. Preserve the component's API."
+    "expectedBehavior": "Polish the interaction directly, not as an educational animation or explanatory page. Preserve the component's API."
   }
 ]
