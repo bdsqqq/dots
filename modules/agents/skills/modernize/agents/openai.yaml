@@ -1,0 +1,4 @@
+interface:
+  display_name: "Modernize PR"
+  short_description: "Rebase and reassess an aging pull request"
+  default_prompt: "Use $modernize to rebase this PR on its current base, check for conceptual conflicts, and tell me honestly whether it should stay open."

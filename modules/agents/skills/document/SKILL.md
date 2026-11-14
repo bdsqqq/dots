@@ -1,6 +1,6 @@
 ---
 name: document
-description: apply documentation philosophy — explain why, not what. use for jsdocs, READMEs, inline comments.
+description: "Use when writing, revising, or cleaning up jsdocs, inline code comments, READMEs, or other project docs, or when deciding whether code needs documentation at all; not for PR descriptions, commit messages, or chat replies."
 ---
 
 # document
