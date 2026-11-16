@@ -11,6 +11,6 @@
     }
   ],
   "triggers": [],
-  "noteNameFormat": "{{date|date:\"YYYY-MM-DD\"}} {{title|safe_name}} - {{author|split:\", \"|first}} {{site}} -- source__clipper",
+  "noteNameFormat": "index",
   "path": "00_inbox/{{date|date:\"YYYY-MM-DD\"}} {{title|safe_name}} - {{author|split:\", \"|first}} {{site}} -- source__clipper"
 }
