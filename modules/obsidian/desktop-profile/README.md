@@ -24,8 +24,14 @@ that file via a relative symlink, so there is only one editable export.
 
 Import that template manually into the browser extension after changing it;
 the extension stores its own runtime copy and does not watch this file.
-Each capture goes into a folder matching its note name under `00_inbox`.
-This template does not download attachments or change Obsidian's media settings.
+each capture creates `index.md` inside a dated, descriptive folder under
+`00_inbox`. the desktop profile saves new attachments beside the current note
+and generates relative markdown links, so the folder can move as one unit.
+these attachment and link defaults apply vault-wide, not only to clips.
+
+clipping still leaves remote media URLs in the note. run **download attachments
+for current file** in Obsidian to localize supported images; this is not an
+automatic video downloader. existing notes and attachments are not migrated.
 
 `_utilities/obsidian-web-clipper-settings.json` is an archival full-settings
 backup, not a template source. It contains older template versions; do not
