@@ -30,8 +30,24 @@ in
   imports = [ ../github/credential.nix ];
   my.github.credential.required = true;
 
-  home-manager.users.bdsqqq = { config, pkgs, ... }: {
+  home-manager.users.bdsqqq = { config, lib, pkgs, osConfig, ... }: {
     imports = [ inputs.hunk.homeManagerModules.default ];
+
+    home.activation.ensureGitSigningKey = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      # Keep private keys local to each host; preserve existing signing identities.
+      key="$HOME/.ssh/id_ed25519"
+      if [ ! -e "$key" ] && [ ! -e "$key.pub" ]; then
+        run ${pkgs.coreutils}/bin/install -d -m 0700 "$HOME/.ssh"
+        run ${pkgs.openssh}/bin/ssh-keygen -q -t ed25519 -N "" \
+          -C ${lib.escapeShellArg "bdsqqq@${osConfig.networking.hostName}"} -f "$key"
+      elif [ -f "$key" ] && [ ! -e "$key.pub" ]; then
+        # Derive the public half without prompting or replacing the private key.
+        if [ -z "''${DRY_RUN_CMD:-}" ]; then
+          public_key="$(${pkgs.openssh}/bin/ssh-keygen -y -P "" -f "$key" < /dev/null)"
+          printf '%s\n' "$public_key" > "$key.pub"
+        fi
+      fi
+    '';
 
     custom.path.segments = [
       {
