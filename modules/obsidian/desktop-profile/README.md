@@ -33,6 +33,17 @@ clipping still leaves remote media URLs in the note. run **download attachments
 for current file** in Obsidian to localize supported images; this is not an
 automatic video downloader. existing notes and attachments are not migrated.
 
+## native iOS share sheet template
+
+[`../01_web_clipping_meta-mobile.md`](../01_web_clipping_meta-mobile.md) preserves
+the browser template's source-only frontmatter. select that note from the synced
+repo inside the vault in the Share Sheet Location's **template** picker, with
+**new note** behavior and **full text** content. the Share Sheet appends the
+extracted content, so the template intentionally has no `{{content}}` placeholder.
+
+this is a markdown template, not an importable browser-template JSON file. it
+does not configure the destination folder, filename, or mobile attachment settings.
+
 `_utilities/obsidian-web-clipper-settings.json` is an archival full-settings
 backup, not a template source. It contains older template versions; do not
 restore it to update the template. It remains outside Git because full browser
