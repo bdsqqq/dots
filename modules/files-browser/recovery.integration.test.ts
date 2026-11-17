@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 import { chmod, mkdtemp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { once } from "node:events";
 import { createServer } from "node:http";
+import { connect } from "node:net";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
-import { backendReadiness, createPublicationManager, proxyServer, startBackend, stopBackend } from "./files-browser-server.mjs";
+import { backendReadiness, closePublicationServer, createPublicationManager, proxyServer, startBackend } from "./files-browser-server.mjs";
 
-async function fixture(recoveryIntervalMs = 100_000, copyparty?: string) {
+async function fixture(recoveryIntervalMs = 100_000, copyparty?: string, recoveryDrainMs = 30_000) {
   const directory = await mkdtemp(join(tmpdir(), "files-recovery-http-"));
   const source = join(directory, "source"), snapshots = join(directory, "snapshots");
   await mkdir(source); await mkdir(snapshots);
@@ -15,12 +16,13 @@ async function fixture(recoveryIntervalMs = 100_000, copyparty?: string) {
   const executable = join(directory, "backend.mjs");
   await writeFile(executable, `#!${process.execPath}
 import { createServer } from 'node:http';
-import { readFile, mkdir, access } from 'node:fs/promises';
+import { readFile, access } from 'node:fs/promises';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 const root = process.argv.at(-1).slice(0, -3);
 const port = Number(process.argv[process.argv.indexOf('-p') + 1]);
-await mkdir(process.argv[process.argv.indexOf('--hist') + 1], { recursive: true });
-createServer(async (req, res) => {
+mkdirSync(process.argv[process.argv.indexOf('--hist') + 1], { recursive: true });
+const server = createServer(async (req, res) => {
   if (req.url === '/') {
     try { await access(join(process.env.HOME, 'unhealthy-' + port)); res.writeHead(503).end(); }
     catch { res.end('ready'); }
@@ -34,7 +36,9 @@ createServer(async (req, res) => {
     try { res.end(await readFile(join(root, 'indexed.txt'))); }
     catch { res.writeHead(404).end(); }
   }
-}).listen(port, '127.0.0.1');
+});
+server.on('upgrade', (_req, socket) => socket.write('HTTP/1.1 101 Switching Protocols\\r\\nConnection: Upgrade\\r\\nUpgrade: websocket\\r\\n\\r\\n'));
+server.listen(port, '127.0.0.1');
 `);
   await chmod(executable, 0o700);
   const model = { state: "idle", sequence: 1, needFiles: 0, needDirectories: 0, needSymlinks: 0, needBytes: 0 };
@@ -52,12 +56,24 @@ createServer(async (req, res) => {
   });
   let pendingStatus: (() => void) | null = null;
   api.listen(0, "127.0.0.1"); await once(api, "listening");
-  let now = 0, rejectProbe = false, failStarts = false;
+  // Reserve distinct ephemeral ports so separate local/Nix test runs do not
+  // reuse sockets still in TIME_WAIT under another build user.
+  const reservations = await Promise.all(Array.from({ length: 8 }, async () => {
+    const server = createServer(); server.listen(0, "127.0.0.1"); await once(server, "listening");
+    return server;
+  }));
+  let now = 0, rejectProbe = false, failStarts = false, starts = 0;
+  let onClock: (() => void) | null = null;
   const manager = createPublicationManager({ source, state: directory, copyparty: copyparty ?? executable, apiKey: "fixture", syncthingUrl: `http://127.0.0.1:${api.address().port}` }, snapshots, {
-    now: () => now,
+    now: () => { const callback = onClock; onClock = null; callback?.(); return now; },
     readiness: backend => rejectProbe ? Promise.resolve({ ready: false, reasonCode: "fixture_failure" }) : backendReadiness(backend),
-    start: (config, generation, snapshot) => startBackend(failStarts ? { ...config, copyparty: join(directory, "missing") } : config, 20_000 + generation, snapshot),
-    recoveryIntervalMs,
+    start: (config, generation, snapshot) => {
+      starts++;
+      const reserved = reservations[generation - 1];
+      const port = reserved.address().port; reserved.close();
+      return startBackend(failStarts ? { ...config, copyparty: join(directory, "missing") } : config, port - 13_925, snapshot);
+    },
+    recoveryIntervalMs, recoveryDrainMs,
   });
   const proxy = proxyServer(() => manager.active);
   proxy.listen(0, "127.0.0.1"); await once(proxy, "listening");
@@ -68,6 +84,17 @@ createServer(async (req, res) => {
   };
   return {
     manager, model, snapshots, directory, content,
+    get starts() { return starts; },
+    onClock: (callback: () => void) => { onClock = callback; },
+    closeServer: () => closePublicationServer(proxy, manager),
+    upgrade: async () => {
+      const socket = connect(proxy.address().port, "127.0.0.1");
+      await once(socket, "connect");
+      socket.write("GET / HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n");
+      const [handshake] = await once(socket, "data");
+      assert.match(handshake.toString(), /^HTTP\/1\.1 101 /);
+      return socket;
+    },
     tick: () => { now += 10_000; },
     failActive: () => writeFile(join(directory, `unhealthy-${manager.active.port}`), "fail"),
     failStarts: () => { failStarts = true; },
@@ -81,10 +108,10 @@ createServer(async (req, res) => {
     replace: async () => { await writeFile(join(directory, "next"), "B"); await rename(join(directory, "next"), join(source, "indexed.txt")); model.sequence++; },
     close: async () => {
       pendingStatus?.();
-      if (manager.shutdown) await manager.shutdown();
-      else await Promise.all([...manager.backends].map(backend => stopBackend(backend)));
-      proxy.closeAllConnections(); api.closeAllConnections();
-      await Promise.all([new Promise<void>(resolve => proxy.close(() => resolve())), new Promise<void>(resolve => api.close(() => resolve()))]);
+      await closePublicationServer(proxy, manager);
+      for (const server of reservations) server.close();
+      api.closeAllConnections();
+      await new Promise<void>(resolve => api.close(() => resolve()));
       await rm(directory, { recursive: true, force: true });
     },
   };
@@ -168,7 +195,7 @@ test("a real child exit recovers A even while a changing source status request i
     a.child.kill("SIGKILL");
     await a.closed;
     await eventually(() => f.manager.active === null);
-    await f.manager.recover(); // settle the persisted failure before advancing its clock
+    await eventually(async () => JSON.parse(await readFile(join(f.directory, "backend-recovery.json"), "utf8").catch(() => "null"))?.failures === 1);
     f.tick();
     await eventually(() => f.manager.active !== null && f.manager.active !== a);
     assert.equal(await f.content(), "A");
@@ -216,5 +243,67 @@ test("shutdown cancels a blocked source refresh and cannot launch another child"
     assert.ok(a.child.signalCode);
     await f.manager.refresh(); await f.manager.recover();
     assert.equal(f.manager.backends.size, 0);
+  } finally { await f.close(); }
+});
+
+test("probe failure followed by child exit is charged once and still permits recovery", async () => {
+  const f = await fixture();
+  try {
+    await writeFile(join(f.directory, "backend-recovery.json"), JSON.stringify({ failures: 1, windowAt: 0, nextAt: 0 }));
+    await f.manager.refresh(); const a = f.manager.active;
+    f.model.state = "syncing"; await f.failActive();
+    for (let i = 0; i < 3; i++) await f.manager.recover();
+    a.child.kill("SIGKILL"); await a.closed;
+    await f.manager.recover();
+    assert.equal(JSON.parse(await readFile(join(f.directory, "backend-recovery.json"), "utf8")).failures, 2);
+    f.tick(); await f.manager.recover();
+    assert.ok(f.manager.active);
+    assert.equal(await f.content(), "A");
+  } finally { await f.close(); }
+});
+
+test("an unhealthy recovered predecessor has a bounded drain even if a real transfer stalls", async () => {
+  const f = await fixture(100_000, undefined, 50);
+  try {
+    await f.manager.refresh(); const a = f.manager.active;
+    f.model.state = "syncing"; await f.failActive();
+    const stalled = await f.slow();
+    const interrupted = assert.rejects(stalled.text());
+    for (let i = 0; i < 3; i++) await f.manager.recover();
+    f.tick(); await f.manager.recover();
+    assert.notEqual(f.manager.active, a);
+    await eventually(() => !f.manager.backends.has(a));
+    await interrupted;
+    assert.equal(await f.content(), "A");
+  } finally { await f.close(); }
+});
+
+test("listener shutdown closes real upgrade tunnels and stops the recovery timer", async () => {
+  const f = await fixture(25);
+  try {
+    await f.manager.refresh(); const a = f.manager.active;
+    const socket = await f.upgrade();
+    const disconnected = once(socket, "close");
+    await f.closeServer();
+    await disconnected;
+    assert.equal(f.manager.active, null);
+    assert.equal(f.manager.backends.size, 0);
+    assert.ok(a.child.signalCode);
+    assert.deepEqual(await readdir(f.snapshots), []);
+  } finally { await f.close(); }
+});
+
+test("shutdown during the asynchronous permit check cannot launch a child", async () => {
+  const f = await fixture();
+  try {
+    let stopping: Promise<void> | undefined;
+    f.onClock(() => { stopping = f.manager.shutdown(); });
+    await f.manager.refresh();
+    await stopping;
+    assert.equal(f.starts, 0, "do not launch and immediately reclaim a child after shutdown");
+    assert.equal(f.manager.backends.size, 0);
+    assert.equal(f.manager.active, null);
+    assert.deepEqual(await readdir(f.snapshots), []);
+    assert.equal(await readFile(join(f.directory, "backend-recovery.json"), "utf8").catch(() => ""), "");
   } finally { await f.close(); }
 });

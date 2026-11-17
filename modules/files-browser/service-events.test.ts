@@ -117,7 +117,12 @@ test("real publication refresh preserves the active generation on known failures
         : [{ name: "PRIVATE_CANARY.jpg", type: "FILE_INFO_TYPE_FILE", modTime: "private", size: 18 }]));
     });
     await listen(api);
-    const manager = createPublicationManager({ source, state: temporary, copyparty, apiKey: "PRIVATE_CANARY", syncthingUrl: `http://127.0.0.1:${api.address().port}` }, snapshots);
+    const reservation = createServer(); await listen(reservation);
+    const backendGeneration = reservation.address().port - 13_925;
+    await close(reservation);
+    const manager = createPublicationManager({ source, state: temporary, copyparty, apiKey: "PRIVATE_CANARY", syncthingUrl: `http://127.0.0.1:${api.address().port}` }, snapshots, {
+      start: (config, _generation, snapshot) => startBackend(config, backendGeneration, snapshot),
+    });
     try {
       await manager.refresh();
       assert.equal(manager.active, null);
@@ -141,7 +146,7 @@ test("real publication refresh preserves the active generation on known failures
       assert.equal(refreshes[4].context.ready, true);
       assert.ok(records.some((event) => event.operation === "backend.ready" && event.context.ready === true));
     } finally {
-      await Promise.all([...manager.backends].map(stopBackend));
+      await manager.shutdown();
       await close(api);
       await rm(temporary, { recursive: true, force: true });
     }

@@ -41,7 +41,7 @@ pkgs.runCommand "service-events-tests" {
   cp -R ${source}/. source
   chmod -R u+w source
   cd source
-  node --experimental-strip-types --test \
+  node --experimental-strip-types --test --test-concurrency=1 \
     modules/service-events/events.test.ts \
     modules/service-events/projections.test.ts \
     modules/nix/host-upgrade.test.ts \

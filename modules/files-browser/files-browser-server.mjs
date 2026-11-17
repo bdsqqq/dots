@@ -360,6 +360,7 @@ export async function backendReadiness(backend) {
 }
 
 export function proxyServer(activeBackend) {
+  const upgrades = new Set();
   const server = createServer((incoming, outgoing) => {
     const path = (incoming.url ?? "/").split("?", 1)[0];
     const route = ["/health", "/healthz", "/_files/ready"].includes(path) ? "health" : path === "/" ? "index" : "content";
@@ -415,7 +416,10 @@ export function proxyServer(activeBackend) {
     incoming.pipe(proxied);
   });
 
+  server.closeUpgradedConnections = () => { for (const socket of upgrades) socket.destroy(); };
   server.on("upgrade", (request, socket, head) => {
+    upgrades.add(socket);
+    socket.once("close", () => upgrades.delete(socket));
     const operation = events.begin("http.upgrade", classifyHttpTraffic(request.headers["user-agent"], "upgrade"), { route: "upgrade" });
     const backend = activeBackend();
     if (!backend) {
@@ -496,16 +500,17 @@ export function createPublicationManager(config, snapshotsRoot, dependencies = {
     backends.delete(backend);
     await collectSnapshot(backend.snapshot);
   };
-  const drain = (backend) => {
+  const drain = (backend, recovering) => {
+    const deadline = Date.now() + (dependencies.recoveryDrainMs ?? 30_000);
     const timer = setInterval(() => {
-      if (backend.inflight !== 0) return;
+      if (backend.inflight !== 0 && (!recovering || Date.now() < deadline)) return;
       retire(backend).catch(() => {}); // backend.stop records cleanup failures.
     }, 250);
     timer.unref();
     drains.set(backend, timer);
   };
 
-  const install = async (next, operation) => {
+  const install = async (next, operation, recovering = false) => {
     if (closing) return false;
     await pendingRecovery;
     if (recoveryError) throw recoveryError;
@@ -514,6 +519,7 @@ export function createPublicationManager(config, snapshotsRoot, dependencies = {
       operation.finish("skipped", { ready: active !== null, reasonCode: permit.reasonCode, retryInMs: permit.retryInMs });
       return false;
     }
+    if (closing) return false;
     const backend = startOwned(config, ++generation, next.publication.snapshot);
     backend.signature = next.publication.signature;
     backends.add(backend);
@@ -521,8 +527,10 @@ export function createPublicationManager(config, snapshotsRoot, dependencies = {
       if (active !== backend || backend.stopping || closing) return;
       active = null;
       failedProbes = 0;
-      failureRecorded = true;
-      pendingRecovery = recordFailure().catch(() => {});
+      if (!failureRecorded) {
+        failureRecorded = true;
+        pendingRecovery = recordFailure().catch(() => {});
+      }
       retire(backend).catch(() => {});
       // The independent recovery timer retries after the persisted backoff.
     };
@@ -543,7 +551,7 @@ export function createPublicationManager(config, snapshotsRoot, dependencies = {
     failedProbes = 0;
     failureRecorded = false;
     operation.finish("succeeded", { itemCount: next.publication.itemCount, generation, ready: true, changed: next !== oldPublication });
-    if (previous) drain(previous);
+    if (previous) drain(previous, recovering);
     if (oldPublication) await collectSnapshot(oldPublication.publication.snapshot);
     return true;
   };
@@ -582,7 +590,7 @@ export function createPublicationManager(config, snapshotsRoot, dependencies = {
             await recordFailure();
           }
         }
-        await install(published, operation);
+        await install(published, operation, true);
       } catch (error) {
         operation.finish("failed", { ready: active !== null, errorCode: safeErrorCode(error) });
         throw error;
@@ -647,7 +655,7 @@ export function createPublicationManager(config, snapshotsRoot, dependencies = {
     abort.abort();
     for (const timer of drains.values()) clearInterval(timer);
     drains.clear();
-    await Promise.allSettled([refreshTask, transition]);
+    await Promise.allSettled([refreshTask, transition, pendingRecovery]);
     const snapshots = new Set([...backends].map(backend => backend.snapshot));
     if (published) snapshots.add(published.publication.snapshot);
     if (candidate) snapshots.add(candidate.publication.snapshot);
@@ -656,6 +664,16 @@ export function createPublicationManager(config, snapshotsRoot, dependencies = {
     await Promise.all([...snapshots].map(collectSnapshot));
   };
   return { refresh, recover, shutdown, backends, get active() { return active; } };
+}
+
+export async function closePublicationServer(server, publication) {
+  const stoppingPublication = publication?.shutdown();
+  server.closeAllConnections();
+  server.closeUpgradedConnections();
+  await Promise.all([
+    stoppingPublication,
+    new Promise((resolvePromise) => server.close(resolvePromise)),
+  ]);
 }
 
 async function main(startup) {
@@ -676,9 +694,7 @@ async function main(startup) {
     if (stopping) return;
     stopping = true;
     if (timer) clearInterval(timer);
-    server.closeAllConnections();
-    await new Promise((resolvePromise) => server.close(resolvePromise));
-    await publication?.shutdown();
+    await closePublicationServer(server, publication);
   };
   process.once("SIGTERM", () => shutdown().finally(() => process.exit(0)));
   process.once("SIGINT", () => shutdown().finally(() => process.exit(130)));
