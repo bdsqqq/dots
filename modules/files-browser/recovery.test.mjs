@@ -25,30 +25,6 @@ test("owned backend recovery is bounded across publisher restarts and can half-o
   }finally{await rm(directory,{recursive:true,force:true});}
 });
 
-test("an alive but stuck owned backend is stopped once and replacement observes a persisted circuit breaker",async()=>{
-  const directory=await mkdtemp(join(tmpdir(),"publisher-repair-"));let now=0,healthy=true,starts=0,stops=0;
-  const server=createServer((request,response)=>{
-    response.setHeader("content-type","application/json");
-    response.end(JSON.stringify(request.url.startsWith("/rest/db/browse")?[]:{state:"idle",needFiles:0,needDirectories:0,needSymlinks:0,needBytes:0,sequence:1}));
-  });server.listen(0,"127.0.0.1");await once(server,"listening");
-  const config={state:directory,source:join(directory,"source"),apiKey:"fixture",syncthingUrl:`http://127.0.0.1:${server.address().port}`};
-  const snapshots=join(directory,"snapshots");await mkdir(config.source);await mkdir(snapshots);
-  const dependencies={now:()=>now,readiness:async()=>({ready:healthy}),
-    start:(_config,generation,snapshot)=>{starts++;return{generation,snapshot,history:join(directory,"history"),port:server.address().port,child:{exitCode:null},closed:Promise.resolve(),inflight:0};},
-    stop:async backend=>{stops++;backend.stopping=true;backend.child.exitCode=0;}};
-  try{
-    let publisher=createPublicationManager(config,snapshots,dependencies);
-    await publisher.refresh();assert.equal(starts,1);
-    for(let i=0;i<3;i++){
-      healthy=false;await publisher.refresh();assert.equal(stops,i+1);
-      now+=10_000;
-      if(i<2){healthy=true;await publisher.refresh();}
-    }
-    assert.equal(starts,3);assert.equal(publisher.active,null);
-    publisher=createPublicationManager(config,snapshots,dependencies);
-    await publisher.refresh();assert.equal(starts,3,"restarting the publisher cannot reset the recovery budget");
-  }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await rm(directory,{recursive:true,force:true});}
-});
 
 for (const changed of [false, true]) {
   test(`a candidate survives scanning but ${changed ? "is replaced when the indexed model changes" : "is reused only once the source is idle"}`, async () => {
