@@ -69,11 +69,11 @@ function apiKeyFromConfig(config) {
   return match[1];
 }
 
-async function syncthingRequest(config, pathname) {
+async function syncthingRequest(config, pathname, signal) {
   const url = new URL(pathname, config.syncthingUrl);
   const response = await fetch(url, {
     headers: { "X-API-Key": config.apiKey },
-    signal: AbortSignal.timeout(120_000),
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(120_000)]) : AbortSignal.timeout(120_000),
   });
   if (!response.ok) {
     throw new Error(`Syncthing ${url.pathname} returned HTTP ${response.status}`);
@@ -246,10 +246,10 @@ async function buildSnapshot(sourceRoot, snapshotsRoot, entries) {
   return { signature, snapshot, itemCount: items.length };
 }
 
-export async function waitForBackend(backend) {
+export async function waitForBackend(backend, signal) {
   const operation = events.begin("backend.ready", "background", { generation: backend.generation });
   try {
-    await pollBackend(backend);
+    await pollBackend(backend, signal);
     operation.finish("succeeded", { ready: true });
   } catch (error) {
     operation.finish("failed", { ready: false, errorCode: safeErrorCode(error) });
@@ -257,9 +257,10 @@ export async function waitForBackend(backend) {
   }
 }
 
-async function pollBackend(backend) {
+async function pollBackend(backend, signal) {
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
+    signal?.throwIfAborted();
     assertBackendLive(backend);
     try {
       const response = await fetch(`http://127.0.0.1:${backend.port}/`, {
@@ -326,7 +327,7 @@ export function startBackend(config, generation, snapshot, spawnProcess = spawn)
   return backend;
 }
 
-export async function stopBackend(backend, graceMs = 5000) {
+export async function stopBackend(backend, graceMs = 5000, retainSnapshot = false) {
   if (backend.stopping) return backend.stopping;
   const operation = events.begin("backend.stop", "background", { generation: backend.generation });
   backend.stopping = (async () => {
@@ -337,24 +338,13 @@ export async function stopBackend(backend, graceMs = 5000) {
       if (backend.child.exitCode === null && backend.child.signalCode == null) backend.child.kill("SIGKILL");
     }, graceMs);
     try { await backend.closed; } finally { clearTimeout(deadline); }
-    await rm(backend.snapshot, { recursive: true, force: true });
+    if (!retainSnapshot) await rm(backend.snapshot, { recursive: true, force: true });
     await rm(backend.history, { recursive: true, force: true });
   })().then(() => { operation.finish("succeeded"); }, (error) => {
     operation.finish("failed", { errorCode: safeErrorCode(error) });
     throw error;
   });
   return backend.stopping;
-}
-
-function drainBackend(backend, backends) {
-  const timer = setInterval(() => {
-    if (backend.inflight !== 0) return;
-    clearInterval(timer);
-    stopBackend(backend)
-      .then(() => backends.delete(backend))
-      .catch(() => {}); // backend.stop carries the safe failure context.
-  }, 250);
-  timer.unref();
 }
 
 export async function backendReadiness(backend) {
@@ -365,11 +355,12 @@ export async function backendReadiness(backend) {
     const response = await fetch(`http://127.0.0.1:${backend.port}/`, { signal: AbortSignal.timeout(1_000) });
     await response.body?.cancel();
     assertBackendLive(backend);
-    return response.ok ? { ready: true, reasonCode: "ready" } : { ready: false, reasonCode: "backend_http_failure" };
-  } catch { return { ready: false, reasonCode: "backend_unresponsive" }; }
+    return response.ok ? { ready: true, reasonCode: "ready" } : { ready: false, reasonCode: "backend_http_failure", statusCode: response.status };
+  } catch (error) { return { ready: false, reasonCode: "backend_unresponsive", errorCode: safeErrorCode(error) }; }
 }
 
 export function proxyServer(activeBackend) {
+  const upgrades = new Set();
   const server = createServer((incoming, outgoing) => {
     const path = (incoming.url ?? "/").split("?", 1)[0];
     const route = ["/health", "/healthz", "/_files/ready"].includes(path) ? "health" : path === "/" ? "index" : "content";
@@ -425,7 +416,10 @@ export function proxyServer(activeBackend) {
     incoming.pipe(proxied);
   });
 
+  server.closeUpgradedConnections = () => { for (const socket of upgrades) socket.destroy(); };
   server.on("upgrade", (request, socket, head) => {
+    upgrades.add(socket);
+    socket.once("close", () => upgrades.delete(socket));
     const operation = events.begin("http.upgrade", classifyHttpTraffic(request.headers["user-agent"], "upgrade"), { route: "upgrade" });
     const backend = activeBackend();
     if (!backend) {
@@ -467,10 +461,17 @@ export function proxyServer(activeBackend) {
 export function createPublicationManager(config, snapshotsRoot, dependencies = {}) {
   let active = null;
   let generation = 0;
-  let lastModelToken = null;
+  let published = null;
   let candidate = null;
-  let refreshing = false;
+  let refreshTask = null;
+  let recoveryTask = null;
+  let transition = Promise.resolve();
+  let failedProbes = 0;
+  let failureRecorded = false;
+  let closing = false;
+  const abort = new AbortController();
   const backends = new Set();
+  const drains = new Map();
   const recovery = new BackendRecoveryBudget(join(config.state, "backend-recovery.json"), dependencies.now);
   const checkBackend = dependencies.readiness ?? backendReadiness;
   const startOwned = dependencies.start ?? startBackend;
@@ -480,115 +481,199 @@ export function createPublicationManager(config, snapshotsRoot, dependencies = {
   const recordFailure = async () => {
     try { await recovery.failed(); } catch (error) { recoveryError = error; throw error; }
   };
-
-  const refresh = async () => {
-    if (refreshing) return;
-    refreshing = true;
-    const operation = events.begin("publication.refresh");
-    try {
-      await pendingRecovery;
-      if (recoveryError) throw recoveryError;
-      if (active) {
-        if (!(await checkBackend(active)).ready) {
-          const previous = active;
-          active = null;
-          lastModelToken = null;
-          try { await stopOwned(previous); } catch (error) { recoveryError = error; throw error; }
-          backends.delete(previous);
-          await recordFailure();
-        } else await recovery.healthy();
-      }
-      config.apiKey ??= apiKeyFromConfig(await readFile(config.syncthingConfig, "utf8"));
-      const status = await syncthingRequest(
-        config,
-        `/rest/db/status?folder=${encodeURIComponent(FOLDER_ID)}`
-      );
-      if (!folderReady(status)) {
-        operation.finish("skipped", { reasonCode: "SOURCE_SYNCING", ready: active !== null });
-        return;
-      }
-      const token = modelToken(status);
-      if (candidate && candidate.token !== token) {
-        await rm(candidate.publication.snapshot, { recursive: true, force: true });
-        candidate = null;
-      }
-      if (active && token === lastModelToken) {
-        operation.finish("skipped", { reasonCode: "UNCHANGED", ready: true, generation });
-        return;
-      }
-
-      const permit = await recovery.permit();
-      if (!permit.allowed) {
-        operation.finish("skipped", { ready: active !== null, reasonCode: permit.reasonCode, retryInMs: permit.retryInMs });
-        return;
-      }
-      if (!candidate) {
-        const entries = await syncthingRequest(
-          config,
-          `/rest/db/browse?folder=${encodeURIComponent(FOLDER_ID)}`
-        );
-        candidate = { token, publication: await materializeSnapshot(config.source, snapshotsRoot, entries) };
-      }
-      const publication = candidate.publication;
-      const statusAfter = await syncthingRequest(
-        config,
-        `/rest/db/status?folder=${encodeURIComponent(FOLDER_ID)}`
-      );
-      const changed = modelToken(statusAfter) !== token;
-      if (!folderReady(statusAfter) || changed) {
-        // Scanning alone does not invalidate the indexed model. Retain at most
-        // one candidate until idle, but never publish across a token change.
-        if (changed) {
-          await rm(publication.snapshot, { recursive: true, force: true });
-          candidate = null;
-        }
-        operation.finish("skipped", { reasonCode: changed ? "SOURCE_CHANGED" : "SOURCE_SYNCING", ready: active !== null });
-        return;
-      }
-
-      candidate = null;
-      generation += 1;
-      const backend = startOwned(config, generation, publication.snapshot);
-      backend.signature = publication.signature;
-      backends.add(backend);
-      backend.onExit = () => {
-        if (active !== backend || backend.stopping) return;
-        active = null;
-        lastModelToken = null;
-        pendingRecovery = recordFailure().catch(() => {});
-        stopOwned(backend)
-          .then(() => backends.delete(backend))
-          .catch(() => {}); // backend.stop already records cleanup failures.
-        setTimeout(() => {
-          refresh().catch(() => {}); // publication.refresh records failures.
-        }, 1_000);
-      };
-      try {
-        await waitForBackend(backend);
-        assertBackendLive(backend);
-      } catch (error) {
-        backends.delete(backend);
-        await stopOwned(backend);
-        await recordFailure();
-        throw error;
-      }
-
-      const previous = active;
-      active = backend;
-      lastModelToken = token;
-      operation.finish("succeeded", { itemCount: publication.itemCount, generation, ready: true, changed: true });
-      if (previous) {
-        drainBackend(previous, backends);
-      }
-    } catch (error) {
-      operation.finish("failed", { errorCode: safeErrorCode(error), ready: active !== null, generation });
-      throw error;
-    } finally {
-      refreshing = false;
-    }
+  // Only child transitions are serialized. Source requests/materialization must
+  // never hold this queue: recovery uses the last publication, not the live tree.
+  const serialize = (action) => {
+    const task = transition.then(action);
+    transition = task.catch(() => {});
+    return task;
+  };
+  const collectSnapshot = async (snapshot) => {
+    if (published?.publication.snapshot === snapshot || candidate?.publication.snapshot === snapshot
+      || [...backends].some(backend => backend.snapshot === snapshot)) return;
+    await rm(snapshot, { recursive: true, force: true });
+  };
+  const retire = async (backend) => {
+    clearInterval(drains.get(backend));
+    drains.delete(backend);
+    await stopOwned(backend, 5000, true);
+    backends.delete(backend);
+    await collectSnapshot(backend.snapshot);
+  };
+  const drain = (backend, recovering) => {
+    const deadline = Date.now() + (dependencies.recoveryDrainMs ?? 30_000);
+    const timer = setInterval(() => {
+      if (backend.inflight !== 0 && (!recovering || Date.now() < deadline)) return;
+      retire(backend).catch(() => {}); // backend.stop records cleanup failures.
+    }, 250);
+    timer.unref();
+    drains.set(backend, timer);
   };
 
-  return { refresh, backends, get active() { return active; } };
+  const install = async (next, operation, recovering = false) => {
+    if (closing) return false;
+    await pendingRecovery;
+    if (recoveryError) throw recoveryError;
+    const permit = await recovery.permit();
+    if (!permit.allowed) {
+      operation.finish("skipped", { ready: active !== null, reasonCode: permit.reasonCode, retryInMs: permit.retryInMs });
+      return false;
+    }
+    if (closing) return false;
+    const backend = startOwned(config, ++generation, next.publication.snapshot);
+    backend.signature = next.publication.signature;
+    backends.add(backend);
+    backend.onExit = () => {
+      if (active !== backend || backend.stopping || closing) return;
+      active = null;
+      failedProbes = 0;
+      if (!failureRecorded) {
+        failureRecorded = true;
+        pendingRecovery = recordFailure().catch(() => {});
+      }
+      retire(backend).catch(() => {});
+      // The independent recovery timer retries after the persisted backoff.
+    };
+    try {
+      await waitForBackend(backend, abort.signal);
+      assertBackendLive(backend);
+      abort.signal.throwIfAborted();
+    } catch (error) {
+      await retire(backend);
+      if (!closing) await recordFailure();
+      throw error;
+    }
+    const previous = active;
+    const oldPublication = published;
+    active = backend;
+    published = next;
+    if (candidate === next) candidate = null;
+    failedProbes = 0;
+    failureRecorded = false;
+    operation.finish("succeeded", { itemCount: next.publication.itemCount, generation, ready: true, changed: next !== oldPublication });
+    if (previous) drain(previous, recovering);
+    if (oldPublication) await collectSnapshot(oldPublication.publication.snapshot);
+    return true;
+  };
+
+  const recover = () => {
+    if (closing) return Promise.resolve();
+    if (recoveryTask) return recoveryTask;
+    recoveryTask = serialize(async () => {
+      const operation = events.begin("backend.recover", "background", { generation: active?.generation ?? generation });
+      try {
+        await pendingRecovery;
+        if (recoveryError) throw recoveryError;
+        if (closing || !published) {
+          operation.finish("skipped", { reasonCode: "NO_PUBLICATION" });
+          return;
+        }
+        if (active) {
+          const probe = events.begin("backend.probe", "background", { generation: active.generation });
+          const result = await checkBackend(active);
+          if (result.ready) {
+            failedProbes = 0;
+            failureRecorded = false;
+            await recovery.healthy();
+            operation.finish("succeeded", { ready: true, changed: false });
+            return;
+          }
+          failedProbes++;
+          probe.finish("degraded", { ...result, attempt: failedProbes });
+          if (failedProbes < 3) {
+            operation.finish("degraded", { ...result, attempt: failedProbes });
+            return;
+          }
+          // Count one failure episode, not every probe during its backoff.
+          if (!failureRecorded) {
+            failureRecorded = true;
+            await recordFailure();
+          }
+        }
+        await install(published, operation, true);
+      } catch (error) {
+        operation.finish("failed", { ready: active !== null, errorCode: safeErrorCode(error) });
+        throw error;
+      }
+    }).finally(() => { recoveryTask = null; });
+    return recoveryTask;
+  };
+  const recoveryTimer = setInterval(() => { recover().catch(() => {}); }, dependencies.recoveryIntervalMs ?? REFRESH_INTERVAL_MS);
+  recoveryTimer.unref();
+
+  const refresh = () => {
+    if (closing || refreshTask) return refreshTask ?? Promise.resolve();
+    refreshTask = (async () => {
+      const operation = events.begin("publication.refresh");
+      try {
+        await recover();
+        if (closing) return;
+        config.apiKey ??= apiKeyFromConfig(await readFile(config.syncthingConfig, "utf8"));
+        const status = await syncthingRequest(config, `/rest/db/status?folder=${encodeURIComponent(FOLDER_ID)}`, abort.signal);
+        if (!folderReady(status)) {
+          operation.finish("skipped", { reasonCode: "SOURCE_SYNCING", ready: active !== null });
+          return;
+        }
+        const token = modelToken(status);
+        if (candidate && candidate.token !== token) {
+          const stale = candidate;
+          candidate = null;
+          await collectSnapshot(stale.publication.snapshot);
+        }
+        if (published && token === published.token) {
+          operation.finish("skipped", { reasonCode: "UNCHANGED", ready: active !== null, generation });
+          return;
+        }
+        if (!candidate) {
+          const entries = await syncthingRequest(config, `/rest/db/browse?folder=${encodeURIComponent(FOLDER_ID)}`, abort.signal);
+          candidate = { token, publication: await materializeSnapshot(config.source, snapshotsRoot, entries) };
+        }
+        const next = candidate;
+        const statusAfter = await syncthingRequest(config, `/rest/db/status?folder=${encodeURIComponent(FOLDER_ID)}`, abort.signal);
+        const changed = modelToken(statusAfter) !== token;
+        if (!folderReady(statusAfter) || changed) {
+          // Scanning alone does not invalidate the indexed model.
+          if (changed) {
+            candidate = null;
+            await collectSnapshot(next.publication.snapshot);
+          }
+          operation.finish("skipped", { reasonCode: changed ? "SOURCE_CHANGED" : "SOURCE_SYNCING", ready: active !== null });
+          return;
+        }
+        await serialize(() => install(next, operation));
+      } catch (error) {
+        operation.finish("failed", { errorCode: safeErrorCode(error), ready: active !== null, generation });
+        throw error;
+      }
+    })().finally(() => { refreshTask = null; });
+    return refreshTask;
+  };
+
+  const shutdown = async () => {
+    closing = true;
+    clearInterval(recoveryTimer);
+    abort.abort();
+    for (const timer of drains.values()) clearInterval(timer);
+    drains.clear();
+    await Promise.allSettled([refreshTask, transition, pendingRecovery]);
+    const snapshots = new Set([...backends].map(backend => backend.snapshot));
+    if (published) snapshots.add(published.publication.snapshot);
+    if (candidate) snapshots.add(candidate.publication.snapshot);
+    active = published = candidate = null;
+    await Promise.all([...backends].map(retire));
+    await Promise.all([...snapshots].map(collectSnapshot));
+  };
+  return { refresh, recover, shutdown, backends, get active() { return active; } };
+}
+
+export async function closePublicationServer(server, publication) {
+  const stoppingPublication = publication?.shutdown();
+  server.closeAllConnections();
+  server.closeUpgradedConnections();
+  await Promise.all([
+    stoppingPublication,
+    new Promise((resolvePromise) => server.close(resolvePromise)),
+  ]);
 }
 
 async function main(startup) {
@@ -609,9 +694,7 @@ async function main(startup) {
     if (stopping) return;
     stopping = true;
     if (timer) clearInterval(timer);
-    server.closeAllConnections();
-    await new Promise((resolvePromise) => server.close(resolvePromise));
-    await Promise.all([...(publication?.backends ?? [])].map(backend => stopBackend(backend)));
+    await closePublicationServer(server, publication);
   };
   process.once("SIGTERM", () => shutdown().finally(() => process.exit(0)));
   process.once("SIGINT", () => shutdown().finally(() => process.exit(130)));

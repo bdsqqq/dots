@@ -51,7 +51,7 @@ test("an alive but hung files backend is not ready", async () => {
   const proxy=proxyServer(()=>backend);const publicPort=await listen(proxy);
   try {
     const response=await fetch(`http://127.0.0.1:${publicPort}/_files/ready`);
-    assert.equal(response.status,503);assert.deepEqual(await response.json(),{ready:false,reasonCode:"backend_unresponsive"});
+    assert.equal(response.status,503);assert.deepEqual(await response.json(),{ready:false,reasonCode:"backend_unresponsive",errorCode:"TIMEOUT"});
     assert.equal(backend.child.exitCode,null);
   } finally {await close(proxy);await close(backendServer);}
 });

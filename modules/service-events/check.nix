@@ -23,6 +23,7 @@ let
       ../files-browser/readiness.test.mjs
       ../files-browser/recovery.ts
       ../files-browser/recovery.test.mjs
+      ../files-browser/recovery.integration.test.ts
       ../photo-gallery/photo-gallery-server.mjs
       ../photo-gallery/photo-gallery-server.test.mjs
       ../photo-gallery/service-events.test.ts
@@ -40,7 +41,7 @@ pkgs.runCommand "service-events-tests" {
   cp -R ${source}/. source
   chmod -R u+w source
   cd source
-  node --experimental-strip-types --test \
+  node --experimental-strip-types --test --test-concurrency=1 \
     modules/service-events/events.test.ts \
     modules/service-events/projections.test.ts \
     modules/nix/host-upgrade.test.ts \
@@ -50,6 +51,7 @@ pkgs.runCommand "service-events-tests" {
     modules/files-browser/service-events.test.ts \
     modules/files-browser/readiness.test.mjs \
     modules/files-browser/recovery.test.mjs \
+    modules/files-browser/recovery.integration.test.ts \
     modules/photo-gallery/photo-gallery-server.test.mjs \
     modules/photo-gallery/service-events.test.ts \
     modules/photo-intelligence/photo-intelligence-server.test.mjs \
