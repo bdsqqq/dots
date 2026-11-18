@@ -346,6 +346,32 @@ in
     let
       common = {
         my.o11y.credential.required = true;
+        nixpkgs.overlays = [
+          (_: prev: {
+            # Backport Go 1.27 support from swiss and the release's ASAP auth exclusion.
+            opentelemetry-collector-contrib =
+              if prev.opentelemetry-collector-contrib.version == "0.155.0" && lib.versionAtLeast prev.go.version "1.27"
+              then
+                prev.opentelemetry-collector-contrib.overrideAttrs (old: {
+                  postPatch = (old.postPatch or "") + ''
+                    substituteInPlace go.mod --replace-fail \
+                      'github.com/cockroachdb/swiss v0.0.0-20251224182025-b0f6560f979b' \
+                      'github.com/cockroachdb/swiss v0.0.0-20260820225851-333444432258'
+                    cat >> go.sum <<'EOF'
+                    github.com/cockroachdb/swiss v0.0.0-20260820225851-333444432258 h1:IJ+uNItEm0qx9FE2AgIc1PMsCUtk8nbSIzhQE1t5GWw=
+                    github.com/cockroachdb/swiss v0.0.0-20260820225851-333444432258/go.mod h1:yBRu/cnL4ks9bgy4vAASdjIW+/xMlFwuHKqtmh3GZQg=
+                    EOF
+                    # collector-releases#1742 excludes the ASAP extension because its JOSE library panics at startup.
+                    substituteInPlace components.go \
+                      --replace-fail 'asapauthextension "github.com/open-telemetry/opentelemetry-collector-contrib/extension/asapauthextension"' "" \
+                      --replace-fail 'asapauthextension.NewFactory(),' "" \
+                      --replace-fail 'asapauthextension.NewFactory().Type(): "github.com/open-telemetry/opentelemetry-collector-contrib/extension/asapauthextension v0.155.0",' ""
+                  '';
+                  vendorHash = "sha256-IZ3vfhPlIEFUbmA0sbjIDdj9zs332cpnh6IRYIN56rE=";
+                })
+              else prev.opentelemetry-collector-contrib;
+          })
+        ];
         environment.systemPackages = [ pkgs.opentelemetry-collector-contrib ];
         environment.etc."otelcol/axiom.yaml".source = otelcolConfig;
       };
