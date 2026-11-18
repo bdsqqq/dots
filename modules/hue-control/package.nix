@@ -33,7 +33,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     inherit pnpm;
     fetcherVersion = 4;
     pnpmInstallFlags = [ "--prod" ];
-    hash = "sha256-Py88ADQM9P44WUEzqweooBhnzlBKxGTIDbS5GZ4XBaA=";
+    hash = "sha256-2YYJD/dLHq+g0SMZ/nJ0RrcTzRQi8bPJvI6Gi8zhTpA=";
   };
   pnpmInstallFlags = [ "--prod" ];
 

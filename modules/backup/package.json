@@ -8,7 +8,7 @@
     "test": "node --test test_launcher.ts test_runtime.ts"
   },
   "devDependencies": {
-    "@types/node": "24.12.4",
-    "typescript": "6.0.3"
+    "@types/node": "26.6.6",
+    "typescript": "7.0.2"
   }
 }

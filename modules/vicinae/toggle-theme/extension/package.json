@@ -3,7 +3,9 @@
 	"name": "toggle-theme",
 	"title": "Toggle Theme",
 	"description": "Toggle system color scheme between light and dark",
-	"categories": ["System"],
+	"categories": [
+		"System"
+	],
 	"license": "MIT",
 	"author": "bdsqqq",
 	"contributors": [],
@@ -21,21 +23,12 @@
 	"scripts": {
 		"build": "vici build",
 		"dev": "vici develop",
-		"lint": "vici lint",
-		"postinstall": "node scripts/patch-npm-bundles.mjs",
-		"test:npm-bundles": "node scripts/test-npm-bundles.mjs"
+		"lint": "vici lint"
 	},
 	"dependencies": {
-		"@vicinae/api": "^0.16.1",
-		"npm-patched-brace-expansion": "npm:brace-expansion@5.0.9",
-		"npm-patched-ip-address": "npm:ip-address@10.3.1",
-		"npm-patched-tar": "npm:tar@7.5.21",
-		"npm-patched-undici": "npm:undici@6.28.0"
+		"@vicinae/api": "^0.30.1"
 	},
 	"devDependencies": {
-		"typescript": "^5.9.2"
-	},
-	"overrides": {
-		"npm": "12.0.2"
+		"typescript": "^7.0.2"
 	}
 }
