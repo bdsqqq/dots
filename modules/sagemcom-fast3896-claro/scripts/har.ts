@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import ts from "typescript";
+import { parseSync, Visitor } from "oxc-parser";
 import { record } from "../src/protocol.ts";
 import { schemaPath } from "../src/discovery.ts";
 
@@ -115,45 +115,50 @@ export function sourceInventory(path: string, entries = readHar(path)): SourceIn
     const key = url.pathname + "#" + digest;
     if (scripts.has(key)) continue;
     scripts.set(key, { path: url.pathname, sha256: digest });
-    const ast = ts.createSourceFile(
-      url.pathname,
-      bytes.toString("utf8"),
-      ts.ScriptTarget.Latest,
-      true,
-      ts.ScriptKind.JS,
-    );
-    const visit = (node: ts.Node) => {
-      if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
-        add(node.text, url.pathname, node.getStart(ast));
-        if (/^\/cgi\/[A-Za-z0-9_./-]+$/.test(node.text)) endpoints.add(node.text);
-      }
-      if (
-        ts.isCallExpression(node) &&
-        ts.isPropertyAccessExpression(node.expression) &&
-        node.expression.name.text === "remoteCall"
-      ) {
-        const method = node.arguments[1];
-        if (method && ts.isStringLiteral(method)) {
-          const key = method.text + "#" + url.pathname;
-          if (!frontendCommands.has(key))
-            frontendCommands.set(key, {
-              method: method.text,
-              source: url.pathname,
-              offset: method.getStart(ast),
-            });
-        }
-      }
-      if (ts.isPropertyAssignment(node)) {
-        const name =
-          ts.isIdentifier(node.name) || ts.isStringLiteral(node.name) ? node.name.text : "";
-        if (name === "method" && ts.isStringLiteral(node.initializer))
-          methods.add(node.initializer.text);
-        if (/^XMO_[A-Z_]+$/.test(name) && ts.isNumericLiteral(node.initializer))
-          errorCodes.set(name, Number(node.initializer.text));
-      }
-      ts.forEachChild(node, visit);
+    const { program, errors } = parseSync(url.pathname, bytes.toString("utf8"));
+    // Diagnostics can contain captured source, so keep them out of errors.
+    if (errors.length)
+      throw new Error(`could not parse JavaScript at HAR entry ${index} (source omitted)`);
+    const collectLiteral = (value: string, offset: number) => {
+      add(value, url.pathname, offset);
+      if (/^\/cgi\/[A-Za-z0-9_./-]+$/.test(value)) endpoints.add(value);
     };
-    visit(ast);
+    new Visitor({
+      Literal(node) {
+        if (typeof node.value === "string") collectLiteral(node.value, node.start);
+      },
+      TemplateLiteral(node) {
+        const value = node.quasis[0]?.value.cooked;
+        if (node.expressions.length === 0 && typeof value === "string")
+          collectLiteral(value, node.start);
+      },
+      CallExpression({ callee, arguments: args }) {
+        if (
+          callee.type !== "MemberExpression" ||
+          callee.computed ||
+          callee.property.type !== "Identifier" ||
+          callee.property.name !== "remoteCall"
+        ) return;
+        const method = args[1];
+        if (method?.type !== "Literal" || typeof method.value !== "string") return;
+        const key = method.value + "#" + url.pathname;
+        if (!frontendCommands.has(key))
+          frontendCommands.set(key, {
+            method: method.value,
+            source: url.pathname,
+            offset: method.start,
+          });
+      },
+      Property({ key, value, computed }) {
+        if (computed || value.type !== "Literal") return;
+        const name =
+          key.type === "Identifier" ? key.name : key.type === "Literal" ? key.value : null;
+        if (typeof name !== "string") return;
+        if (name === "method" && typeof value.value === "string") methods.add(value.value);
+        if (/^XMO_[A-Z_]+$/.test(name) && typeof value.value === "number")
+          errorCodes.set(name, value.value);
+      },
+    }).visit(program);
   }
   return {
     format: 1,

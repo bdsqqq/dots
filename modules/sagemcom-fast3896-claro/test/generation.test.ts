@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
+import { parseSync } from "oxc-parser";
 import { generate } from "../scripts/generate.ts";
 import type { SchemaCatalog } from "../src/discovery.ts";
 import type { SourceInventory } from "../scripts/har.ts";
@@ -29,25 +29,31 @@ const sources: SourceInventory = JSON.parse(
 test("every catalog node and command is projected exactly once; generation is deterministic", () => {
   const outputs = generate(catalog, sources);
   assert.deepEqual([...outputs], [...generate(catalog, sources)]);
-  const model = ts.createSourceFile(
+  const { program, errors } = parseSync(
     "generated.ts",
     outputs.get("src/model.generated.ts")!,
-    ts.ScriptTarget.Latest,
-    true,
   );
-  const interfaces = new Map(
-    model.statements.filter(ts.isInterfaceDeclaration).map((i) => [i.name.text, i]),
-  );
-  assert.equal(interfaces.get("ModelValues")?.members.length, catalog.nodes.length);
+  assert.deepEqual(errors, []);
+  const interfaces = new Map(program.body.flatMap((statement) => {
+    const declaration = statement.type === "ExportNamedDeclaration" ? statement.declaration : statement;
+    return declaration?.type === "TSInterfaceDeclaration"
+      ? [[declaration.id.name, declaration.body.body] as const]
+      : [];
+  }));
+  assert.equal(interfaces.get("ModelValues")?.length, catalog.nodes.length);
   assert.equal(
-    interfaces.get("WritableValues")?.members.length,
+    interfaces.get("WritableValues")?.length,
     catalog.nodes.filter((n) => n.flags.value && n.flags.config).length,
   );
   const commands = catalog.nodes.flatMap((n) => n.commands.map((c) => n.path + "#" + c.name));
   for (const name of ["CommandInputs", "CommandOutputs"]) {
     const keys = interfaces
       .get(name)!
-      .members.map((m) => (m.name && ts.isStringLiteral(m.name) ? m.name.text : ""));
+      .map((member) =>
+        member.type === "TSPropertySignature" && member.key.type === "Literal"
+          ? member.key.value
+          : "",
+      );
     assert.deepEqual(keys, commands);
   }
   for (const [path, content] of outputs)

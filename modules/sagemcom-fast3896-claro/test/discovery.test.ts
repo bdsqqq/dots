@@ -142,12 +142,13 @@ test("source inventory uses parsed literals, not comments, regexes, dynamic path
   const dir = mkdtempSync(join(tmpdir(), "router-har-test-"));
   try {
     const source = [
+      "/* 🧪 */",
       "const alias='Device/Real'; const branch=true?'Device/Second':'Device/Third';",
       "// 'Device/Comment'",
       "const re=/Device\\/NotLiteral/; const dynamic=`Device/${name}`; const fixed=`Device/Static`;",
       "const near='notDevice/No'; const partial='Device/Incomplete/';",
       "client.remoteCall('Device','fixtureCommand',{password:'do-not-retain'});",
-      "const errors={XMO_FIXTURE_ERR:123}; const request={method:'getValue'}; const uri='/cgi/json-req';",
+      "const errors={'XMO_FIXTURE_ERR':0x7b}; const request={method:'getValue'}; const uri='/cgi/json-req';",
     ].join("\n");
     const har = join(dir, "fixture.har");
     writeFileSync(
@@ -173,9 +174,21 @@ test("source inventory uses parsed literals, not comments, regexes, dynamic path
     ]);
     assert.deepEqual(inventory.errorCodes, { XMO_FIXTURE_ERR: 123 });
     assert.equal(inventory.frontendCommands[0]?.method, "fixtureCommand");
-    assert.equal(source[inventory.frontendCommands[0]!.offset], "'");
+    assert.equal(inventory.frontendCommands[0]?.offset, source.indexOf("'fixtureCommand'"));
+    assert.equal(
+      inventory.paths.find(({ path }) => path === "Device/Static")?.offset,
+      source.indexOf("`Device/Static`"),
+    );
+    assert.deepEqual(inventory.wireMethods, ["getValue"]);
     assert.deepEqual(inventory.endpoints, ["/cgi/json-req"]);
     assert.doesNotMatch(JSON.stringify(inventory), /do-not-retain/);
+    assert.throws(
+      () => sourceInventory(har, [{
+        request: { url: "http://192.168.0.1/gui.js" },
+        response: { content: { text: "const value = 'do-not-retain" } },
+      }]),
+      { message: "could not parse JavaScript at HAR entry 0 (source omitted)" },
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
