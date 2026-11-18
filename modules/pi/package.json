@@ -73,6 +73,7 @@
   "packageManager": "pnpm@12.9.0",
   "pi": {
     "extensions": [
+      "./dist/extensions/activity-trace.js",
       "./dist/extensions/agent-message.js",
       "./dist/extensions/bash.js",
       "./dist/extensions/code-review.js",
