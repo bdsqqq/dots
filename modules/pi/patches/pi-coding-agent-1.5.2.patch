@@ -264,6 +264,41 @@ index a20324d..1ceed16 100644
 -//# sourceMappingURL=tool-renderer.js.map
 \ No newline at end of file
 +//# sourceMappingURL=tool-renderer.js.map
+diff --git a/dist/core/session-manager.js b/dist/core/session-manager.js
+index 7ee05014e13c6434040bfdd7b39b455a6731a7d6..4350a6966272214e6eafa2f14f9bf3be9da2fa97 100644
+--- a/dist/core/session-manager.js
++++ b/dist/core/session-manager.js
+@@ -1,6 +1,6 @@
+ import { getCurrentSystemMessage, uuidv7, } from "@earendil-works/pi-ai";
+ import { randomUUID } from "crypto";
+-import { appendFileSync, closeSync, createReadStream, existsSync, mkdirSync, openSync, readdirSync, readSync, statSync, writeFileSync, } from "fs";
++import { appendFileSync, closeSync, createReadStream, existsSync, fstatSync, ftruncateSync, mkdirSync, openSync, readdirSync, readSync, statSync, writeFileSync, } from "fs";
+ import { readdir, stat } from "fs/promises";
+ import { basename, join, resolve } from "path";
+ import { createInterface } from "readline";
+@@ -810,7 +810,21 @@ export class SessionManager {
+             this.flushed = true;
+         }
+         else {
+-            appendFileSync(this.sessionFile, `${JSON.stringify(entry)}\n`);
++            const fd = openSync(this.sessionFile, "a");
++            try {
++                const size = fstatSync(fd).size;
++                try {
++                    appendFileSync(fd, `${JSON.stringify(entry)}\n`);
++                }
++                catch (error) {
++                    // A failed write may have appended an incomplete JSONL record.
++                    ftruncateSync(fd, size);
++                    throw error;
++                }
++            }
++            finally {
++                closeSync(fd);
++            }
+         }
+     }
+     _appendEntry(entry) {
 diff --git a/dist/core/tools/edit.js b/dist/core/tools/edit.js
 index 45337c1..00cd713 100644
 --- a/dist/core/tools/edit.js

@@ -42,6 +42,7 @@
     "check": "pnpm run format:check && pnpm run lint && pnpm run typecheck:checks && pnpm run test"
   },
   "dependencies": {
+    "@earendil-works/pi-telemetry": "1.5.2",
     "defuddle": "^0.19.6",
     "diff": "^9.0.0",
     "evlog": "^2.35.1",

@@ -26,7 +26,7 @@ import type {
 } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { interpolatePromptVars } from "@bds_pi/interpolate";
-import { observeSpawn } from "./trace";
+import { SPAWN_TRACE_ENV, spawnTraceBootstrap } from "./trace";
 
 // --- types ---
 
@@ -525,16 +525,6 @@ async function resolveSessionRouting(
 // --- local spawning ---
 
 export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
-  const startedAt = new Date().toISOString();
-  const start = performance.now();
-  const result = await spawnOwnedProcess(config);
-  observeSpawn(result, startedAt, start);
-  return result;
-}
-
-async function spawnOwnedProcess(
-  config: PiSpawnConfig,
-): Promise<PiSpawnResult> {
   if (
     config.timeoutMs !== undefined &&
     (!Number.isFinite(config.timeoutMs) || config.timeoutMs <= 0)
@@ -651,6 +641,12 @@ async function spawnOwnedProcess(
   };
 
   if (sessionRouting.unsupported) return result;
+
+  // Never accidentally forward this process's bootstrap to an unrelated child.
+  spawnEnv[SPAWN_TRACE_ENV] = spawnTraceBootstrap(
+    inferredOwner,
+    result.session?.sessionId,
+  );
 
   try {
     if (config.systemPromptBody?.trim()) {
