@@ -16,6 +16,12 @@ loops. discovery may try another owner, but an attempted inference POST is never
 replayed: a broken connection does not prove the provider rejected the request.
 retrying could duplicate inference.
 
+[discovery and enrollment](enrollment.ts) remain separate: flake names and native
+tailnet identities identify candidates, not permission. private execution-key
+handoffs authorize each direction explicitly. an optional reloadable membership
+store keeps revoked entries rather than reviving legacy keys; it neither replaces
+manual membership nor makes tailnet inventory a prerequisite for local execution.
+
 quota display is not scheduling. T3's native usage-source integration reports
 limits without changing routes; successful model discovery proves neither quota
 visibility nor provider execution.
