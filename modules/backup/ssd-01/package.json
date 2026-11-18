@@ -2,6 +2,12 @@
   "name": "ssd-01-backup",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node --test hooks.test.ts", "typecheck": "tsc --noEmit" },
-  "devDependencies": { "@types/node": "24.12.4", "typescript": "6.0.3" }
+  "scripts": {
+    "test": "node --test hooks.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "typescript": "7.0.2"
+  }
 }

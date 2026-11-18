@@ -26,7 +26,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     pnpm = pnpm_11;
     fetcherVersion = 4;
     pnpmInstallFlags = [ "--prod" ];
-    hash = "sha256-U+vwp2sF4IbY6YVd+KDvEL1mcAgg0a7IcfqAYy5CdyQ=";
+    hash = "sha256-TUB6y3jFKiLLuWceMxTS+sY3cUqMHhBDd0vQH7H9SJs=";
   };
   pnpmInstallFlags = [ "--prod" ];
   nativeBuildInputs = [

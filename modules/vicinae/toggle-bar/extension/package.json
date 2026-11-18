@@ -3,7 +3,9 @@
 	"name": "toggle-bar",
 	"title": "Toggle Bar",
 	"description": "Control quickshell bar visibility",
-	"categories": ["System"],
+	"categories": [
+		"System"
+	],
 	"license": "MIT",
 	"author": "bdsqqq",
 	"contributors": [],
@@ -36,9 +38,9 @@
 		"lint": "vici lint"
 	},
 	"dependencies": {
-		"@vicinae/api": "^0.16.1"
+		"@vicinae/api": "^0.30.1"
 	},
 	"devDependencies": {
-		"typescript": "^5.9.2"
+		"typescript": "^7.0.2"
 	}
 }
