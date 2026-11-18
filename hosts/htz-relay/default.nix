@@ -37,6 +37,7 @@ in
     ../../modules/nix
     ../../modules/ssh
     ../../modules/ssh/authorized-keys.nix
+    ../../modules/samba/credential.nix
     ../../modules/tailscale
     ../../modules/tailscale/private-ingress.nix
     ../../modules/rex
@@ -148,6 +149,44 @@ in
     interfaces.tailscale0.allowedUDPPorts = [ 22000 ];
   };
 
+  my.samba.credential.required = true;
+  services.samba = {
+    enable = true;
+    openFirewall = false;
+    nmbd.enable = false;
+    winbindd.enable = false;
+    settings = {
+      global = {
+        # smbd skips point-to-point interfaces by name; bind the tailnet addresses directly.
+        interfaces = "lo 100.67.59.10/24 fd7a:115c:a1e0::af35:3b0a/64";
+        "bind interfaces only" = "yes";
+        "smb ports" = "445";
+        "multicast dns register" = "no";
+        "map to guest" = "Never";
+        "load printers" = "no";
+        "disable spoolss" = "yes";
+      };
+      exchange = {
+        path = "/mnt/storage-01/exchange";
+        "read only" = "yes";
+        "guest ok" = "no";
+        "valid users" = config.my.primaryUser;
+        "follow symlinks" = "no";
+      };
+    };
+  };
+
+  systemd.services.samba-smbd = {
+    after = [ "tailscaled-autoconnect.service" ];
+    unitConfig.RequiresMountsFor = [ "/mnt/storage-01" ];
+    serviceConfig.LoadCredential = [ "smb-password:${config.sops.secrets.relay_smb_password.path}" ];
+    preStart = ''
+      password=$(<"$CREDENTIALS_DIRECTORY/smb-password")
+      test -n "$password"
+      printf '%s\n%s\n' "$password" "$password" | ${lib.getExe' config.services.samba.package "smbpasswd"} -s -a ${lib.escapeShellArg config.my.primaryUser}
+    '';
+  };
+
   services.openssh = {
     enable = true;
     settings = {
@@ -241,6 +280,7 @@ in
   systemd.tmpfiles.rules = [
     "d /mnt/storage-01/commonplace 0700 bdsqqq users -"
     "d /mnt/storage-01/helium-remotes 0700 bdsqqq users -"
+    "d /mnt/storage-01/exchange 0700 ${config.my.primaryUser} users -"
   ];
 
   systemd.services.syncthing = {
