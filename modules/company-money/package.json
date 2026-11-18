@@ -27,13 +27,14 @@
     "typecheck": "tsc"
   },
   "dependencies": {
-    "@orpc/contract": "1.13.6",
-    "@orpc/server": "1.13.6",
-    "arktype": "2.2.3"
+    "@orpc/contract": "1.16.2",
+    "@orpc/server": "1.16.2",
+    "arktype": "2.2.9"
   },
   "devDependencies": {
-    "@types/node": "^24.0.0",
+    "@types/node": "^26.6.6",
     "esbuild": "0.28.2",
-    "typescript": "^5.9.2"
+    "oxc-parser": "0.159.0",
+    "typescript": "^7.0.2"
   }
 }
