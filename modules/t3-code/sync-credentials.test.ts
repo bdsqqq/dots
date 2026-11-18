@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { parseEnv as nodeParseEnv, promisify } from "node:util";
 import { mergeEnvironment, secretEnvironment, syncCredentials } from "./sync-credentials.ts";
@@ -89,7 +90,7 @@ test("cookie names stay file-only even when their contents are small dotenv-comp
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("excludes concurrent writers and recovers after SIGKILL without reclaiming lock files", { timeout: 15_000 }, async () => {
+test("waits for the current writer and recovers after SIGKILL without reclaiming lock files", { timeout: 15_000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), "t3-lock-recovery-"));
   const home = join(root, "t3");
   await mkdir(home);
@@ -113,13 +114,14 @@ test("excludes concurrent writers and recovers after SIGKILL without reclaiming 
     const config = { home, secrets: { KEY: secret } };
     const original = "T3CODE_LAN=true\n";
     await writeFile(join(home, "service.env"), original);
-    await assert.rejects(syncCredentials(config), /lock/);
+    // Old directory locks must not poison the replacement's automatic recovery.
+    await mkdir(join(home, ".credential-sync.lock"));
+    const waiting = syncCredentials(config);
+    assert.equal(await Promise.race([waiting.then(() => "synced"), delay(200, "waiting")]), "waiting");
     assert.equal(await readFile(join(home, "service.env"), "utf8"), original);
     child.kill("SIGKILL");
     await exited;
-    // Old directory locks must not poison the replacement's automatic recovery.
-    await mkdir(join(home, ".credential-sync.lock"));
-    assert.equal((await syncCredentials(config)).changed, true);
+    assert.equal((await waiting).changed, true);
     assert.equal((await syncCredentials(config)).changed, false);
     const configPath = join(root, "config.json");
     await writeFile(configPath, JSON.stringify(config));

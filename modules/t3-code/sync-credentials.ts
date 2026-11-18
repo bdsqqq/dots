@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { chmod, lstat, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
@@ -114,11 +115,11 @@ export async function syncCredentials(config: SyncConfig): Promise<{ changed: bo
   try {
     // BSD flock belongs to the inherited open file description: closing this
     // descriptor (including on process death) releases it. Never unlink the file.
-    const acquired = spawnSync("/usr/bin/lockf", ["-s", "-t", "0", "3"], {
+    const acquire = spawn("/usr/bin/lockf", ["-s", "-t", "5", "3"], {
       stdio: ["ignore", "ignore", "ignore", lock.fd],
     });
-    if (acquired.error) throw acquired.error;
-    if (acquired.status !== 0) throw new Error("credential sync lock unavailable");
+    const [status] = await once(acquire, "exit");
+    if (status !== 0) throw new Error("credential sync lock unavailable");
     const target = join(config.home, "service.env");
     const state = join(config.home, ".managed-service-env.json");
     const pending = join(config.home, "service-env-restart-required");
