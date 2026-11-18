@@ -5,10 +5,10 @@
   "main": "index.ts",
   "types": "index.ts",
   "dependencies": {
-    "defuddle": "^0.19.4",
-    "linkedom": "^0.18.13"
+    "defuddle": "^0.19.6",
+    "linkedom": "^0.18.15"
   },
   "devDependencies": {
-    "vitest": "^5.0.3"
+    "vitest": "^5.1.0"
   }
 }

@@ -1221,7 +1221,12 @@ async function runBackgroundCommand(
 }
 
 if (import.meta.vitest) {
-  const { afterEach, describe, expect, it, vi } = import.meta.vitest;
+  const { afterEach, beforeAll, describe, expect, it, vi } = import.meta.vitest;
+
+  beforeAll(async () => {
+    const { initTheme } = await import("@earendil-works/pi-coding-agent");
+    initTheme("dark", false);
+  });
 
   type BashToolResult = {
     content: [{ type: "text"; text: string }];
