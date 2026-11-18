@@ -117,7 +117,7 @@ if (import.meta.vitest) {
       expect(seen).toHaveLength(2);
     } finally {
       await Promise.all(servers.map(server => new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections(); })));
-      await rm(root, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true, maxRetries: 3 });
     }
   });
 
