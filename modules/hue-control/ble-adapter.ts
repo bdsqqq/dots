@@ -137,6 +137,7 @@ export class WebBluetoothHueAdapter implements HueBleAdapter {
     }
     const device = await bluetooth.requestDevice(requestOptions());
     device.addEventListener("gattserverdisconnected", disconnected, { once: true });
+    if (!device.gatt) throw new Error("light does not expose a GATT server");
     const server = await device.gatt.connect();
     const name = device.name?.startsWith("Unknown or Unsupported Device")
       ? "Hue light"

@@ -1,0 +1,292 @@
+diff --git a/dist/components/box.js b/dist/components/box.js
+index 1146b95..dd4f255 100644
+--- a/dist/components/box.js
++++ b/dist/components/box.js
+@@ -1,4 +1,5 @@
+ import { dispatchMouseEvent } from "../tui.js";
++import { isImageLine } from "../terminal-image.js";
+ import { flattenLines, visibleWidth } from "../utils.js";
+ /**
+  * Box component - a container that applies padding and background to all children
+@@ -116,7 +117,9 @@ export class Box {
+         }
+         // Content
+         for (const line of childLines) {
+-            result.push(this.applyBg(leftPad + line, width));
++            // Native images own cursor advancement. Right padding after the protocol
++            // can wrap iTerm's cursor or erase Kitty placements on some terminals.
++            result.push(isImageLine(line) ? leftPad + line : this.applyBg(leftPad + line, width));
+         }
+         // Bottom padding
+         for (let i = 0; i < this.paddingY; i++) {
+diff --git a/dist/components/marker-column.d.ts b/dist/components/marker-column.d.ts
+new file mode 100644
+index 0000000..58613b2
+--- /dev/null
++++ b/dist/components/marker-column.d.ts
+@@ -0,0 +1,30 @@
++import type { Component, TuiMouseDispatchResult, TuiMouseEvent, TuiMouseEventResult } from "../tui.ts";
++export interface MarkerColumnOptions {
++    continuationMarker?: string;
++    footerMarker?: string;
++    gap?: number;
++    onGutterClick?: () => void;
++}
++/**
++ * Reserves a stable marker column while the child owns wrapping and formatting.
++ */
++export declare class MarkerColumn implements Component {
++    private marker;
++    private continuationMarker;
++    private footerMarker;
++    private child;
++    private gap;
++    private onGutterClick?;
++    private renderedColumnWidth;
++    private renderedBodyHeight;
++    private renderedBodyOffset;
++    private renderedBodyWidth;
++    private renderedChildHeight;
++    constructor(marker: string, child: Component, options?: MarkerColumnOptions);
++    setMarker(marker: string, continuationMarker?: string): void;
++    setFooterMarker(footerMarker?: string): void;
++    setChild(child: Component): void;
++    render(width: number): string[];
++    handleMouse(event: TuiMouseEvent): TuiMouseDispatchResult | TuiMouseEventResult | undefined;
++    invalidate(): void;
++}
+diff --git a/dist/components/marker-column.js b/dist/components/marker-column.js
+new file mode 100644
+index 0000000..47ed612
+--- /dev/null
++++ b/dist/components/marker-column.js
+@@ -0,0 +1,103 @@
++import { dispatchMouseEvent } from "../tui.js";
++import { truncateToWidth, visibleWidth } from "../utils.js";
++/**
++ * Reserves a stable marker column while the child owns wrapping and formatting.
++ */
++export class MarkerColumn {
++    marker;
++    continuationMarker;
++    footerMarker;
++    child;
++    gap;
++    onGutterClick;
++    renderedColumnWidth = 0;
++    renderedBodyHeight = 0;
++    renderedBodyOffset = 0;
++    renderedBodyWidth = 0;
++    renderedChildHeight = 0;
++    constructor(marker, child, options = {}) {
++        this.marker = marker;
++        this.continuationMarker = options.continuationMarker ?? "";
++        this.footerMarker = options.footerMarker;
++        this.child = child;
++        this.gap = Math.max(0, Math.floor(options.gap ?? 1));
++        this.onGutterClick = options.onGutterClick;
++    }
++    setMarker(marker, continuationMarker = this.continuationMarker) {
++        this.marker = marker;
++        this.continuationMarker = continuationMarker;
++    }
++    setFooterMarker(footerMarker) {
++        this.footerMarker = footerMarker;
++    }
++    setChild(child) {
++        this.child = child;
++    }
++    render(width) {
++        const safeWidth = Math.max(0, Math.floor(width));
++        if (safeWidth === 0) {
++            this.renderedColumnWidth = 0;
++            this.renderedBodyHeight = 0;
++            this.renderedBodyOffset = 0;
++            this.renderedBodyWidth = 0;
++            this.renderedChildHeight = 0;
++            return [];
++        }
++        const columnWidth = Math.min(safeWidth, Math.max(visibleWidth(this.marker), visibleWidth(this.continuationMarker)));
++        const gapWidth = Math.min(this.gap, Math.max(0, safeWidth - columnWidth));
++        const bodyWidth = safeWidth - columnWidth - gapWidth;
++        this.renderedColumnWidth = columnWidth;
++        this.renderedBodyOffset = columnWidth + gapWidth;
++        this.renderedBodyWidth = bodyWidth;
++        this.renderedChildHeight = 0;
++        const prefix = (value) => {
++            const fitted = truncateToWidth(value, columnWidth, "");
++            return `${fitted}${" ".repeat(columnWidth - visibleWidth(fitted))}${" ".repeat(gapWidth)}`;
++        };
++        const withFooter = (lines) => {
++            this.renderedBodyHeight = lines.length;
++            if (this.footerMarker)
++                lines.push(truncateToWidth(this.footerMarker, safeWidth, ""));
++            return lines;
++        };
++        if (bodyWidth <= 0)
++            return withFooter([prefix(this.marker)]);
++        const lines = this.child.render(bodyWidth);
++        this.renderedChildHeight = lines.length;
++        if (lines.length === 0)
++            return withFooter([prefix(this.marker)]);
++        return withFooter(lines.map((line, index) => truncateToWidth(`${prefix(index === 0 ? this.marker : this.continuationMarker)}${line}`, safeWidth, "")));
++    }
++    handleMouse(event) {
++        const inBodyRow = event.y >= 0 && event.y < this.renderedBodyHeight;
++        const inGutter = event.x >= 0 && event.x < this.renderedColumnWidth;
++        if (this.onGutterClick &&
++            inBodyRow &&
++            inGutter &&
++            event.type === "click" &&
++            event.button === "left" &&
++            !event.shift &&
++            !event.alt &&
++            !event.ctrl) {
++            this.onGutterClick();
++            return { handled: true };
++        }
++        const childX = event.x - this.renderedBodyOffset;
++        if (!inBodyRow ||
++            event.y >= this.renderedChildHeight ||
++            childX < 0 ||
++            childX >= this.renderedBodyWidth) {
++            return undefined;
++        }
++        return dispatchMouseEvent(this.child, {
++            ...event,
++            x: childX,
++            width: this.renderedBodyWidth,
++            height: this.renderedChildHeight,
++        });
++    }
++    invalidate() {
++        this.child.invalidate();
++    }
++}
++//# sourceMappingURL=marker-column.js.map
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index b7a963c..0a872ec 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -8,6 +8,7 @@ export { HStack } from "./components/h-stack.ts";
+ export { Image, type ImageOptions, type ImageTheme, type ImageTranscoder, setImageTranscoder, } from "./components/image.ts";
+ export { Input } from "./components/input.ts";
+ export { Loader, type LoaderIndicatorOptions } from "./components/loader.ts";
++export { MarkerColumn, type MarkerColumnOptions } from "./components/marker-column.ts";
+ export { type DefaultTextStyle, Markdown, type MarkdownOptions, type MarkdownTheme } from "./components/markdown.ts";
+ export { MouseRegion, type MouseRegionHandler } from "./components/mouse-region.ts";
+ export { ScrollView, type ScrollViewOptions, type ScrollViewScrollbar, type ScrollViewScrollToOptions, } from "./components/scroll-view.ts";
+diff --git a/dist/index.js b/dist/index.js
+index 59f005c..c568d08 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -12,6 +12,7 @@ export { HStack } from "./components/h-stack.js";
+ export { Image, setImageTranscoder, } from "./components/image.js";
+ export { Input } from "./components/input.js";
+ export { Loader } from "./components/loader.js";
++export { MarkerColumn } from "./components/marker-column.js";
+ export { Markdown } from "./components/markdown.js";
+ export { MouseRegion } from "./components/mouse-region.js";
+ export { ScrollView, } from "./components/scroll-view.js";
+diff --git a/dist/layout.js b/dist/layout.js
+index 0a50deb..0b56a69 100644
+--- a/dist/layout.js
++++ b/dist/layout.js
+@@ -2,7 +2,7 @@ import { allocateStackSizes, visibleStackEntries } from "./components/stack.js";
+ import { getLayoutNode } from "./layout-node.js";
+ import { cropKittyImageLine, getKittyImageMetadata, getMaxKittyImageRows, isImageLine } from "./terminal-image.js";
+ import { CURSOR_MARKER, compositeTuiLine } from "./tui.js";
+-import { extractAnsiCode, getActiveBackgroundAnsi, getGraphemeCellRange, sliceByColumn, visibleWidth, } from "./utils.js";
++import { extractAnsiCode, getActiveBackgroundAnsi, getGraphemeCellRange, sliceByColumn, stripTerminalSequences, visibleWidth, } from "./utils.js";
+ const OSC133_ZONE_PREFIX = /^(?:\x1b\]133;[ABC](?:\x07|\x1b\\))+/;
+ function intersect(a, b) {
+     const x = Math.max(a.x, b.x);
+@@ -257,6 +257,7 @@ function paintBox(box, screen, totalWidth) {
+         // image line may contain padding, borders, or side-by-side text, so the search
+         // is bounded by the tallest registered image instead of by row content.
+         const scrollTop = box.scrollView.scrollTop;
++        const reservation = stripTerminalSequences(box.scrollContentLines[scrollTop - 1] ?? "").trimEnd();
+         const minRow = Math.max(0, scrollTop - getMaxKittyImageRows());
+         for (let imageRow = scrollTop - 1; imageRow >= minRow; imageRow--) {
+             const imageLine = box.scrollContentLines[imageRow] ?? "";
+@@ -266,7 +267,8 @@ function paintBox(box, screen, totalWidth) {
+             if (!metadata)
+                 continue;
+             const hiddenRows = scrollTop - imageRow;
+-            if (hiddenRows < metadata.rows) {
++            const gutter = stripTerminalSequences(imageLine.slice(0, imageLine.indexOf("\x1b_G"))).trimEnd();
++            if (hiddenRows < metadata.rows && gutter === reservation) {
+                 const visibleRows = Math.min(box.rect.height, metadata.rows - hiddenRows);
+                 const cropped = cropKittyImageLine(imageLine, hiddenRows, visibleRows);
+                 if (box.rect.x === 0 && box.rect.width >= totalWidth)
+diff --git a/dist/tui-main-screen.js b/dist/tui-main-screen.js
+index e00273a..efc35f1 100644
+--- a/dist/tui-main-screen.js
++++ b/dist/tui-main-screen.js
+@@ -3,7 +3,7 @@ import * as os from "node:os";
+ import * as path from "node:path";
+ import { deleteKittyImage, isImageLine } from "./terminal-image.js";
+ import { TuiBase } from "./tui.js";
+-import { visibleWidth } from "./utils.js";
++import { stripTerminalSequences, visibleWidth } from "./utils.js";
+ /** OSC 133 prompt markers at the start of a rendered line. Fullscreen uses them for prompt navigation. */
+ const OSC133_ZONE_PREFIX = /^(?:\x1b\]133;[ABC](?:\x07|\x1b\\))+/;
+ const KITTY_SEQUENCE_PREFIX = "\x1b_G";
+@@ -172,10 +172,13 @@ export class TuiMainScreen extends TuiBase {
+         if (rows <= 1)
+             return 1;
+         const maxRows = Math.min(rows, maxIndex - index + 1, lines.length - index);
++        // Framed images reserve rows containing only their gutter, not just blanks.
++        const anchor = lines[index] ?? "";
++        const gutter = stripTerminalSequences(anchor.slice(0, anchor.indexOf(KITTY_SEQUENCE_PREFIX))).trimEnd();
+         let reservedRows = 1;
+         while (reservedRows < maxRows) {
+             const line = lines[index + reservedRows] ?? "";
+-            if (isImageLine(line) || visibleWidth(line) > 0)
++            if (isImageLine(line) || stripTerminalSequences(line).trimEnd() !== gutter)
+                 break;
+             reservedRows++;
+         }
+@@ -255,9 +258,9 @@ export class TuiMainScreen extends TuiBase {
+                 const imageReservedRows = isImage ? this.getKittyImageReservedRows(newLines, i) : 1;
+                 if (imageReservedRows > 1 && imageReservedRows <= height) {
+                     for (let row = 1; row < imageReservedRows; row++) {
+-                        output.append("\r\n");
++                        output.append("\r\n" + newLines[i + row]);
+                     }
+-                    output.append(`\x1b[${imageReservedRows - 1}A`);
++                    output.append(`\r\x1b[${imageReservedRows - 1}A`);
+                     output.append(line);
+                     output.append(`\x1b[${imageReservedRows - 1}B`);
+                     i += imageReservedRows - 1;
+@@ -460,9 +463,9 @@ export class TuiMainScreen extends TuiBase {
+                 }
+                 output.append("\x1b[2K");
+                 for (let row = 1; row < imageReservedRows; row++) {
+-                    output.append("\r\n\x1b[2K");
++                    output.append("\r\n\x1b[2K" + newLines[i + row]);
+                 }
+-                output.append(`\x1b[${imageReservedRows - 1}A`);
++                output.append(`\r\x1b[${imageReservedRows - 1}A`);
+                 output.append(line);
+                 output.append(`\x1b[${imageReservedRows - 1}B`);
+                 i += imageReservedRows - 1;
+diff --git a/dist/utils.js b/dist/utils.js
+index fe72182..f6b015e 100644
+--- a/dist/utils.js
++++ b/dist/utils.js
+@@ -455,12 +455,11 @@ function ansiCodeLength(str, pos) {
+     if (pos >= str.length || str.charCodeAt(pos) !== 0x1b)
+         return 0;
+     const next = str[pos + 1];
+-    // CSI sequence: ESC [ ... m/G/K/H/J
++    // CSI ends at any final byte (ECMA-48), including image cursor-up/down.
+     if (next === "[") {
+         for (let j = pos + 2; j < str.length; j++) {
+             const c = str.charCodeAt(j);
+-            // m, G, K, H, J
+-            if (c === 0x6d || c === 0x47 || c === 0x4b || c === 0x48 || c === 0x4a)
++            if (c >= 0x40 && c <= 0x7e)
+                 return j + 1 - pos;
+         }
+         return 0;

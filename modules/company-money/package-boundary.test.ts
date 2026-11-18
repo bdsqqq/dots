@@ -4,28 +4,21 @@ import { dirname, relative, resolve } from "node:path";
 import test from "node:test";
 
 import { build } from "esbuild";
-import ts from "typescript";
+import { parseSync } from "oxc-parser";
 
 async function localImports(path: string, seen = new Set<string>()): Promise<Set<string>> {
   if (seen.has(path)) return seen;
   seen.add(path);
-  const source = ts.createSourceFile(
-    path,
-    await readFile(path, "utf8"),
-    ts.ScriptTarget.Latest,
-    true,
-  );
-  const imports: string[] = [];
-  source.forEachChild((node) => {
+  const { program, errors } = parseSync(path, await readFile(path, "utf8"));
+  assert.deepEqual(errors, [], `could not parse ${path}`);
+  for (const statement of program.body) {
     if (
-      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
-      node.moduleSpecifier &&
-      ts.isStringLiteral(node.moduleSpecifier)
-    ) {
-      imports.push(node.moduleSpecifier.text);
-    }
-  });
-  for (const specifier of imports) {
+      statement.type !== "ImportDeclaration" &&
+      statement.type !== "ExportNamedDeclaration" &&
+      statement.type !== "ExportAllDeclaration"
+    ) continue;
+    const specifier = statement.source?.value;
+    if (specifier === undefined) continue;
     assert.equal(specifier.startsWith("node:"), false, `${path} imports ${specifier}`);
     if (specifier.startsWith(".")) {
       await localImports(resolve(dirname(path), specifier), seen);
@@ -81,13 +74,9 @@ test("the public package bundles for a browser while the Node entry does not", a
 test("Wise translation has no Google, OAuth, credential, search, or write capability", async () => {
   const path = new URL("./evidence/wise-gmail.ts", import.meta.url).pathname;
   const source = await readFile(path, "utf8");
-  const parsed = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
-  const imports: string[] = [];
-  parsed.forEachChild((node) => {
-    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
-      imports.push(node.moduleSpecifier.text);
-    }
-  });
+  const { module, errors } = parseSync(path, source);
+  assert.deepEqual(errors, [], `could not parse ${path}`);
+  const imports = module.staticImports.map(({ moduleRequest }) => moduleRequest.value);
   assert.deepEqual(imports, ["arktype", "../money.ts", "../ledger/ingest.ts", "../ledger/state.ts"]);
   assert.doesNotMatch(source, /googleapis|oauth|credential|messages\.(?:list|modify)|gmail\.users/i);
   assert.match(source, /translateWiseGmailEnvelope\(\s*value: unknown/);

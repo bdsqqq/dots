@@ -862,7 +862,7 @@ if (import.meta.vitest) {
           cwd: temporary,
           input: await readFile(
             new URL(
-              "../../../patches/pi-coding-agent-1.4.0.patch",
+              "../../../patches/pi-coding-agent-1.5.2.patch",
               import.meta.url,
             ),
             "utf8",
@@ -1166,7 +1166,7 @@ if (import.meta.vitest) {
         );
         const currentPatch = await readFile(
           new URL(
-            "../../../patches/pi-coding-agent-1.4.0.patch",
+            "../../../patches/pi-coding-agent-1.5.2.patch",
             import.meta.url,
           ),
           "utf8",
@@ -1178,6 +1178,16 @@ if (import.meta.vitest) {
             { cwd: temporary, input: currentPatch },
           ).status,
         ).toBe(0);
+        const baselinePath = `${temporary}/dist/extensions/codemode/renderer.js`;
+        await writeFile(
+          baselinePath,
+          (await readFile(baselinePath, "utf8"))
+            .replace('import { CodeHighlighter }', 'import { highlightCode }')
+            .replace(
+              /            const state = context.state;\n            state.scriptHighlighter \?\?= new CodeHighlighter\(\);\n            const highlighted = state.scriptHighlighter\n                \.highlight\((.*?)\)\n                \.join\("\\n"\);/,
+              '            const highlighted = highlightCode($1).join("\\n");',
+            ),
+        );
         const shippedPatch = spawnSync(
           "git",
           ["show", "d92475f6:modules/pi/patches/pi-coding-agent-1.3.0.patch"],
@@ -1255,11 +1265,13 @@ if (import.meta.vitest) {
             `${temporary}/dist/extensions/codemode/renderer.js`,
             "utf8",
           )
-        ).replace(
-          /from "([^"]+)"/g,
-          (_m: string, spec: string) =>
-            `from ${JSON.stringify(pathToFileURL(require.resolve(spec)).href)}`,
-        );
+        )
+          .replace(/\/\/# sourceMappingURL=.*$/m, "")
+          .replace(
+            /from "([^"]+)"/g,
+            (_m: string, spec: string) =>
+              `from ${JSON.stringify(pathToFileURL(require.resolve(spec)).href)}`,
+          );
         await writeFile(`${temporary}/shipped-renderer.ts`, shippedSource);
         const shippedRenderer = (
           await import(pathToFileURL(`${temporary}/shipped-renderer.ts`).href)

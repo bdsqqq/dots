@@ -4,21 +4,21 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "@anthropic-ai/claude-code": "^2.1.319",
+    "@anthropic-ai/claude-code": "^2.1.325",
     "@aredotna/cli": "^0.12.0",
     "@bdsqqq/pi-cli": "workspace:*",
-    "@openai/codex": "^0.163.0",
+    "@openai/codex": "^0.169.0",
     "@tobilu/qmd": "^2.8.3",
-    "agent-browser": "^0.39.1",
+    "agent-browser": "^0.43.0",
     "biome": "^0.3.3",
     "diff": "^9.0.0",
-    "npm": "^12.2.0",
+    "npm": "^12.2.2",
     "openportal": "^0.1.32",
-    "parallel-web-cli": "^0.9.3",
-    "rea-agents": "6.7.0",
-    "t3": "0.1.0",
-    "turbo": "^2.11.9",
+    "parallel-web-cli": "^0.9.4",
+    "rea-agents": "6.9.0",
+    "t3": "0.1.10",
+    "turbo": "^2.11.11",
     "typescript": "^7.0.2",
-    "vercel": "64.5.0"
+    "vercel": "65.16.0"
   }
 }

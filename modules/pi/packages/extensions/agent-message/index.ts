@@ -1013,8 +1013,7 @@ if (import.meta.vitest) {
           },
         },
       );
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      expect(sendMessage).toHaveBeenCalledOnce();
+      await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledOnce());
 
       handlers.get("agent_settled")?.(
         {},
@@ -1023,8 +1022,7 @@ if (import.meta.vitest) {
           sessionManager: { getEntries: () => entries },
         },
       );
-      await new Promise((resolve) => setImmediate(resolve));
-      expect(sendMessage).toHaveBeenCalledTimes(2);
+      await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(2));
 
       entries.push({
         type: "custom_message",

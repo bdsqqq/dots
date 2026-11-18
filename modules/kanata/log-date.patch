@@ -1,0 +1,12 @@
+diff --git a/src/main.rs b/src/main.rs
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -54,7 +54,7 @@ mod cli {
+         };
+         log_cfg.set_time_format_custom(format_description!(
+             version = 2,
+-            "[hour]:[minute]:[second].[subsecond digits:4]"
++            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:4][offset_hour sign:mandatory]:[offset_minute]"
+         ));
+         CombinedLogger::init(vec![TermLogger::new(
+             log_lvl,

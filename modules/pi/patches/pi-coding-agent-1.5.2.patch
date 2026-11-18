@@ -1,0 +1,2066 @@
+diff --git a/dist/core/agent-session.js b/dist/core/agent-session.js
+index d67feeb..6932ba3 100644
+--- a/dist/core/agent-session.js
++++ b/dist/core/agent-session.js
+@@ -1191,15 +1191,15 @@ export class AgentSession {
+         this._rebuildSystemPrompt(tools.map((tool) => tool.name));
+     }
+     /**
+-     * Whether `--tools` and `--exclude-tools` keep the tool registered. MCP tools stay registered
+-     * unless the allowlist filters them (see `_allowlistFiltersMcp`).
++     * Whether `--tools` and `--exclude-tools` keep the tool registered.
++     * Explicit child allowlists also bound MCP tools reachable through nested calls.
+      */
+     _isAllowedTool(name) {
+         if (this._excludedTools?.(name))
+             return false;
+         if (!this._allowedTools || this._allowedTools(name))
+             return true;
+-        return !this._allowlistFiltersMcp && isMcpToolName(name);
++        return false;
+     }
+     /**
+      * Whether the tool may be active, which declares it to the model. MCP tools the allowlist keeps
+diff --git a/dist/core/export-html/index.js b/dist/core/export-html/index.js
+index 39214dc..d4ed199 100644
+--- a/dist/core/export-html/index.js
++++ b/dist/core/export-html/index.js
+@@ -117,8 +117,6 @@ function generateHtml(sessionData, themeName) {
+         .replace("{{MARKED_CJK_FRIENDLY_JS}}", markedCjkFriendlyJs)
+         .replace("{{HIGHLIGHT_JS}}", hljsJs);
+ }
+-/** Tools rendered directly by the HTML template (not pre-rendered via TUI→ANSI→HTML pipeline) */
+-const TEMPLATE_RENDERED_TOOLS = new Set(["bash", "read", "write", "edit", "ls"]);
+ /**
+  * Pre-render custom tools to HTML using their TUI renderers.
+  */
+@@ -131,7 +129,7 @@ function preRenderCustomTools(entries, toolRenderer) {
+         // Find tool calls in assistant messages
+         if (msg.role === "assistant" && Array.isArray(msg.content)) {
+             for (const block of msg.content) {
+-                if (block.type === "toolCall" && !TEMPLATE_RENDERED_TOOLS.has(block.name)) {
++                if (block.type === "toolCall") {
+                     const callHtml = toolRenderer.renderCall(block.id, block.name, block.arguments);
+                     if (callHtml) {
+                         renderedTools[block.id] = { callHtml };
+@@ -142,13 +140,14 @@ function preRenderCustomTools(entries, toolRenderer) {
+         // Find tool results
+         if (msg.role === "toolResult" && msg.toolCallId) {
+             const toolName = msg.toolName || "";
+-            // Only render if we have a pre-rendered call OR it's not template-rendered
++            // Native definitions, local overrides, and unknown tools share one shell.
+             const existing = renderedTools[msg.toolCallId];
+-            if (existing || !TEMPLATE_RENDERED_TOOLS.has(toolName)) {
+-                const rendered = toolRenderer.renderResult(msg.toolCallId, toolName, msg.content, msg.details, msg.isError || false);
++            {
++                const rendered = toolRenderer.renderResult(msg.toolCallId, toolName, msg.content, msg.details, msg.isError || false, msg.durationMs);
+                 if (rendered) {
+                     renderedTools[msg.toolCallId] = {
+                         ...existing,
++                        callHtml: rendered.call ?? existing?.callHtml,
+                         resultHtmlCollapsed: rendered.collapsed,
+                         resultHtmlExpanded: rendered.expanded,
+                     };
+diff --git a/dist/core/export-html/template.js b/dist/core/export-html/template.js
+index 3702281..7f63595 100644
+--- a/dist/core/export-html/template.js
++++ b/dist/core/export-html/template.js
+@@ -1049,7 +1049,7 @@
+ 
+         const invalidArg = '<span class="tool-error">[invalid arg]</span>';
+ 
+-        switch (name) {
++        switch (renderedTools?.[call.id] ? '__pre_rendered__' : name) {
+           case 'bash': {
+             const command = str(args.command);
+             const cmdDisplay = command === null ? invalidArg : escapeHtml(command || '...');
+@@ -1141,7 +1141,7 @@
+               // Custom tool with pre-rendered HTML from TUI renderer
+               if (rendered.callHtml) {
+                 html += `<div class="tool-header ansi-rendered">${rendered.callHtml}</div>`;
+-              } else {
++              } else if (rendered.callHtml !== '') {
+                 html += `<div class="tool-header"><span class="tool-name">${escapeHtml(name)}</span></div>`;
+               }
+ 
+@@ -1159,6 +1159,7 @@
+                 const output = getResultText();
+                 if (output) html += formatExpandableOutput(output, 10);
+               }
++              html += renderResultImages();
+             } else {
+               // Fallback to JSON display (existing behavior)
+               html += `<div class="tool-header"><span class="tool-name">${escapeHtml(name)}</span></div>`;
+diff --git a/dist/core/export-html/tool-renderer.d.ts b/dist/core/export-html/tool-renderer.d.ts
+index 8da1d1e..58fc531 100644
+--- a/dist/core/export-html/tool-renderer.d.ts
++++ b/dist/core/export-html/tool-renderer.d.ts
+@@ -17,15 +17,16 @@ export interface ToolHtmlRendererDeps {
+     width?: number;
+ }
+ export interface ToolHtmlRenderer {
+-    /** Render a tool call to HTML. Returns undefined if tool has no custom renderer. */
++    /** Render a complete pending tool shell to HTML. Returns undefined on rendering failure. */
+     renderCall(toolCallId: string, toolName: string, args: unknown): string | undefined;
+-    /** Render a tool result to collapsed/expanded HTML. Returns undefined if tool has no custom renderer. */
++    /** Render complete settled shells; call: "" suppresses the pending call snapshot. */
+     renderResult(toolCallId: string, toolName: string, result: Array<{
+         type: string;
+         text?: string;
+         data?: string;
+         mimeType?: string;
+-    }>, details: unknown, isError: boolean): {
++    }>, details: unknown, isError: boolean, durationMs?: number): {
++        call?: string;
+         collapsed?: string;
+         expanded?: string;
+     } | undefined;
+diff --git a/dist/core/export-html/tool-renderer.js b/dist/core/export-html/tool-renderer.js
+index a20324d..1ceed16 100644
+--- a/dist/core/export-html/tool-renderer.js
++++ b/dist/core/export-html/tool-renderer.js
+@@ -1,113 +1,54 @@
+-/**
+- * Tool HTML renderer for custom tools in HTML export.
+- *
+- * Renders custom tool calls and results to HTML by invoking their TUI renderers
+- * and converting the ANSI output to HTML.
+- */
+-import { keyHint, keyText } from "../../modes/interactive/components/keybinding-hints.js";
++/** Static HTML snapshots use the same composition and renderer state as the transcript. */
++import { ToolExecutionComponent } from "../../modes/interactive/components/tool-execution.js";
+ import { ansiLinesToHtml } from "./ansi-to-html.js";
+-/**
+- * Create a tool HTML renderer.
+- *
+- * The renderer looks up tool definitions and invokes their renderCall/renderResult
+- * methods, converting the resulting TUI Component output (ANSI) to HTML.
+- */
+-const ANSI_ESCAPE_REGEX = /\x1b\[[\d;]*m/g;
+-function isBlankRenderedLine(line) {
+-    return line.replace(ANSI_ESCAPE_REGEX, "").trim().length === 0;
+-}
+-function trimRenderedResultLines(lines) {
+-    let start = 0;
+-    let end = lines.length;
+-    while (start < end && isBlankRenderedLine(lines[start]))
+-        start++;
+-    while (end > start && isBlankRenderedLine(lines[end - 1]))
+-        end--;
+-    return lines.slice(start, end);
+-}
+ export function createToolHtmlRenderer(deps) {
+     const { getToolRenderers, theme, cwd, width = 100 } = deps;
+-    const renderedCallComponents = new Map();
+-    const renderedResultComponents = new Map();
+-    const renderedStates = new Map();
+-    const renderedArgs = new Map();
+-    const getState = (toolCallId) => {
+-        let state = renderedStates.get(toolCallId);
+-        if (!state) {
+-            state = {};
+-            renderedStates.set(toolCallId, state);
++    const components = new Map();
++    const getComponent = (id, name, args) => {
++        let component = components.get(id);
++        if (!component) {
++            component = new ToolExecutionComponent(name, id, args ?? {},
++                { showImages: false, theme }, getToolRenderers(name), { requestRender() {} }, cwd);
++            components.set(id, component);
+         }
+-        return state;
+-    };
+-    const createRenderContext = (toolCallId, lastComponent, expanded, isPartial, isError) => {
+-        return {
+-            args: renderedArgs.get(toolCallId),
+-            toolCallId,
+-            invalidate: () => { },
+-            lastComponent,
+-            state: getState(toolCallId),
+-            cwd,
+-            executionStarted: true,
+-            argsComplete: true,
+-            isPartial,
+-            expanded,
+-            showImages: false,
+-            isError,
+-            durationMs: undefined,
+-            outputPad: 1,
+-            keyText,
+-            keyHint,
+-        };
++        else if (args !== undefined) component.updateArgs(args);
++        return component;
+     };
++    // OSC 8 hyperlinks are terminal controls, not HTML. Keep their labels and
++    // ANSI highlighting without leaking terminal control bytes into the document.
++    const render = (component) => ansiLinesToHtml(component.render(width, false)
++        .map((line) => line.replace(/\x1b\]8;[^\x07\x1b]*(?:\x07|\x1b\\)/g, "")));
+     return {
+         renderCall(toolCallId, toolName, args) {
+             try {
+-                renderedArgs.set(toolCallId, args);
+-                const toolDef = getToolRenderers(toolName);
+-                if (!toolDef?.renderCall) {
+-                    return undefined;
+-                }
+-                const component = toolDef.renderCall(args, theme, createRenderContext(toolCallId, renderedCallComponents.get(toolCallId), false, true, false));
+-                renderedCallComponents.set(toolCallId, component);
+-                const lines = component.render(width);
+-                return ansiLinesToHtml(lines);
++                return render(getComponent(toolCallId, toolName, args));
+             }
+             catch {
+-                // On error, return undefined so HTML export can fall back to structured result rendering
+                 return undefined;
+             }
+         },
+-        renderResult(toolCallId, toolName, result, details, isError) {
++        renderResult(toolCallId, toolName, content, details, isError, durationMs) {
+             try {
+-                const toolDef = getToolRenderers(toolName);
+-                if (!toolDef?.renderResult) {
+-                    return undefined;
+-                }
+-                // Build AgentToolResult from content array
+-                // Cast content since session storage uses generic object types
+-                const agentToolResult = {
+-                    content: result,
+-                    details,
+-                    isError,
+-                };
+-                // Render collapsed
+-                const collapsedComponent = toolDef.renderResult(agentToolResult, { expanded: false, isPartial: false }, theme, createRenderContext(toolCallId, renderedResultComponents.get(toolCallId), false, false, isError));
+-                renderedResultComponents.set(toolCallId, collapsedComponent);
+-                const collapsed = ansiLinesToHtml(trimRenderedResultLines(collapsedComponent.render(width)));
+-                // Render expanded
+-                const expandedComponent = toolDef.renderResult(agentToolResult, { expanded: true, isPartial: false }, theme, createRenderContext(toolCallId, renderedResultComponents.get(toolCallId), true, false, isError));
+-                renderedResultComponents.set(toolCallId, expandedComponent);
+-                const expanded = ansiLinesToHtml(trimRenderedResultLines(expandedComponent.render(width)));
++                const component = getComponent(toolCallId, toolName);
++                component.markExecutionStarted();
++                component.setArgsComplete();
++                component.updateResult({ content, details, isError, durationMs });
++                component.setExpanded(false);
++                const collapsed = render(component);
++                component.setExpanded(true);
++                const expanded = render(component);
+                 return {
+-                    ...(collapsed && collapsed !== expanded ? { collapsed } : {}),
++                    // The result snapshot includes its settled call and shell. Suppress
++                    // the template header instead of keeping a stale pending call snapshot.
++                    call: "",
++                    ...(collapsed !== expanded ? { collapsed } : {}),
+                     expanded,
+                 };
+             }
+             catch {
+-                // On error, return undefined so HTML export can fall back to structured result rendering
+                 return undefined;
+             }
+         },
+     };
+ }
+-//# sourceMappingURL=tool-renderer.js.map
+\ No newline at end of file
++//# sourceMappingURL=tool-renderer.js.map
+diff --git a/dist/core/tools/edit.js b/dist/core/tools/edit.js
+index 45337c1..00cd713 100644
+--- a/dist/core/tools/edit.js
++++ b/dist/core/tools/edit.js
+@@ -85,7 +85,6 @@ export function createEditToolDefinition(cwd, options) {
+         promptGuidelines: [...editToolSystemPromptContribution.guidelines],
+         parameters: editSchema,
+         constrainedSampling: { type: "json_schema", strict: "prefer" },
+-        renderShell: "self",
+         prepareArguments: prepareEditArguments,
+         async execute(_toolCallId, input, signal, _onUpdate, ctx) {
+             const { path, edits } = validateEditInput(input);
+diff --git a/dist/core/tools/renderers/bash.js b/dist/core/tools/renderers/bash.js
+index 43430f1..898f96a 100644
+--- a/dist/core/tools/renderers/bash.js
++++ b/dist/core/tools/renderers/bash.js
+@@ -44,8 +44,7 @@ function rebuildBashResultRenderComponent(component, result, options, showImages
+             component.addChild(new VisualLinePreview({
+                 text: styledOutput,
+                 maxVisualLines: BASH_PREVIEW_LINES,
+-                keep: "end",
+-                formatHint: (hidden) => theme.fg("muted", `... (${hidden} earlier lines,`) +
++                formatHint: (hidden) => theme.fg("muted", `... (${hidden} hidden lines,`) +
+                     ` ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
+             }));
+         }
+diff --git a/dist/core/tools/renderers/edit.js b/dist/core/tools/renderers/edit.js
+index a64a3d1..fd7fe9d 100644
+--- a/dist/core/tools/renderers/edit.js
++++ b/dist/core/tools/renderers/edit.js
+@@ -10,7 +10,7 @@ import { renderDiff } from "../../../modes/interactive/components/diff.js";
+ import { computeEditsDiff } from "../edit-diff.js";
+ import { renderToolPath, str } from "../render-utils.js";
+ function createEditCallRenderComponent() {
+-    return Object.assign(new Box(1, 1, (text) => text), {
++    return Object.assign(new Box(0, 0, (text) => text), {
+         preview: undefined,
+         previewArgsKey: undefined,
+         previewPending: false,
+@@ -86,7 +86,7 @@ function getEditHeaderBg(preview, settledError, theme) {
+ }
+ function buildEditCallComponent(component, args, theme, cwd, outputPad) {
+     component.setBgFn(getEditHeaderBg(component.preview, component.settledError, theme));
+-    component.setPaddingX(outputPad);
++    component.setPaddingX(0);
+     component.clear();
+     component.addChild(new Text(formatEditCall(args, theme, cwd), 0, 0));
+     if (!component.preview) {
+@@ -122,7 +122,8 @@ export const editRenderers = {
+             component.previewPending = false;
+             component.settledError = false;
+         }
+-        if (context.argsComplete && previewInput && !component.preview && !component.previewPending) {
++        // Preview only the pre-execution file; settled results own their recorded diff.
++        if (context.argsComplete && !context.executionStarted && previewInput && !component.preview && !component.previewPending) {
+             component.previewPending = true;
+             const requestKey = argsKey;
+             void computeEditsDiff(previewInput.path, previewInput.edits, context.cwd).then((preview) => {
+@@ -161,7 +162,7 @@ export const editRenderers = {
+             return component;
+         }
+         component.addChild(new Spacer(1));
+-        component.addChild(new Text(output, context.outputPad, 0));
++        component.addChild(new Text(output, 0, 0));
+         return component;
+     },
+ };
+diff --git a/dist/core/tools/renderers/read.js b/dist/core/tools/renderers/read.js
+index c76b38e..5dd6318 100644
+--- a/dist/core/tools/renderers/read.js
++++ b/dist/core/tools/renderers/read.js
+@@ -9,6 +9,7 @@ import { basename, dirname, isAbsolute, relative, resolve as resolvePath, sep }
+ import { Text } from "@earendil-works/pi-tui";
+ import { getReadmePath } from "../../../config.js";
+ import { keyHint, keyText } from "../../../modes/interactive/components/keybinding-hints.js";
++import { VisualLinePreview } from "../../../modes/interactive/components/visual-truncate.js";
+ import { getLanguageFromPath, highlightCode } from "../../../modes/interactive/theme/theme.js";
+ import { formatPathRelativeToCwdOrAbsolute } from "../../../utils/paths.js";
+ import { resolveToCwd } from "../path-utils.js";
+@@ -88,13 +89,7 @@ function formatReadResult(args, result, options, theme, showImages, _cwd, isErro
+     const lang = !isError && rawPath ? getLanguageFromPath(rawPath) : undefined;
+     const renderedLines = lang ? highlightCode(replaceTabs(output), lang) : output.split("\n");
+     const lines = trimTrailingEmptyLines(renderedLines);
+-    const maxLines = options.expanded ? lines.length : 10;
+-    const displayLines = lines.slice(0, maxLines);
+-    const remaining = lines.length - maxLines;
+-    let text = `\n${displayLines.map((line) => (lang ? replaceTabs(line) : theme.fg("toolOutput", replaceTabs(line)))).join("\n")}`;
+-    if (remaining > 0) {
+-        text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+-    }
++    let text = `\n${lines.map((line) => (lang ? replaceTabs(line) : theme.fg("toolOutput", replaceTabs(line)))).join("\n")}`;
+     const truncation = result.details?.truncation;
+     if (truncation?.truncated) {
+         if (truncation.firstLineExceedsLimit) {
+@@ -118,9 +113,17 @@ export const readRenderers = {
+         return text;
+     },
+     renderResult(result, options, theme, context) {
+-        const text = context.lastComponent ?? new Text("", 0, 0);
+-        text.setText(formatReadResult(context.args, result, options, theme, context.showImages, context.cwd, context.isError));
+-        return text;
++        const output = formatReadResult(context.args, result, options, theme, context.showImages, context.cwd, context.isError);
++        if (options.expanded || !output) {
++            const component = context.lastComponent instanceof Text ? context.lastComponent : new Text("", 0, 0);
++            component.setText(output);
++            return component;
++        }
++        return new VisualLinePreview({
++            text: output,
++            maxVisualLines: 10,
++            formatHint: (hidden) => `${theme.fg("muted", `... (${hidden} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
++        });
+     },
+ };
+ //# sourceMappingURL=read.js.map
+\ No newline at end of file
+diff --git a/dist/core/tools/renderers/write.js b/dist/core/tools/renderers/write.js
+index 58828fe..5e28d90 100644
+--- a/dist/core/tools/renderers/write.js
++++ b/dist/core/tools/renderers/write.js
+@@ -7,17 +7,17 @@
+  */
+ import { Container, Text } from "@earendil-works/pi-tui";
+ import { keyHint } from "../../../modes/interactive/components/keybinding-hints.js";
+-import { CodeHighlighter, getLanguageFromPath, highlightCode, } from "../../../modes/interactive/theme/theme.js";
++import { VisualLinePreview } from "../../../modes/interactive/components/visual-truncate.js";
++import { CodeHighlighter, getLanguageFromPath, highlightCode } from "../../../modes/interactive/theme/theme.js";
+ import { normalizeDisplayText, renderToolPath, replaceTabs, str } from "../render-utils.js";
+-class WriteCallRenderComponent extends Text {
+-    // Line by line highlighting of a call whose content is still streaming.
++class WriteCallRenderComponent extends Container {
+     cache;
+     // A streamed call highlights its first lines on every delta, which stop changing once the file is longer, and a
+     // complete call highlights the whole file on every update and expand toggle. Either way the row reuses the last
+     // highlighting; it also holds the only copy of a complete call's displayed source.
+     highlighter = new CodeHighlighter();
+     constructor() {
+-        super("", 0, 0);
++        super();
+     }
+ }
+ const WRITE_PARTIAL_FULL_HIGHLIGHT_LINES = 50;
+@@ -91,9 +91,10 @@ function formatWriteCall(args, options, theme, cache, highlighter, cwd) {
+     const rawPath = str(args?.file_path ?? args?.path);
+     const fileContent = str(args?.content);
+     const pathDisplay = renderToolPath(rawPath, theme, cwd);
+-    let text = `${theme.fg("toolTitle", theme.bold("write"))} ${pathDisplay}`;
++    const component = new Container();
++    component.addChild(new Text(`${theme.fg("toolTitle", theme.bold("write"))} ${pathDisplay}`, 0, 0));
+     if (fileContent === null) {
+-        text += `\n\n${theme.fg("error", "[invalid content arg - expected string]")}`;
++        component.addChild(new Text(`\n${theme.fg("error", "[invalid content arg - expected string]")}`, 0, 0));
+     }
+     else if (fileContent) {
+         const lang = rawPath ? getLanguageFromPath(rawPath) : undefined;
+@@ -101,16 +102,15 @@ function formatWriteCall(args, options, theme, cache, highlighter, cwd) {
+             ? (cache?.highlightedLines ?? highlighter.highlight(replaceTabs(normalizeDisplayText(fileContent)), lang))
+             : normalizeDisplayText(fileContent).split("\n");
+         const lines = trimTrailingEmptyLines(renderedLines);
+-        const totalLines = lines.length;
+-        const maxLines = options.expanded ? lines.length : 10;
+-        const displayLines = lines.slice(0, maxLines);
+-        const remaining = lines.length - maxLines;
+-        text += `\n\n${displayLines.map((line) => (lang ? line : theme.fg("toolOutput", replaceTabs(line)))).join("\n")}`;
+-        if (remaining > 0) {
+-            text += `${theme.fg("muted", `\n... (${remaining} more lines, ${totalLines} total,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+-        }
++        const text = lines.map((line) => (lang ? line : theme.fg("toolOutput", replaceTabs(line)))).join("\n");
++        component.addChild(new Text("", 0, 0));
++        component.addChild(options.expanded ? new Text(text, 0, 0) : new VisualLinePreview({
++            text,
++            maxVisualLines: 10,
++            formatHint: (hidden) => `${theme.fg("muted", `... (${hidden} more lines, ${lines.length} total logical lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
++        }));
+     }
+-    return text;
++    return component;
+ }
+ function formatWriteResult(result, theme) {
+     if (!result.isError) {
+@@ -135,7 +135,8 @@ export const writeRenderers = {
+             fileContent !== null && !context.argsComplete
+                 ? updateWriteHighlightCacheIncremental(component.cache, rawPath, fileContent, component.highlighter)
+                 : undefined;
+-        component.setText(formatWriteCall(renderArgs, { expanded: context.expanded, isPartial: context.isPartial }, theme, component.cache, component.highlighter, context.cwd));
++        component.clear();
++        component.addChild(formatWriteCall(renderArgs, { expanded: context.expanded, isPartial: context.isPartial }, theme, component.cache, component.highlighter, context.cwd));
+         return component;
+     },
+     renderResult(result, _options, theme, context) {
+diff --git a/dist/extensions/codemode/execute.js b/dist/extensions/codemode/execute.js
+index 6f1f86f..3e6254f 100644
+--- a/dist/extensions/codemode/execute.js
++++ b/dist/extensions/codemode/execute.js
+@@ -254,6 +254,66 @@ function valueText(value) {
+         return value;
+     return JSON.stringify(value) ?? String(value);
+ }
++// Detach bounded slices from V8's potentially large backing strings; preserve lone UTF-16 units.
++function copyPreviewText(text) {
++    return Buffer.from(text, "utf16le").toString("utf16le");
++}
++function clipPreview(text) {
++    if (text.length <= 224) return { head: copyPreviewText(text), tail: "", omittedChars: 0 };
++    let start = 112, end = text.length - 112;
++    const headNewline = text.lastIndexOf("\n", start);
++    const tailNewline = text.indexOf("\n", end - 1);
++    // Do not erase an oversized edge line just because a short header/footer surrounds it.
++    const headLineEnd = text.indexOf("\n", start);
++    const tailLineStart = text.lastIndexOf("\n", end - 1);
++    const hugeHeadLine = (headLineEnd < 0 ? text.length : headLineEnd) - (headNewline + 1) > 112;
++    const hugeTailLine = (tailNewline < 0 ? text.length : tailNewline) - (tailLineStart + 1) > 112;
++    if (headNewline >= 0 && !hugeHeadLine) start = Math.min(start, headNewline + 1);
++    if (tailNewline >= 0 && !hugeTailLine) end = tailNewline + 1;
++    if (/^[\uDC00-\uDFFF]$/.test(text[start])) start--;
++    if (/^[\uDC00-\uDFFF]$/.test(text[end])) end++;
++    return { head: copyPreviewText(text.slice(0, start)), tail: copyPreviewText(text.slice(end)), omittedChars: end - start,
++        ...(text[start - 1] !== "\n" && text[start] !== "\n" ? { partialHead: true } : {}),
++        ...(text[end - 1] !== "\n" ? { partialTail: true } : {}) };
++}
++/** Fixed-size display duplication, before formatting merges or truncates emissions. */
++function outputPreview(output, returned, diagnostic) {
++    let totalResults = returned ? 1 : 0, totalConsole = 0, totalImages = 0;
++    for (const item of output) {
++        if (item.type === "image") totalImages++;
++        else if (item.console) totalConsole++;
++        else totalResults++;
++    }
++    const count = Math.min(8, totalResults);
++    const ordinals = new Set(Array.from({ length: count }, (_, i) => count === 1 ? 1 : 1 + Math.floor(i * (totalResults - 1) / (count - 1))));
++    const results = [];
++    let ordinal = 0;
++    // Retain bounded console edges, not a second all-console copy.
++    let consoleHead = "", consoleTail = "", consoleChars = 0, consoleSeen = 0;
++    for (const item of output) {
++        if (item.type !== "text") continue;
++        if (item.console) {
++            const part = (consoleSeen++ ? "\n" : "") + item.text;
++            consoleChars += part.length;
++            if (consoleHead.length < 224) consoleHead += part.slice(0, 224 - consoleHead.length);
++            consoleTail = (consoleTail + part.slice(-224)).slice(-224);
++        } else if (ordinals.has(++ordinal)) {
++            results.push({ ordinal, source: "text", ...clipPreview(item.text) });
++        }
++    }
++    if (returned && ordinals.has(++ordinal)) results.push({ ordinal, source: "return", ...clipPreview(returned.text) });
++    let consolePreview;
++    if (totalConsole) {
++        if (consoleChars <= 224) consolePreview = { head: copyPreviewText(consoleHead), tail: "", omittedChars: 0 };
++        else {
++            const clipped = clipPreview(consoleHead + consoleTail);
++            consolePreview = { ...clipped, omittedChars: consoleChars - clipped.head.length - clipped.tail.length };
++        }
++    }
++    return { version: 1, totalResults, totalConsole, totalImages, results,
++        ...(consolePreview ? { console: consolePreview } : {}),
++        ...(diagnostic ? { diagnostic: clipPreview(diagnostic) } : {}) };
++}
+ /**
+  * Lay out the script's output so the model can tell items apart: providers join adjacent text
+  * blocks with a newline or with nothing. With more than one text item (`text()` or the returned
+@@ -331,12 +391,14 @@ function formatError(result, calls) {
+     return `${head}\n\n${formatCallSummary(calls)}`;
+ }
+ /** Write the full text output to a temp file, like bash does for truncated output. */
+-async function spillOutput(text) {
++async function spillOutput(text, preview) {
+     try {
+         return { path: await writeOutputFile("pi-codemode", ".txt", text) };
+     }
+     catch (error) {
+-        return { error: error instanceof Error ? error.message : String(error) };
++        const message = error instanceof Error ? error.message : String(error);
++        preview.spillFailure = clipPreview(`Could not save the full output: ${message}`);
++        return { error: message };
+     }
+ }
+ /** File extensions of the image types `image()` accepts. Must list every type the sandbox's `image()` detects. */
+@@ -351,8 +413,18 @@ const IMAGE_EXTENSIONS = {
+  * image but has no other way to reach its bytes: scripts cannot write files, and `write` only takes
+  * text. Images shown more than once are saved once.
+  */
+-async function saveImages(items) {
++async function saveImages(items, preview) {
+     const labels = new Map();
++    // Paths remain visible without copying image bytes or retaining an unbounded path list.
++    let pathHead = "", pathTail = "", pathChars = 0;
++    const rememberPath = (path) => {
++        const part = (pathChars ? "\n" : "") + path;
++        pathChars += part.length;
++        pathHead = (pathHead + part.slice(0, 224)).slice(0, 224);
++        pathTail = (pathTail + part.slice(-224)).slice(-224);
++        const clipped = clipPreview(pathChars <= 224 ? pathHead : pathHead + pathTail);
++        preview.imageFiles = { ...clipped, omittedChars: pathChars - clipped.head.length - clipped.tail.length };
++    };
+     const label = async ({ data, mimeType }) => {
+         const bytes = Buffer.from(data, "base64");
+         const kind = `${mimeType}, ${formatSize(bytes.length)}`;
+@@ -363,10 +435,14 @@ async function saveImages(items) {
+         // tool calls already ran, so it becomes part of the label.
+         try {
+             const path = await writeOutputFile("pi-codemode", extension, bytes);
++            rememberPath(path);
+             return `[Image saved to ${path} (${kind})]`;
+         }
+         catch (error) {
+-            return `[Image (${kind}) could not be saved: ${error instanceof Error ? error.message : String(error)}]`;
++            const message = `[Image (${kind}) could not be saved: ${error instanceof Error ? error.message : String(error)}]`;
++            const failures = preview.imageSaveFailures ??= { total: 0, first: clipPreview(message) };
++            failures.total++;
++            return message;
+         }
+     };
+     const result = await Promise.all(items.map(async (item) => {
+@@ -386,7 +462,7 @@ async function saveImages(items) {
+  * item that keeps the start and end of the text, and images follow it. The full text is written to
+  * a temp file.
+  */
+-async function truncateOutput(items, maxTokens) {
++async function truncateOutput(items, maxTokens, preview) {
+     const texts = items.filter((item) => item.type === "text").map((item) => item.text);
+     const combined = texts.join("\n");
+     const budget = maxTokens * CHARS_PER_TOKEN;
+@@ -398,7 +474,7 @@ async function truncateOutput(items, maxTokens) {
+     const head = sliceHead(combined, headChars);
+     const tail = sliceTail(combined, tailChars);
+     let text = `Warning: truncated output (original token count: ${Math.ceil(combined.length / CHARS_PER_TOKEN)})\nTotal output lines: ${combined.split("\n").length}\n\n${head}…${Math.ceil(removed / CHARS_PER_TOKEN)} tokens truncated…${tail}`;
+-    const spilled = await spillOutput(combined);
++    const spilled = await spillOutput(combined, preview);
+     text +=
+         "path" in spilled
+             ? `\n\n[Full output: ${spilled.path} (read with offset/limit)]`
+@@ -543,14 +619,18 @@ export async function executeCodemode(toolCallId, input, signal, onUpdate, ctx,
+             call.status = "cancelled";
+     }
+     const scriptOutput = [...result.output];
++    const returned = result.ok && result.value !== undefined ? { type: "text", text: valueText(result.value) } : undefined;
++    const diagnostic = !result.ok ? formatError(result, calls) : generatedImages > 0 && !scriptOutput.some((item) => item.type === "image")
++        ? `Note: models.generateImages() returned ${generatedImages} image${generatedImages === 1 ? "" : "s"} that the script did not show. Show each image block of result.output with image(block).` : undefined;
++    const preview = outputPreview(result.output, returned, diagnostic);
+     if (result.ok) {
+         const { set, delete: deleted } = result.storeWrites;
+         if (Object.keys(set).length > 0 || deleted.length > 0) {
+             options.appendEntry?.(CODEMODE_STORE_ENTRY_TYPE, { set, delete: deleted });
+         }
+         // pi extension: a returned value is appended like text().
+-        if (result.value !== undefined)
+-            scriptOutput.push({ type: "text", text: valueText(result.value) });
++        if (returned)
++            scriptOutput.push(returned);
+     }
+     const items = formatOutput(scriptOutput);
+     if (!result.ok)
+@@ -561,13 +641,13 @@ export async function executeCodemode(toolCallId, input, signal, onUpdate, ctx,
+             text: `Note: models.generateImages() returned ${generatedImages} image${generatedImages === 1 ? "" : "s"} that the script did not show. Show each image block of result.output with image(block).`,
+         });
+     }
+-    const truncated = await truncateOutput(joinAdjacentText(items), sourceOptions.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS);
++    const truncated = await truncateOutput(joinAdjacentText(items), sourceOptions.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS, preview);
+     // After truncation, which joins the text items and moves images after them, so each path stays
+     // next to its image and is never cut.
+-    const output = joinAdjacentText(await saveImages(truncated.items));
++    const output = joinAdjacentText(await saveImages(truncated.items, preview));
+     const wallTime = ((performance.now() - startedAt) / 1000).toFixed(1);
+     const header = `${result.ok ? "Script completed" : "Script failed"}\nWall time ${wallTime} seconds\nOutput:\n`;
+-    const details = snapshot();
++    const details = { ...snapshot(), outputPreview: preview };
+     if (truncated.fullOutputPath)
+         details.fullOutputPath = truncated.fullOutputPath;
+     return {
+diff --git a/dist/extensions/codemode/renderer.js b/dist/extensions/codemode/renderer.js
+index 262d73f..418fa26 100644
+--- a/dist/extensions/codemode/renderer.js
++++ b/dist/extensions/codemode/renderer.js
+@@ -1,65 +1,138 @@
+-/**
+- * Presentation for the codemode tool.
+- *
+- * The call shows the script; the result lists the nested tool calls with their status as they
+- * run and the cost of its model calls, followed by the script output without the "Script completed"
+- * header, and the time the script has been running (`Elapsed`) or took (`Took`), like bash rows.
+- * Nested calls are not separate tool rows because they never reach the model as tool calls.
+- */
+-import { Container, Spacer, Text } from "@earendil-works/pi-tui";
+-import { getTextOutput, replaceTabs, startToolTimer, str, toolTimerText } from "../../core/tools/render-utils.js";
+-import { keyHint } from "../../modes/interactive/components/keybinding-hints.js";
++/** Presentation only: expansion is a larger window, not raw output. */
++import { Container, Spacer, Text, stripTerminalSequences, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
++import { getTextOutput, replaceTabs, str } from "../../core/tools/render-utils.js";
+ import { VisualLinePreview } from "../../modes/interactive/components/visual-truncate.js";
+ import { CodeHighlighter } from "../../modes/interactive/theme/theme.js";
+-const CODE_PREVIEW_LINES = 10;
++const EXPANDED_CODE_LINES = 12;
+ const CALL_PREVIEW_COUNT = 8;
++const EXPANDED_CALL_COUNT = 12;
+ const OUTPUT_PREVIEW_LINES = 5;
+-const COLLAPSED_ARGS_CHARS = 80;
++const EXPANDED_OUTPUT_LINES = 20;
+ const SCRIPT_HEADER = /^Script (completed|failed)\nWall time [\d.]+ seconds\nOutput:\n$/;
+-function expandHint(theme, hidden, noun) {
+-    return `${theme.fg("muted", `... (${hidden} more ${noun},`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+-}
+-function formatDuration(ms) {
+-    if (ms === undefined)
+-        return "";
+-    return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
+-}
+-/** Cents for larger amounts, two significant digits for the fractions of a cent classifier calls cost. */
+-function formatCost(cost) {
+-    return `$${cost >= 0.01 ? cost.toFixed(2) : cost.toPrecision(2)}`;
+-}
+ function statusIcon(call, theme) {
+     switch (call.status) {
+-        case "running":
+-            return theme.fg("warning", "…");
+-        case "ok":
+-            return theme.fg("success", "✓");
+-        case "error":
+-            return theme.fg("error", "✗");
+-        case "cancelled":
+-            return theme.fg("muted", "⊘");
++        case "running": return theme.fg("warning", "…");
++        case "ok": return theme.fg("success", "✓");
++        case "error": return theme.fg("error", "✗");
++        case "cancelled": return theme.fg("muted", "⊘");
+     }
+ }
+-function formatCall(call, theme, expanded) {
+-    const args = !expanded && call.args.length > COLLAPSED_ARGS_CHARS
+-        ? `${call.args.slice(0, COLLAPSED_ARGS_CHARS - 3)}...`
+-        : call.args;
+-    const duration = formatDuration(call.durationMs);
+-    let line = `${statusIcon(call, theme)} ${theme.fg("toolTitle", call.name)}`;
+-    if (args)
+-        line += ` ${theme.fg("muted", args)}`;
+-    if (duration)
+-        line += ` ${theme.fg("dim", duration)}`;
+-    if (call.cost)
+-        line += ` ${theme.fg("dim", formatCost(call.cost))}`;
+-    if (expanded && call.error)
+-        line += `\n    ${theme.fg("error", call.error.split("\n").join("\n    "))}`;
++function singleLine(text) {
++    return stripTerminalSequences(text ?? "").replace(/\s+/g, " ").trim();
++}
++function formatCall(call, theme) {
++    let line = `${statusIcon(call, theme)} ${theme.fg("toolTitle", singleLine(call.name))}`;
++    // Failure reasons precede input so narrow rows do not spend their width on arguments first.
++    if (call.error) line += ` ${theme.fg("error", singleLine(call.error))}`;
++    const args = singleLine(call.args);
++    if (args) line += ` ${theme.fg("muted", args)}`;
+     return line;
+ }
++function selectCalls(calls, budget) {
++    if (calls.length <= budget) return calls;
++    // Pending/failed/cancelled calls take precedence over successful head/tail context.
++    const selected = new Set(calls.filter((call) => call.status !== "ok").slice(0, budget));
++    for (let i = 0; selected.size < budget && i < calls.length; i++) {
++        selected.add(calls[i]);
++        if (selected.size < budget) selected.add(calls[calls.length - 1 - i]);
++    }
++    return calls.filter((call) => selected.has(call));
++}
++/** Persisted metadata is optional; unknown versions or malformed bounds use the legacy window. */
++function validPreview(value) {
++    const count = (n) => Number.isSafeInteger(n) && n >= 0;
++    const clip = (v) => v && typeof v.head === "string" && typeof v.tail === "string" && v.head.length + v.tail.length <= 224 && count(v.omittedChars) && (v.omittedChars > 0 || v.tail === "") && (v.partialHead === undefined || v.partialHead === true) && (v.partialTail === undefined || v.partialTail === true);
++    if (!value || value.version !== 1 || !count(value.totalResults) || !count(value.totalConsole) || !count(value.totalImages) || !Array.isArray(value.results) || value.results.length !== Math.min(8, value.totalResults)) return false;
++    let previous = 0;
++    for (const item of value.results) {
++        if (!clip(item) || !count(item.ordinal) || item.ordinal <= previous || item.ordinal > value.totalResults || !["text", "return"].includes(item.source)) return false;
++        previous = item.ordinal;
++    }
++    return (value.totalConsole > 0 ? clip(value.console) : value.console === undefined) && (value.diagnostic === undefined || clip(value.diagnostic)) && (value.imageFiles === undefined || clip(value.imageFiles)) && (value.spillFailure === undefined || clip(value.spillFailure)) && (value.imageSaveFailures === undefined || (count(value.imageSaveFailures?.total) && value.imageSaveFailures.total > 0 && clip(value.imageSaveFailures.first)));
++}
++function renderOutputPreview(component, preview, expanded, theme, recovery) {
++    component.addChild(new Spacer(1));
++    const plural = (count, noun) => `${count} ${noun}${count === 1 ? "" : "s"}`;
++    component.addChild({
++        invalidate() {},
++        render(width) {
++            const rows = (text, color = "toolOutput") => new Text(replaceTabs(text).split("\n").map((line) => theme.fg(color, line)).join("\n"), 0, 0).render(width).map((line) => truncateToWidth(line, width, ""));
++            const section = (title, item, color = "toolOutput", result) => {
++                const head = rows(item.omittedChars ? item.head.replace(/\n$/, "") : item.head === "" ? "(empty text)" : item.head, color);
++                const tail = item.omittedChars && item.tail ? rows(item.tail, color) : [];
++                // Plan against meaningful visual edges, not Text's padded/reset-only blank rows.
++                // Only these fresh display arrays change; source units and interior blanks remain intact.
++                const blank = (line) => stripTerminalSequences(line).trim() === "";
++                while (head.length && blank(head[0])) head.shift();
++                if (!head.length) while (tail.length && blank(tail[0])) tail.shift();
++                while (tail.length && blank(tail.at(-1))) tail.pop();
++                if (!tail.length) while (head.length && blank(head.at(-1))) head.pop();
++                if (!head.length && !tail.length) head.push(...rows("(blank text)", color));
++                const needed = head.length + tail.length;
++                return { title, item, color, result, head, tail, needed, allocation: Math.min(2, needed), limit: needed };
++            };
++            // Diagnostics keep their own budget and precede opaque successful output.
++            const before = [];
++            if (preview.spillFailure) before.push(section("storage warning · full output unavailable", preview.spillFailure, "error"));
++            if (preview.imageSaveFailures) before.push(section(`image save ${plural(preview.imageSaveFailures.total, "failure")}`, preview.imageSaveFailures.first, "error"));
++            if (preview.diagnostic) before.push(section("", preview.diagnostic, "error"));
++            const results = preview.results.map((item) => section("", item, "toolOutput", item));
++            const after = [];
++            if (preview.imageFiles) after.push(section("image files", preview.imageFiles));
++            if (preview.console) after.push(section("console", preview.console));
++            const totalBudget = expanded ? 40 : 10;
++            const fixed = [...before, ...after].reduce((n, item) => n + item.allocation, 0);
++            // Only omit entire result sections if their minimum useful rows cannot fit.
++            let shown = results;
++            if (fixed + results.reduce((n, item) => n + item.allocation, 0) > totalBudget) {
++                const selected = new Set();
++                let used = fixed;
++                for (let i = 0; i < results.length; i++) for (const item of [results[i], results[results.length - 1 - i]]) {
++                    if (!selected.has(item) && used + item.allocation <= totalBudget) { selected.add(item); used += item.allocation; }
++                }
++                shown = results.filter((item) => selected.has(item));
++            }
++            const sections = [...before, ...shown, ...after];
++            let remaining = totalBudget - sections.reduce((n, item) => n + item.allocation, 0);
++            while (remaining > 0) {
++                let changed = false;
++                for (const item of sections) if (remaining > 0 && item.allocation < item.limit) { item.allocation++; remaining--; changed = true; }
++                if (!changed) break;
++            }
++            const lines = [];
++            if (!sections.length && !preview.totalImages) lines.push(...rows("(no output)", "muted"));
++            let shortened = !!preview.spillFailure, previous = 0;
++            const gap = (count, start, end) => {
++                if (count <= 0) return;
++                shortened = true;
++                lines.push(...rows(`${plural(count, "result")} omitted (${start === end ? start : `${start}–${end}`})`, "muted"));
++            };
++            for (const item of sections) {
++                if (item.result) { gap(item.result.ordinal - previous - 1, previous + 1, item.result.ordinal - 1); previous = item.result.ordinal; }
++                if (lines.length) lines.push("");
++                if (item.title) lines.push(...rows(item.title, "muted"));
++                const sourceClipped = item.item.omittedChars > 0;
++                const clipped = sourceClipped || item.needed > item.allocation;
++                if (!clipped) lines.push(...item.head, ...item.tail);
++                else {
++                    shortened = true;
++                    const body = [...item.head, ...item.tail];
++                    let head = Math.min(item.head.length, Math.ceil(item.allocation / 2));
++                    let tail = Math.min(sourceClipped ? item.tail.length : body.length - head, item.allocation - head);
++                    head = Math.min(sourceClipped ? item.head.length : body.length - tail, item.allocation - tail);
++                    const marker = sourceClipped ? `… shortened${item.item.partialHead || item.item.partialTail ? " · partial line edges" : ""} …` : `… ${plural(item.needed - item.allocation, "row")} omitted …`;
++                    lines.push(...body.slice(0, head), truncateToWidth(theme.fg("muted", marker), width, width < 3 ? "…" : "..."), ...(tail ? body.slice(-tail) : []));
++                }
++            }
++            gap(preview.totalResults - previous, previous + 1, preview.totalResults);
++            recovery.omitted ||= shortened;
++            recovery.unavailable ||= !!preview.spillFailure;
++            return lines;
++        },
++    });
++}
+ export const codemodeRenderers = {
+     renderCall(args, theme, context) {
+-        startToolTimer(context);
+-        // The code includes the `// @options:` line, so options show as part of the script.
+         const code = str(args?.code);
+         const title = theme.fg("toolTitle", theme.bold("codemode"));
+         const component = context.lastComponent ?? new Container();
+@@ -69,79 +142,85 @@ export const codemodeRenderers = {
+             return component;
+         }
+         component.addChild(new Text(title, 0, 0));
+-        if (code) {
+-            const state = context.state;
+-            state.scriptHighlighter ??= new CodeHighlighter();
+-            const highlighted = state.scriptHighlighter
+-                .highlight(replaceTabs(code.replace(/\r/g, "").trimEnd()), "javascript")
+-                .join("\n");
+-            component.addChild(context.expanded
+-                ? new Text(highlighted, 0, 0)
+-                : new VisualLinePreview({
+-                    text: highlighted,
+-                    maxVisualLines: CODE_PREVIEW_LINES,
+-                    keep: "start",
+-                    formatHint: (hidden) => expandHint(theme, hidden, "lines"),
+-                }));
++        context.state.sourceOmitted = false;
++        if (code && context.expanded) {
++            context.state.scriptHighlighter ??= new CodeHighlighter();
++            const highlighted = context.state.scriptHighlighter.highlight(replaceTabs(code.replace(/\r/g, "").trimEnd()), "javascript").join("\n");
++            component.addChild(new VisualLinePreview({
++                text: highlighted,
++                maxVisualLines: EXPANDED_CODE_LINES,
++                formatHint: (hidden) => {
++                    context.state.sourceOmitted = true;
++                    return theme.fg("muted", `… ${hidden} source lines omitted …`);
++                },
++            }));
+         }
+         return component;
+     },
+     renderResult(result, options, theme, context) {
+-        const timerText = toolTimerText(context, options.isPartial);
+         const component = context.lastComponent ?? new Container();
+         component.clear();
++        const recovery = { omitted: false, unavailable: false };
+         const calls = result.details?.calls ?? [];
+-        if (calls.length > 0) {
+-            const shown = options.expanded ? calls : calls.slice(-CALL_PREVIEW_COUNT);
+-            const lines = shown.map((call) => formatCall(call, theme, options.expanded));
+-            if (shown.length < calls.length) {
+-                lines.unshift(`${theme.fg("muted", `... (${calls.length - shown.length} earlier calls,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`);
+-            }
+-            // Collapsed rows hide earlier calls, so the total covers every call.
+-            const priced = calls.filter((call) => call.cost);
+-            if (priced.length > 1) {
+-                const total = priced.reduce((sum, call) => sum + (call.cost ?? 0), 0);
+-                lines.push(theme.fg("muted", `Model calls: ${formatCost(total)}`));
+-            }
++        const activity = options.expanded ? calls : calls.filter((call) => call.status !== "ok");
++        component.addChild({ render() { recovery.omitted = calls.length > activity.length || !!context.state.sourceOmitted; recovery.unavailable = false; return []; }, invalidate() {} });
++        if (activity.length > 0) {
++            const shown = selectCalls(activity, options.expanded ? EXPANDED_CALL_COUNT : CALL_PREVIEW_COUNT);
+             component.addChild(new Spacer(1));
+-            component.addChild(new Text(lines.join("\n"), 0, 0));
++            const lines = shown.map((call) => formatCall(call, theme));
++            const hidden = activity.length - shown.length;
++            if (hidden) {
++                const shownSet = new Set(shown);
++                const omitted = activity.filter((call) => !shownSet.has(call));
++                const failures = omitted.filter((call) => call.status === "error").length;
++                const running = omitted.filter((call) => call.status === "running").length;
++                const cancelled = omitted.filter((call) => call.status === "cancelled").length;
++                const counts = [failures && `${failures} failed`, running && `${running} running`, cancelled && `${cancelled} cancelled`].filter(Boolean);
++                lines.push(theme.fg("muted", `… ${hidden} more calls${counts.length ? ` (${counts.join(", ")})` : ""}`));
++            }
++            // Clip once at actual render width: every call occupies exactly one visual row.
++            component.addChild({
++                render: (width) => {
++                    const clipped = lines.map((line) => truncateToWidth(line, width, width < 3 ? "…" : "..."));
++                    // A short call list can still hide a diagnostic suffix horizontally.
++                    recovery.omitted ||= hidden > 0 || lines.some((line) => visibleWidth(line) > width);
++                    return clipped;
++                },
++                invalidate() {},
++            });
+         }
+-        // Drop the "Script completed\nWall time ...\nOutput:\n" header. Rejected input (invalid options)
+-        // has no header.
+         const [first, ...rest] = result.content;
+         const hasHeader = first?.type === "text" && SCRIPT_HEADER.test(first.text);
+-        const output = options.isPartial
+-            ? ""
+-            : getTextOutput({ ...result, content: hasHeader ? rest : result.content }, context.showImages).trim();
+-        if (output) {
++        const output = options.isPartial ? "" : getTextOutput({ ...result, content: hasHeader ? rest : result.content }, context.showImages).trim();
++        const preview = result.details?.outputPreview;
++        if (!options.isPartial && validPreview(preview)) {
++            renderOutputPreview(component, preview, options.expanded, theme, recovery);
++        } else if (output) {
+             const color = context.isError ? "error" : "toolOutput";
+-            const styled = replaceTabs(output)
+-                .split("\n")
+-                .map((line) => theme.fg(color, line))
+-                .join("\n");
+-            component.addChild(new Spacer(1));
+-            if (options.expanded) {
+-                component.addChild(new Text(styled, 0, 0));
+-            }
+-            else {
+-                // Limit wrapped lines, not logical ones: script output is often one long JSON line.
+-                component.addChild(new VisualLinePreview({
+-                    text: styled,
+-                    maxVisualLines: OUTPUT_PREVIEW_LINES,
+-                    keep: "start",
+-                    formatHint: (hidden) => expandHint(theme, hidden, "lines"),
+-                }));
+-                // The collapsed preview hides the truncation notice at the end, so name the file here.
+-                const fullOutputPath = result.details?.fullOutputPath;
+-                if (fullOutputPath)
+-                    component.addChild(new Text(theme.fg("muted", `Full output: ${fullOutputPath}`), 0, 0));
+-            }
+-        }
+-        if (timerText) {
++            const styled = replaceTabs(output).split("\n").map((line) => theme.fg(color, line)).join("\n");
+             component.addChild(new Spacer(1));
+-            component.addChild(new Text(theme.fg("muted", timerText), 0, 0));
++            component.addChild({
++                render(width) {
++                    return new VisualLinePreview({
++                        text: styled,
++                        maxVisualLines: options.expanded ? EXPANDED_OUTPUT_LINES : OUTPUT_PREVIEW_LINES,
++                        formatHint: (hidden) => {
++                            recovery.omitted = true;
++                            return theme.fg("muted", `… ${hidden} more lines …`);
++                        },
++                    }).render(width);
++                },
++                invalidate() {},
++            });
+         }
++        component.addChild({
++            render(width) {
++                return recovery.omitted || result.details?.fullOutputPath
++                    ? [truncateToWidth(theme.fg("muted", recovery.unavailable ? "/tool-output for retained raw only · full output unavailable" : "/tool-output for full raw result"), width)] : [];
++            },
++            invalidate() {},
++        });
+         return component;
+     },
+ };
+-//# sourceMappingURL=renderer.js.map
+\ No newline at end of file
++//# sourceMappingURL=renderer.js.map
+diff --git a/dist/extensions/codemode/tool.d.ts b/dist/extensions/codemode/tool.d.ts
+index 961a48e..4ac2f37 100644
+--- a/dist/extensions/codemode/tool.d.ts
++++ b/dist/extensions/codemode/tool.d.ts
+@@ -74,7 +74,31 @@ export interface CodemodeNestedCall {
+     /** Cost in USD of a `models.*` call that reported usage. */
+     cost?: number;
+ }
++/** Bounded display copy only; omittedChars counts UTF-16 code units, not visual rows. */
++export interface CodemodeOutputClip {
++    head: string;
++    tail: string;
++    omittedChars: number;
++    /** A retained edge cuts an oversized line; absent when a complete line boundary was available. */
++    partialHead?: true;
++    partialTail?: true;
++}
++export interface CodemodeOutputPreview {
++    version: 1;
++    totalResults: number;
++    totalConsole: number;
++    totalImages: number;
++    /** At most eight evenly spaced emissions, including first and last. Each clip holds <=224 code units. */
++    results: (CodemodeOutputClip & { ordinal: number; source: "text" | "return" })[];
++    /** Captured at the write boundary; script status and model-facing text are unchanged. */
++    spillFailure?: CodemodeOutputClip;
++    imageSaveFailures?: { total: number; first: CodemodeOutputClip };
++    imageFiles?: CodemodeOutputClip;
++    console?: CodemodeOutputClip;
++    diagnostic?: CodemodeOutputClip;
++}
+ export interface CodemodeToolDetails {
++    outputPreview?: CodemodeOutputPreview;
+     calls: CodemodeNestedCall[];
+     /** Temp file with the full text output, when the output was truncated. */
+     fullOutputPath?: string;
+diff --git a/dist/extensions/mcp/tools.js b/dist/extensions/mcp/tools.js
+index 67aa2b8..791ae75 100644
+--- a/dist/extensions/mcp/tools.js
++++ b/dist/extensions/mcp/tools.js
+@@ -243,7 +243,6 @@ export function createMcpToolRenderers(label) {
+                 component.addChild(new VisualLinePreview({
+                     text: styled,
+                     maxVisualLines: OUTPUT_PREVIEW_LINES,
+-                    keep: "start",
+                     formatHint: (hidden) => `${theme.fg("muted", `... (${hidden} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
+                 }));
+                 const fullOutputPath = result.details?.fullOutputPath;
+diff --git a/dist/modes/interactive/components/assistant-message.d.ts b/dist/modes/interactive/components/assistant-message.d.ts
+index c58f050..540e2bb 100644
+--- a/dist/modes/interactive/components/assistant-message.d.ts
++++ b/dist/modes/interactive/components/assistant-message.d.ts
+@@ -6,6 +6,7 @@ import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
+  */
+ export declare class AssistantMessageComponent extends Container {
+     private contentContainer;
++    private markerColumn;
+     private hideThinkingBlock;
+     private markdownTheme;
+     private hiddenThinkingLabel;
+@@ -17,8 +18,11 @@ export declare class AssistantMessageComponent extends Container {
+     private messageId?;
+     private timestamp?;
+     private thinkingVisibilityOverrides;
++    private cachedWidth;
++    private cachedLines;
+     private markdownSlots;
+     constructor(message?: AssistantMessage, hideThinkingBlock?: boolean, markdownTheme?: MarkdownTheme, hiddenThinkingLabel?: string, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[], messageId?: string, timestamp?: string);
++    private updateMarker;
+     invalidate(): void;
+     setHideThinkingBlock(hide: boolean): void;
+     setHiddenThinkingLabel(label: string): void;
+diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes/interactive/components/assistant-message.js
+index 1e16f4c..cdf26ed 100644
+--- a/dist/modes/interactive/components/assistant-message.js
++++ b/dist/modes/interactive/components/assistant-message.js
+@@ -1,4 +1,4 @@
+-import { Container, Markdown, MouseRegion, Spacer, Text, } from "@earendil-works/pi-tui";
++import { Box, Container, MarkerColumn, Markdown, MouseRegion, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
+ import { getMarkdownTheme, theme } from "../theme/theme.js";
+ import { createMarkdownTransform } from "./markdown-transform.js";
+ const OSC133_ZONE_START = "\x1b]133;A\x07";
+@@ -9,6 +9,7 @@ const OSC133_ZONE_FINAL = "\x1b]133;C\x07";
+  */
+ export class AssistantMessageComponent extends Container {
+     contentContainer;
++    markerColumn;
+     hideThinkingBlock;
+     markdownTheme;
+     hiddenThinkingLabel;
+@@ -20,6 +21,8 @@ export class AssistantMessageComponent extends Container {
+     messageId;
+     timestamp;
+     thinkingVisibilityOverrides = new Map();
++    cachedWidth;
++    cachedLines;
+     markdownSlots = [];
+     constructor(message, hideThinkingBlock = false, markdownTheme = getMarkdownTheme(), hiddenThinkingLabel = "Thinking...", outputPad = 1, markdownTransformers = [], messageId, timestamp) {
+         super();
+@@ -32,12 +35,31 @@ export class AssistantMessageComponent extends Container {
+         this.timestamp = timestamp;
+         // Container for text/thinking content
+         this.contentContainer = new Container();
+-        this.addChild(this.contentContainer);
++        this.markerColumn = new MarkerColumn("", this.contentContainer);
+         if (message) {
+             this.updateContent(message);
+         }
+     }
++    updateMarker(message) {
++        const continuationMarker = theme.fg("muted", "│");
++        const failed = message.stopReason === "aborted" ||
++            message.stopReason === "error" ||
++            message.stopReason === "length";
++        const hasResponseText = message.content.some((content) => content.type === "text" && content.text.trim());
++        this.markerColumn.setFooterMarker(failed || hasResponseText ? theme.fg("muted", "╰────") : undefined);
++        if (failed) {
++            this.markerColumn.setMarker(theme.fg("error", "✕"), continuationMarker);
++            return;
++        }
++        if (!this.isStreaming) {
++            this.markerColumn.setMarker(theme.fg(hasResponseText ? "success" : "muted", "●"), continuationMarker);
++            return;
++        }
++        this.markerColumn.setMarker(theme.fg("accent", "●"), continuationMarker);
++    }
+     invalidate() {
++        this.cachedWidth = undefined;
++        this.cachedLines = undefined;
+         super.invalidate();
+         if (this.lastMessage) {
+             this.updateContent(this.lastMessage);
+@@ -65,7 +87,14 @@ export class AssistantMessageComponent extends Container {
+         }
+     }
+     render(width) {
+-        const lines = super.render(width);
++        if (width <= 0)
++            return [];
++        const safeWidth = Math.floor(width);
++        if (this.cachedWidth === safeWidth && this.cachedLines)
++            return this.cachedLines;
++        const lines = super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
++        this.cachedWidth = safeWidth;
++        this.cachedLines = lines;
+         if (this.hasToolCalls || lines.length === 0) {
+             return lines;
+         }
+@@ -74,9 +103,12 @@ export class AssistantMessageComponent extends Container {
+         return lines;
+     }
+     updateContent(message, isStreaming = this.isStreaming) {
++        this.cachedWidth = undefined;
++        this.cachedLines = undefined;
++        this.markerColumn.invalidate();
+         this.lastMessage = message;
+         this.isStreaming = isStreaming;
+-        // Clear content container
++        this.clear();
+         this.contentContainer.clear();
+         const previousSlots = this.markdownSlots;
+         this.markdownSlots = [];
+@@ -90,7 +122,7 @@ export class AssistantMessageComponent extends Container {
+         // Spacers are added lazily, right before the next visible content block. This puts a blank
+         // line before the first visible block and after each visible thinking run that is followed
+         // by more visible content, while hidden thinking runs without a label contribute nothing.
+-        let needsSpacer = true;
++        let needsSpacer = false;
+         const addVisibleChild = (child) => {
+             if (needsSpacer) {
+                 this.contentContainer.addChild(new Spacer(1));
+@@ -106,7 +138,7 @@ export class AssistantMessageComponent extends Container {
+                 // Assistant text messages with no background - trim the text
+                 // Set paddingY=0 to avoid extra spacing before tool executions
+                 const text = content.text.trim();
+-                addVisibleChild(markdownBlock("text", text, () => new Markdown(text, this.outputPad, 0, this.markdownTheme, undefined, {
++                addVisibleChild(markdownBlock("text", text, () => new Markdown(text, 0, 0, this.markdownTheme, undefined, {
+                     transform: createMarkdownTransform("assistant", () => this.isStreaming, this.markdownTransformers, this.messageId, this.timestamp),
+                 })));
+             }
+@@ -134,8 +166,8 @@ export class AssistantMessageComponent extends Container {
+                 }
+                 const thinking = thinkingBlocks.join("\n\n");
+                 const thinkingComponent = hidden
+-                    ? new Text(theme.italic(theme.fg("thinkingText", this.hiddenThinkingLabel)), this.outputPad, 0)
+-                    : markdownBlock("thinking", thinking, () => new Markdown(thinking, this.outputPad, 0, this.markdownTheme, {
++                    ? new Text(theme.italic(theme.fg("thinkingText", this.hiddenThinkingLabel)), 0, 0)
++                    : markdownBlock("thinking", thinking, () => new Markdown(thinking, 0, 0, this.markdownTheme, {
+                         color: (text) => theme.fg("thinkingText", text),
+                         italic: true,
+                     }, {
+@@ -160,23 +192,33 @@ export class AssistantMessageComponent extends Container {
+         const hasToolCalls = message.content.some((c) => c.type === "toolCall");
+         this.hasToolCalls = hasToolCalls;
+         if (message.stopReason === "length") {
+-            this.contentContainer.addChild(new Spacer(1));
+-            this.contentContainer.addChild(new Text(theme.fg("error", "Response was truncated before completion."), this.outputPad, 0));
++            if (this.contentContainer.children.length > 0)
++                this.contentContainer.addChild(new Spacer(1));
++            this.contentContainer.addChild(new Text(theme.fg("error", "Response was truncated before completion."), 0, 0));
+         }
+         else if (!hasToolCalls) {
+             if (message.stopReason === "aborted") {
+                 const abortMessage = message.errorMessage && message.errorMessage !== "Request was aborted"
+                     ? message.errorMessage
+                     : "Operation aborted";
+-                this.contentContainer.addChild(new Spacer(1));
+-                this.contentContainer.addChild(new Text(theme.fg("error", abortMessage), this.outputPad, 0));
++                if (this.contentContainer.children.length > 0)
++                    this.contentContainer.addChild(new Spacer(1));
++                this.contentContainer.addChild(new Text(theme.fg("error", abortMessage), 0, 0));
+             }
+             else if (message.stopReason === "error") {
+                 const errorMsg = message.errorMessage || "Unknown error";
+-                this.contentContainer.addChild(new Spacer(1));
+-                this.contentContainer.addChild(new Text(theme.fg("error", `Error: ${errorMsg}`), this.outputPad, 0));
++                if (this.contentContainer.children.length > 0)
++                    this.contentContainer.addChild(new Spacer(1));
++                this.contentContainer.addChild(new Text(theme.fg("error", `Error: ${errorMsg}`), 0, 0));
+             }
+         }
++        if (this.contentContainer.children.length > 0) {
++            this.updateMarker(message);
++            this.addChild(new Spacer(1));
++            const messageFrame = new Box(this.outputPad, 0);
++            messageFrame.addChild(this.markerColumn);
++            this.addChild(messageFrame);
++        }
+     }
+ }
+ //# sourceMappingURL=assistant-message.js.map
+\ No newline at end of file
+diff --git a/dist/modes/interactive/components/bash-execution.js b/dist/modes/interactive/components/bash-execution.js
+index 45a7558..bd200ab 100644
+--- a/dist/modes/interactive/components/bash-execution.js
++++ b/dist/modes/interactive/components/bash-execution.js
+@@ -1,13 +1,13 @@
+ /**
+  * Component for displaying bash command execution with streaming output.
+  */
+-import { Container, Loader, Spacer, Text } from "@earendil-works/pi-tui";
++import { Box, Container, Loader, Spacer, Text } from "@earendil-works/pi-tui";
+ import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncateTail, } from "../../../core/tools/truncate.js";
+ import { stripAnsi } from "../../../utils/ansi.js";
+ import { theme } from "../theme/theme.js";
+ import { DynamicBorder } from "./dynamic-border.js";
+ import { keyHint, keyText } from "./keybinding-hints.js";
+-import { truncateToVisualLines } from "./visual-truncate.js";
++import { VisualLinePreview } from "./visual-truncate.js";
+ // Preview line limit when not expanded (matches tool execution behavior)
+ const PREVIEW_LINES = 20;
+ export class BashExecutionComponent extends Container {
+@@ -94,9 +94,6 @@ export class BashExecutionComponent extends Container {
+         });
+         // Get the lines to potentially display (after context truncation)
+         const availableLines = contextTruncation.content ? contextTruncation.content.split("\n") : [];
+-        // Apply preview truncation based on expanded state
+-        const previewLogicalLines = availableLines.slice(-PREVIEW_LINES);
+-        const hiddenLineCount = availableLines.length - previewLogicalLines.length;
+         // Rebuild content container
+         this.contentContainer.clear();
+         // Command header
+@@ -110,25 +107,14 @@ export class BashExecutionComponent extends Container {
+                 this.contentContainer.addChild(new Text(`\n${displayText}`, this.outputPad, 0));
+             }
+             else {
+-                // Use shared visual truncation utility with width-aware caching
+-                const styledOutput = previewLogicalLines.map((line) => theme.fg("muted", line)).join("\n");
+-                const styledInput = `\n${styledOutput}`;
+-                let cachedWidth;
+-                let cachedLines;
+-                this.contentContainer.addChild({
+-                    render: (width) => {
+-                        if (cachedLines === undefined || cachedWidth !== width) {
+-                            const result = truncateToVisualLines(styledInput, PREVIEW_LINES, width, this.outputPad);
+-                            cachedLines = result.visualLines;
+-                            cachedWidth = width;
+-                        }
+-                        return cachedLines ?? [];
+-                    },
+-                    invalidate: () => {
+-                        cachedWidth = undefined;
+-                        cachedLines = undefined;
+-                    },
+-                });
++                const preview = new Box(this.outputPad, 0);
++                preview.addChild(new VisualLinePreview({
++                    text: availableLines.map((line) => theme.fg("muted", line)).join("\n"),
++                    maxVisualLines: PREVIEW_LINES,
++                    formatHint: (hidden) => `${theme.fg("muted", `... (${hidden} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
++                }));
++                this.contentContainer.addChild(new Spacer(1));
++                this.contentContainer.addChild(preview);
+             }
+         }
+         // Loader or status
+@@ -137,14 +123,8 @@ export class BashExecutionComponent extends Container {
+         }
+         else {
+             const statusParts = [];
+-            // Show how many lines are hidden (collapsed preview)
+-            if (hiddenLineCount > 0) {
+-                if (this.expanded) {
+-                    statusParts.push(`${theme.fg("muted", "(")}${keyHint("app.tools.expand", "to collapse")}${theme.fg("muted", ")")}`);
+-                }
+-                else {
+-                    statusParts.push(`${theme.fg("muted", `... ${hiddenLineCount} more lines (`)}${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`);
+-                }
++            if (this.expanded) {
++                statusParts.push(`${theme.fg("muted", "(")}${keyHint("app.tools.expand", "to collapse")}${theme.fg("muted", ")")}`);
+             }
+             if (this.status === "cancelled") {
+                 statusParts.push(theme.fg("warning", "(cancelled)"));
+diff --git a/dist/modes/interactive/components/branch-summary-message.d.ts b/dist/modes/interactive/components/branch-summary-message.d.ts
+index 5c4b54e..344002a 100644
+--- a/dist/modes/interactive/components/branch-summary-message.d.ts
++++ b/dist/modes/interactive/components/branch-summary-message.d.ts
+@@ -1,14 +1,15 @@
+-import { Box, type MarkdownTheme } from "@earendil-works/pi-tui";
++import { Container, type MarkdownTheme } from "@earendil-works/pi-tui";
+ import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
+ import type { BranchSummaryMessage } from "../../../core/messages.ts";
+ /**
+  * Component that renders a branch summary message with collapsed/expanded state.
+  * Uses same background color as custom messages for visual consistency.
+  */
+-export declare class BranchSummaryMessageComponent extends Box {
++export declare class BranchSummaryMessageComponent extends Container {
+     private expanded;
+     private message;
+     private markdownTheme;
++    private outputPad;
+     private markdownTransformers;
+     private messageId?;
+     private timestamp?;
+@@ -17,5 +18,6 @@ export declare class BranchSummaryMessageComponent extends Box {
+     setOutputPad(outputPad: number): void;
+     invalidate(): void;
+     private updateDisplay;
++    render(width: number): string[];
+ }
+-//# sourceMappingURL=branch-summary-message.d.ts.map
+\ No newline at end of file
++//# sourceMappingURL=branch-summary-message.d.ts.map
+diff --git a/dist/modes/interactive/components/branch-summary-message.js b/dist/modes/interactive/components/branch-summary-message.js
+index 0cbe081..8b305fe 100644
+--- a/dist/modes/interactive/components/branch-summary-message.js
++++ b/dist/modes/interactive/components/branch-summary-message.js
+@@ -1,4 +1,4 @@
+-import { Box, Container, Markdown, MouseRegion, Spacer, Text } from "@earendil-works/pi-tui";
++import { Box, Container, MarkerColumn, Markdown, MouseRegion, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
+ import { getMarkdownTheme, theme } from "../theme/theme.js";
+ import { keyText } from "./keybinding-hints.js";
+ import { createMarkdownTransform } from "./markdown-transform.js";
+@@ -6,28 +6,35 @@ import { createMarkdownTransform } from "./markdown-transform.js";
+  * Component that renders a branch summary message with collapsed/expanded state.
+  * Uses same background color as custom messages for visual consistency.
+  */
+-export class BranchSummaryMessageComponent extends Box {
++export class BranchSummaryMessageComponent extends Container {
+     expanded = false;
+     message;
+     markdownTheme;
++    outputPad;
+     markdownTransformers;
+     messageId;
+     timestamp;
+     constructor(message, markdownTheme = getMarkdownTheme(), outputPad = 1, markdownTransformers = [], messageId, timestamp) {
+-        super(outputPad, 1, (t) => theme.bg("customMessageBg", t));
++        super();
+         this.message = message;
+         this.markdownTheme = markdownTheme;
+         this.markdownTransformers = markdownTransformers;
+         this.messageId = messageId;
+         this.timestamp = timestamp;
++        this.outputPad = outputPad;
+         this.updateDisplay();
+     }
+     setExpanded(expanded) {
+-        this.expanded = expanded;
+-        this.updateDisplay();
++        if (this.expanded !== expanded) {
++            this.expanded = expanded;
++            this.updateDisplay();
++        }
+     }
+     setOutputPad(outputPad) {
+-        this.setPaddingX(outputPad);
++        if (this.outputPad !== outputPad) {
++            this.outputPad = outputPad;
++            this.updateDisplay();
++        }
+     }
+     invalidate() {
+         super.invalidate();
+@@ -35,7 +42,7 @@ export class BranchSummaryMessageComponent extends Box {
+     }
+     updateDisplay() {
+         this.clear();
+-        const content = new Container();
++        const content = new Box(0, 0, (text) => theme.bg("customMessageBg", text));
+         const label = theme.fg("customMessageLabel", `\x1b[1m[branch]\x1b[22m`);
+         content.addChild(new Text(label, 0, 0));
+         content.addChild(new Spacer(1));
+@@ -51,12 +58,23 @@ export class BranchSummaryMessageComponent extends Box {
+                 theme.fg("dim", keyText("app.tools.expand")) +
+                 theme.fg("customMessageText", " to expand)"), 0, 0));
+         }
+-        this.addChild(new MouseRegion(content, (event) => {
++        const messageFrame = new Box(this.outputPad, 0);
++        messageFrame.addChild(new MarkerColumn(theme.fg("accent", "●"), new MouseRegion(content, (event) => {
+             if (event.type !== "click" || event.button !== "left")
+                 return undefined;
+             this.setExpanded(!this.expanded);
+             return { handled: true };
++        }), {
++            continuationMarker: theme.fg("muted", "│"),
++            footerMarker: theme.fg("muted", "╰────"),
+         }));
++        this.addChild(messageFrame);
++    }
++    render(width) {
++        if (width <= 0)
++            return [];
++        const safeWidth = Math.floor(width);
++        return super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
+     }
+ }
+-//# sourceMappingURL=branch-summary-message.js.map
+\ No newline at end of file
++//# sourceMappingURL=branch-summary-message.js.map
+diff --git a/dist/modes/interactive/components/compaction-summary-message.d.ts b/dist/modes/interactive/components/compaction-summary-message.d.ts
+index 6befa12..4d1311f 100644
+--- a/dist/modes/interactive/components/compaction-summary-message.d.ts
++++ b/dist/modes/interactive/components/compaction-summary-message.d.ts
+@@ -1,14 +1,15 @@
+-import { Box, type MarkdownTheme } from "@earendil-works/pi-tui";
++import { Container, type MarkdownTheme } from "@earendil-works/pi-tui";
+ import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
+ import type { CompactionSummaryMessage } from "../../../core/messages.ts";
+ /**
+  * Component that renders a compaction message with collapsed/expanded state.
+  * Uses same background color as custom messages for visual consistency.
+  */
+-export declare class CompactionSummaryMessageComponent extends Box {
++export declare class CompactionSummaryMessageComponent extends Container {
+     private expanded;
+     private message;
+     private markdownTheme;
++    private outputPad;
+     private markdownTransformers;
+     private messageId?;
+     private timestamp?;
+@@ -17,5 +18,6 @@ export declare class CompactionSummaryMessageComponent extends Box {
+     setOutputPad(outputPad: number): void;
+     invalidate(): void;
+     private updateDisplay;
++    render(width: number): string[];
+ }
+-//# sourceMappingURL=compaction-summary-message.d.ts.map
+\ No newline at end of file
++//# sourceMappingURL=compaction-summary-message.d.ts.map
+diff --git a/dist/modes/interactive/components/compaction-summary-message.js b/dist/modes/interactive/components/compaction-summary-message.js
+index 3902658..a7e40bb 100644
+--- a/dist/modes/interactive/components/compaction-summary-message.js
++++ b/dist/modes/interactive/components/compaction-summary-message.js
+@@ -1,4 +1,4 @@
+-import { Box, Container, Markdown, MouseRegion, Spacer, Text } from "@earendil-works/pi-tui";
++import { Box, Container, MarkerColumn, Markdown, MouseRegion, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
+ import { getMarkdownTheme, theme } from "../theme/theme.js";
+ import { keyText } from "./keybinding-hints.js";
+ import { createMarkdownTransform } from "./markdown-transform.js";
+@@ -6,28 +6,35 @@ import { createMarkdownTransform } from "./markdown-transform.js";
+  * Component that renders a compaction message with collapsed/expanded state.
+  * Uses same background color as custom messages for visual consistency.
+  */
+-export class CompactionSummaryMessageComponent extends Box {
++export class CompactionSummaryMessageComponent extends Container {
+     expanded = false;
+     message;
+     markdownTheme;
++    outputPad;
+     markdownTransformers;
+     messageId;
+     timestamp;
+     constructor(message, markdownTheme = getMarkdownTheme(), outputPad = 1, markdownTransformers = [], messageId, timestamp) {
+-        super(outputPad, 1, (t) => theme.bg("customMessageBg", t));
++        super();
+         this.message = message;
+         this.markdownTheme = markdownTheme;
+         this.markdownTransformers = markdownTransformers;
+         this.messageId = messageId;
+         this.timestamp = timestamp;
++        this.outputPad = outputPad;
+         this.updateDisplay();
+     }
+     setExpanded(expanded) {
+-        this.expanded = expanded;
+-        this.updateDisplay();
++        if (this.expanded !== expanded) {
++            this.expanded = expanded;
++            this.updateDisplay();
++        }
+     }
+     setOutputPad(outputPad) {
+-        this.setPaddingX(outputPad);
++        if (this.outputPad !== outputPad) {
++            this.outputPad = outputPad;
++            this.updateDisplay();
++        }
+     }
+     invalidate() {
+         super.invalidate();
+@@ -35,7 +42,7 @@ export class CompactionSummaryMessageComponent extends Box {
+     }
+     updateDisplay() {
+         this.clear();
+-        const content = new Container();
++        const content = new Box(0, 0, (text) => theme.bg("customMessageBg", text));
+         const tokenStr = this.message.tokensBefore.toLocaleString();
+         const label = theme.fg("customMessageLabel", `\x1b[1m[compaction]\x1b[22m`);
+         content.addChild(new Text(label, 0, 0));
+@@ -52,12 +59,23 @@ export class CompactionSummaryMessageComponent extends Box {
+                 theme.fg("dim", keyText("app.tools.expand")) +
+                 theme.fg("customMessageText", " to expand)"), 0, 0));
+         }
+-        this.addChild(new MouseRegion(content, (event) => {
++        const messageFrame = new Box(this.outputPad, 0);
++        messageFrame.addChild(new MarkerColumn(theme.fg("accent", "●"), new MouseRegion(content, (event) => {
+             if (event.type !== "click" || event.button !== "left")
+                 return undefined;
+             this.setExpanded(!this.expanded);
+             return { handled: true };
++        }), {
++            continuationMarker: theme.fg("muted", "│"),
++            footerMarker: theme.fg("muted", "╰────"),
+         }));
++        this.addChild(messageFrame);
++    }
++    render(width) {
++        if (width <= 0)
++            return [];
++        const safeWidth = Math.floor(width);
++        return super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
+     }
+ }
+-//# sourceMappingURL=compaction-summary-message.js.map
+\ No newline at end of file
++//# sourceMappingURL=compaction-summary-message.js.map
+diff --git a/dist/modes/interactive/components/custom-message.d.ts b/dist/modes/interactive/components/custom-message.d.ts
+index 4e933d2..6bdec71 100644
+--- a/dist/modes/interactive/components/custom-message.d.ts
++++ b/dist/modes/interactive/components/custom-message.d.ts
+@@ -21,5 +21,6 @@ export declare class CustomMessageComponent extends Container {
+     setOutputPad(outputPad: number): void;
+     invalidate(): void;
+     private rebuild;
++    render(width: number): string[];
+ }
+ //# sourceMappingURL=custom-message.d.ts.map
+\ No newline at end of file
+diff --git a/dist/modes/interactive/components/custom-message.js b/dist/modes/interactive/components/custom-message.js
+index 1c120bd..f5772a5 100644
+--- a/dist/modes/interactive/components/custom-message.js
++++ b/dist/modes/interactive/components/custom-message.js
+@@ -1,4 +1,4 @@
+-import { Box, Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
++import { Box, Container, MarkerColumn, Markdown, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
+ import { getMarkdownTheme, theme } from "../theme/theme.js";
+ import { keyHint, keyText } from "./keybinding-hints.js";
+ import { createMarkdownTransform } from "./markdown-transform.js";
+@@ -28,7 +28,7 @@ export class CustomMessageComponent extends Container {
+         this.timestamp = timestamp;
+         this.addChild(new Spacer(1));
+         // Create box with purple background (used for default rendering)
+-        this.box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
++        this.box = new Box(0, 0, (t) => theme.bg("customMessageBg", t));
+         this.rebuild();
+     }
+     setExpanded(expanded) {
+@@ -48,18 +48,14 @@ export class CustomMessageComponent extends Container {
+         this.rebuild();
+     }
+     rebuild() {
+-        // Remove previous content component
+-        if (this.customComponent) {
+-            this.removeChild(this.customComponent);
+-            this.customComponent = undefined;
+-        }
+-        this.removeChild(this.box);
++        this.clear();
++        this.customComponent = undefined;
++        this.addChild(new Spacer(1));
+         // Try custom renderer first - it handles its own styling
+         if (this.customRenderer) {
+             try {
+                 const component = this.customRenderer(this.message, { expanded: this._expanded, outputPad: this.outputPad, keyText, keyHint }, theme);
+                 if (component) {
+-                    // Custom renderer provides its own styled component
+                     this.customComponent = component;
+                     this.addChild(component);
+                     return;
+@@ -70,9 +66,7 @@ export class CustomMessageComponent extends Container {
+             }
+         }
+         // Default rendering uses our box
+-        this.addChild(this.box);
+         this.box.clear();
+-        this.box.setPaddingX(this.outputPad);
+         // Default rendering: label + content
+         const label = theme.fg("customMessageLabel", `\x1b[1m[${this.message.customType}]\x1b[22m`);
+         this.box.addChild(new Text(label, 0, 0));
+@@ -91,6 +85,18 @@ export class CustomMessageComponent extends Container {
+         this.box.addChild(new Markdown(text, 0, 0, this.markdownTheme, { color: (text) => theme.fg("customMessageText", text) }, {
+             transform: createMarkdownTransform("custom", () => false, this.markdownTransformers, this.messageId, this.timestamp),
+         }));
++        const messageFrame = new Box(this.outputPad, 0);
++        messageFrame.addChild(new MarkerColumn(theme.fg("accent", "●"), this.box, {
++            continuationMarker: theme.fg("muted", "│"),
++            footerMarker: theme.fg("muted", "╰────"),
++        }));
++        this.addChild(messageFrame);
++    }
++    render(width) {
++        if (width <= 0)
++            return [];
++        const safeWidth = Math.floor(width);
++        return super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
+     }
+ }
+-//# sourceMappingURL=custom-message.js.map
+\ No newline at end of file
++//# sourceMappingURL=custom-message.js.map
+diff --git a/dist/modes/interactive/components/tool-execution.d.ts b/dist/modes/interactive/components/tool-execution.d.ts
+index 89cf051..b1e0f6c 100644
+--- a/dist/modes/interactive/components/tool-execution.d.ts
++++ b/dist/modes/interactive/components/tool-execution.d.ts
+@@ -1,16 +1,22 @@
+ import { Container, type TUI, type TuiMouseEvent } from "@earendil-works/pi-tui";
++import type { Theme } from "../theme/theme.ts";
+ import type { ToolDefinition, ToolRenderers } from "../../../core/extensions/types.ts";
+ /** What this component needs from a tool: how to draw it, without executing it. */
+ export type { ToolRenderers };
+ export interface ToolExecutionOptions {
+     showImages?: boolean;
++    /** Theme supplied by static export callers; defaults to the active transcript theme. */
++    theme?: Theme;
+     imageWidthCells?: number;
+     outputPad?: number;
+ }
+ export declare class ToolExecutionComponent extends Container {
+     private contentBox;
+-    private contentText;
+-    private contentTextRegion;
++    private sharedContent;
++    private sharedFrame;
++    private pulseTimer;
++    private pulseFrame;
++    private theme;
+     private selfRenderContainer;
+     private selfRenderHeight;
+     private callRendererComponent?;
+@@ -70,10 +76,10 @@ export declare class ToolExecutionComponent extends Container {
+     setShowImages(show: boolean): void;
+     setImageWidthCells(width: number): void;
+     invalidate(): void;
+-    render(width: number): string[];
++    /** Static exports disable scheduled lifecycle animation. */
++    render(width: number, animate?: boolean): string[];
+     handleMouse(event: TuiMouseEvent): ReturnType<Container["handleMouse"]>;
+     private updateDisplay;
+     private getTextOutput;
+-    private formatToolExecution;
+ }
+ //# sourceMappingURL=tool-execution.d.ts.map
+\ No newline at end of file
+diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/interactive/components/tool-execution.js
+index 611416e..ca55efb 100644
+--- a/dist/modes/interactive/components/tool-execution.js
++++ b/dist/modes/interactive/components/tool-execution.js
+@@ -1,13 +1,17 @@
+-import { Box, Container, getCapabilities, Image, MouseRegion, Spacer, Text, } from "@earendil-works/pi-tui";
++import { Box, Container, getCapabilities, Image, MarkerColumn, MouseRegion, Spacer, Text, truncateToWidth, } from "@earendil-works/pi-tui";
+ import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.js";
+ import { ensurePngTranscoder } from "../../../utils/image-convert.js";
+ import { theme } from "../theme/theme.js";
+ import { keyHint, keyText } from "./keybinding-hints.js";
++import { VisualLinePreview } from "./visual-truncate.js";
+ const FALLBACK_PREVIEW_LINES = 10;
+ export class ToolExecutionComponent extends Container {
+     contentBox;
+-    contentText;
+-    contentTextRegion;
++    sharedContent = new Container();
++    sharedFrame;
++    pulseTimer;
++    pulseFrame = 0;
++    theme;
+     selfRenderContainer;
+     selfRenderHeight = 0;
+     callRendererComponent;
+@@ -36,6 +40,7 @@ export class ToolExecutionComponent extends Container {
+     hideComponent = false;
+     constructor(toolName, toolCallId, args, options = {}, toolDefinition, ui, cwd) {
+         super();
++        this.theme = options.theme ?? theme;
+         this.toolName = toolName;
+         this.toolCallId = toolCallId;
+         this.args = args;
+@@ -46,19 +51,17 @@ export class ToolExecutionComponent extends Container {
+         this.ui = ui;
+         this.cwd = cwd;
+         this.addChild(new Spacer(1));
+-        // Always create all shell variants. contentBox is used for default renderer-based composition.
+-        // selfRenderContainer is used when the tool renders its own framing.
+-        // contentText is reserved for generic fallback rendering when no tool definition exists.
+-        this.contentBox = new Box(1, 1, (text) => theme.bg("toolPendingBg", text));
+-        this.contentText = new Text("", 1, 1, (text) => theme.bg("toolPendingBg", text));
+-        this.contentTextRegion = this.createResultRegion(this.contentText);
++        // Ordinary renderers supply content; only self-shell renderers own outer framing.
++        this.contentBox = new Box(this.outputPad, 0);
++        this.sharedFrame = new MarkerColumn("", this.sharedContent, {
++            continuationMarker: this.theme.fg("muted", "│"),
++            onGutterClick: () => {
++                if (this.result) this.setExpanded(!this.expanded);
++            },
++        });
++        this.contentBox.addChild(this.sharedFrame);
+         this.selfRenderContainer = new Container();
+-        if (this.hasRendererDefinition()) {
+-            this.addChild(this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox);
+-        }
+-        else {
+-            this.addChild(this.contentTextRegion);
+-        }
++        this.addChild(this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox);
+         this.updateDisplay();
+     }
+     getCallRenderer() {
+@@ -97,21 +100,19 @@ export class ToolExecutionComponent extends Container {
+         };
+     }
+     createCallFallback() {
+-        return new Text(formatToolCallWithArgs(this.toolName, this.args, theme, this.expanded), 0, 0);
++        return new Text(formatToolCallWithArgs(this.toolName, this.args, this.theme, this.expanded), 0, 0);
+     }
+     createResultFallback() {
+         const output = this.getTextOutput();
+         if (!output) {
+-            return undefined;
++            return new Text(this.theme.fg("muted", "(no output)"), 0, 0);
+         }
+-        const lines = output.split("\n");
+-        const displayLines = this.expanded ? lines : lines.slice(0, FALLBACK_PREVIEW_LINES);
+-        const remaining = lines.length - displayLines.length;
+-        let text = displayLines.map((line) => theme.fg("toolOutput", line)).join("\n");
+-        if (remaining > 0) {
+-            text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+-        }
+-        return new Text(text, 0, 0);
++        const text = output.split("\n").map((line) => this.theme.fg("toolOutput", line)).join("\n");
++        return this.expanded ? new Text(text, 0, 0) : new VisualLinePreview({
++            text,
++            maxVisualLines: FALLBACK_PREVIEW_LINES,
++            formatHint: (hidden) => `${this.theme.fg("muted", `... (${hidden} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${this.theme.fg("muted", ")")}`,
++        });
+     }
+     createResultRegion(component) {
+         return new MouseRegion(component, (event) => {
+@@ -165,10 +166,10 @@ export class ToolExecutionComponent extends Container {
+         super.invalidate();
+         this.updateDisplay();
+     }
+-    render(width) {
++    render(width, animate = true) {
+         if (this.argsPending)
+             this.updateDisplay();
+-        if (this.hideComponent) {
++        if (width <= 0 || this.hideComponent) {
+             return [];
+         }
+         if (this.hasRendererDefinition() && this.getRenderShell() === "self") {
+@@ -194,7 +195,18 @@ export class ToolExecutionComponent extends Container {
+             }
+             return lines;
+         }
+-        return super.render(width);
++        // Schedule from render, not updateDisplay: a detached row gets at most
++        // one unanswered invalidation and cannot keep a pulse timer alive.
++        if (animate && this.isPartial && !this.result?.isError && !this.pulseTimer) {
++            this.pulseTimer = setTimeout(() => {
++                this.pulseTimer = undefined;
++                this.pulseFrame++;
++                this.invalidate();
++                this.ui.requestRender();
++            }, 320);
++            this.pulseTimer.unref?.();
++        }
++        return super.render(width).map((line) => truncateToWidth(line, Math.floor(width), ""));
+     }
+     handleMouse(event) {
+         if (!this.hasRendererDefinition() || this.getRenderShell() !== "self")
+@@ -209,19 +221,24 @@ export class ToolExecutionComponent extends Container {
+     }
+     updateDisplay() {
+         this.argsPending = false;
+-        const bgFn = this.isPartial
+-            ? (text) => theme.bg("toolPendingBg", text)
+-            : this.result?.isError
+-                ? (text) => theme.bg("toolErrorBg", text)
+-                : (text) => theme.bg("toolSuccessBg", text);
+         let hasContent = false;
+         this.hideComponent = false;
+-        if (this.hasRendererDefinition()) {
+-            const renderContainer = this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox;
+-            if (renderContainer instanceof Box) {
+-                renderContainer.setBgFn(bgFn);
+-                renderContainer.setPaddingX(this.outputPad);
+-            }
++        const self = this.getRenderShell() === "self";
++        if ((!this.isPartial || this.result?.isError) && this.pulseTimer) {
++            clearTimeout(this.pulseTimer);
++            this.pulseTimer = undefined;
++        }
++        if (!self) {
++            this.contentBox.setPaddingX(this.outputPad);
++            this.sharedFrame.setMarker(this.result?.isError
++                ? this.theme.fg("error", "✕")
++                : this.isPartial ? this.theme.fg(this.pulseFrame % 2 ? "accent" : "muted", "●") : this.theme.fg("success", "✓"),
++                this.theme.fg("muted", "│"));
++            this.sharedFrame.setFooterMarker(this.result ? this.theme.fg("muted", "╰────") : undefined);
++        }
++        {
++            // self means whole-shell ownership, not pre-styled content.
++            const renderContainer = self ? this.selfRenderContainer : this.sharedContent;
+             renderContainer.clear();
+             const callRenderer = this.getCallRenderer();
+             if (!callRenderer) {
+@@ -230,7 +247,7 @@ export class ToolExecutionComponent extends Container {
+             }
+             else {
+                 try {
+-                    const component = callRenderer(this.args, theme, this.getRenderContext(this.callRendererComponent));
++                    const component = callRenderer(this.args, this.theme, this.getRenderContext(this.callRendererComponent));
+                     this.callRendererComponent = component;
+                     renderContainer.addChild(this.createResultRegion(component));
+                     hasContent = true;
+@@ -252,7 +269,7 @@ export class ToolExecutionComponent extends Container {
+                 }
+                 else {
+                     try {
+-                        const component = resultRenderer({ content: this.result.content, details: this.result.details }, { expanded: this.expanded, isPartial: this.isPartial }, theme, this.getRenderContext(this.resultRendererComponent));
++                        const component = resultRenderer({ content: this.result.content, details: this.result.details }, { expanded: this.expanded, isPartial: this.isPartial }, this.theme, this.getRenderContext(this.resultRendererComponent));
+                         this.resultRendererComponent = component;
+                         renderContainer.addChild(this.createResultRegion(component));
+                         hasContent = true;
+@@ -268,12 +285,6 @@ export class ToolExecutionComponent extends Container {
+                 }
+             }
+         }
+-        else {
+-            this.contentText.setCustomBgFn(bgFn);
+-            this.contentText.setPaddingX(this.outputPad);
+-            this.contentText.setText(this.formatToolExecution());
+-            hasContent = true;
+-        }
+         const previousImages = this.imageComponents;
+         const previousSources = this.imageSources;
+         for (const img of this.imageComponents) {
+@@ -291,7 +302,7 @@ export class ToolExecutionComponent extends Container {
+             for (const img of imageBlocks) {
+                 if (caps.images && this.showImages && img.data && img.mimeType) {
+                     const spacer = new Spacer(1);
+-                    this.addChild(spacer);
++                    (self ? this : this.sharedContent).addChild(spacer);
+                     this.imageSpacers.push(spacer);
+                     const source = { data: img.data, mimeType: img.mimeType, widthCells: this.imageWidthCells };
+                     const index = this.imageComponents.length;
+@@ -300,7 +311,7 @@ export class ToolExecutionComponent extends Container {
+                         previous.mimeType === source.mimeType &&
+                         previous.widthCells === source.widthCells
+                         ? previousImages[index]
+-                        : new Image(source.data, source.mimeType, { fallbackColor: (s) => theme.fg("toolOutput", s) }, { maxWidthCells: source.widthCells });
++                        : new Image(source.data, source.mimeType, { fallbackColor: (s) => this.theme.fg("toolOutput", s) }, { maxWidthCells: source.widthCells });
+                     if (source.mimeType !== "image/png") {
+                         ensurePngTranscoder(() => {
+                             this.invalidate();
+@@ -309,7 +320,8 @@ export class ToolExecutionComponent extends Container {
+                     }
+                     this.imageComponents.push(imageComponent);
+                     this.imageSources.push(source);
+-                    this.addChild(imageComponent);
++                    // Include native image reservations in the shared gutter and footer.
++                    (self ? this : this.sharedContent).addChild(imageComponent);
+                 }
+             }
+         }
+@@ -320,17 +332,5 @@ export class ToolExecutionComponent extends Container {
+     getTextOutput() {
+         return getRenderedTextOutput(this.result, this.showImages);
+     }
+-    formatToolExecution() {
+-        let text = theme.fg("toolTitle", theme.bold(this.toolName));
+-        const content = JSON.stringify(this.args, null, 2);
+-        if (content) {
+-            text += `\n\n${content}`;
+-        }
+-        const output = this.getTextOutput();
+-        if (output) {
+-            text += `\n${output}`;
+-        }
+-        return text;
+-    }
+ }
+ //# sourceMappingURL=tool-execution.js.map
+\ No newline at end of file
+diff --git a/dist/modes/interactive/components/user-message.d.ts b/dist/modes/interactive/components/user-message.d.ts
+index c7617ed..f0c1d54 100644
+--- a/dist/modes/interactive/components/user-message.d.ts
++++ b/dist/modes/interactive/components/user-message.d.ts
+@@ -12,6 +12,7 @@ export declare class UserMessageComponent extends Container {
+     private timestamp?;
+     constructor(text: string, markdownTheme?: MarkdownTheme, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[], messageId?: string, timestamp?: string);
+     setOutputPad(padding: number): void;
++    invalidate(): void;
+     private rebuild;
+     render(width: number): string[];
+ }
+diff --git a/dist/modes/interactive/components/user-message.js b/dist/modes/interactive/components/user-message.js
+index 4f57224..0fab542 100644
+--- a/dist/modes/interactive/components/user-message.js
++++ b/dist/modes/interactive/components/user-message.js
+@@ -1,4 +1,4 @@
+-import { Container, Markdown } from "@earendil-works/pi-tui";
++import { Box, Container, MarkerColumn, Markdown, truncateToWidth } from "@earendil-works/pi-tui";
+ import { getMarkdownTheme, theme } from "../theme/theme.js";
+ import { createMarkdownTransform } from "./markdown-transform.js";
+ const OSC133_ZONE_START = "\x1b]133;A\x07";
+@@ -30,19 +30,27 @@ export class UserMessageComponent extends Container {
+     }
+     rebuild() {
+         this.clear();
+-        // The Markdown pads and colors its own background: a Box around it would keep a second full-width copy of every
+-        // line, with identical output.
+-        this.addChild(new Markdown(this.text, this.outputPad, 1, this.markdownTheme, {
++        const content = new Markdown(this.text, 0, 0, this.markdownTheme, {
+             color: (content) => theme.fg("userMessageText", content),
+             bgColor: (content) => theme.bg("userMessageBg", content),
+         }, {
+             preserveOrderedListMarkers: true,
+             preserveBackslashEscapes: true,
+             transform: createMarkdownTransform("user", () => false, this.markdownTransformers, this.messageId, this.timestamp),
+-        }));
++        });
++        const messageFrame = new Box(this.outputPad, 0);
++        messageFrame.addChild(new MarkerColumn(theme.fg("accent", "●"), content));
++        this.addChild(messageFrame);
++    }
++    invalidate() {
++        super.invalidate();
++        this.rebuild();
+     }
+     render(width) {
+-        const lines = super.render(width);
++        if (width <= 0)
++            return [];
++        const safeWidth = Math.floor(width);
++        const lines = super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
+         if (lines.length === 0) {
+             return lines;
+         }
+@@ -51,4 +59,4 @@ export class UserMessageComponent extends Container {
+         return lines;
+     }
+ }
+-//# sourceMappingURL=user-message.js.map
+\ No newline at end of file
++//# sourceMappingURL=user-message.js.map
+diff --git a/dist/modes/interactive/components/visual-truncate.d.ts b/dist/modes/interactive/components/visual-truncate.d.ts
+index 2cba1fe..0cc8eff 100644
+--- a/dist/modes/interactive/components/visual-truncate.d.ts
++++ b/dist/modes/interactive/components/visual-truncate.d.ts
+@@ -19,16 +19,16 @@ export interface VisualTruncateResult {
+  * @param paddingX - Horizontal padding for Text component (default 0).
+  *                   Use 0 when result will be placed in a Box (Box adds its own padding).
+  *                   Use 1 when result will be placed in a plain Container.
+- * @param keep - Which visual lines to keep: the last ones (default) or the first ones.
++ * @param keep - Keep both ends (default), or explicitly keep only the start or end.
+  * @returns The truncated visual lines and count of skipped lines
+  */
+-export declare function truncateToVisualLines(text: string, maxVisualLines: number, width: number, paddingX?: number, keep?: "start" | "end"): VisualTruncateResult;
++export declare function truncateToVisualLines(text: string, maxVisualLines: number, width: number, paddingX?: number, keep?: "middle" | "start" | "end"): VisualTruncateResult;
+ export interface VisualLinePreviewOptions {
+     /** Styled text; may contain newlines. */
+     text: string;
+     maxVisualLines: number;
+-    /** Which visual lines to keep. The hint goes before kept end lines and after kept start lines. */
+-    keep: "start" | "end";
++    /** Defaults to both ends, with the hint at the omission point. Explicit start/end remain available. */
++    keep?: "middle" | "start" | "end";
+     /** Styled hint line for the given number of hidden visual lines. */
+     formatHint: (hidden: number) => string;
+ }
+diff --git a/dist/modes/interactive/components/visual-truncate.js b/dist/modes/interactive/components/visual-truncate.js
+index c5212e7..7324270 100644
+--- a/dist/modes/interactive/components/visual-truncate.js
++++ b/dist/modes/interactive/components/visual-truncate.js
+@@ -13,21 +13,27 @@ import { Text, truncateToWidth } from "@earendil-works/pi-tui";
+  * @param paddingX - Horizontal padding for Text component (default 0).
+  *                   Use 0 when result will be placed in a Box (Box adds its own padding).
+  *                   Use 1 when result will be placed in a plain Container.
+- * @param keep - Which visual lines to keep: the last ones (default) or the first ones.
++ * @param keep - Keep both ends (default), or explicitly keep only the start or end.
+  * @returns The truncated visual lines and count of skipped lines
+  */
+-export function truncateToVisualLines(text, maxVisualLines, width, paddingX = 0, keep = "end") {
++export function truncateToVisualLines(text, maxVisualLines, width, paddingX = 0, keep = "middle") {
+     if (!text) {
+         return { visualLines: [], skippedCount: 0 };
+     }
+     // Create a temporary Text component to render and get visual lines
+     const tempText = new Text(text, paddingX, 0);
+-    const allVisualLines = tempText.render(width);
++    const allVisualLines = tempText.render(width).map((line) => truncateToWidth(line, width, ""));
+     if (allVisualLines.length <= maxVisualLines) {
+         return { visualLines: allVisualLines, skippedCount: 0 };
+     }
+-    const truncatedLines = keep === "start" ? allVisualLines.slice(0, maxVisualLines) : allVisualLines.slice(-maxVisualLines);
+-    const skippedCount = allVisualLines.length - maxVisualLines;
++    // Zero must not become slice(-0), which would expose the entire output.
++    const budget = Math.max(0, Math.floor(maxVisualLines));
++    const head = Math.floor(budget / 2);
++    const tail = budget - head;
++    const truncatedLines = budget === 0 ? [] : keep === "start" ? allVisualLines.slice(0, budget)
++        : keep === "end" ? allVisualLines.slice(-budget)
++        : [...allVisualLines.slice(0, head), ...allVisualLines.slice(-tail)];
++    const skippedCount = allVisualLines.length - budget;
+     return { visualLines: truncatedLines, skippedCount };
+ }
+ /**
+@@ -44,12 +50,13 @@ export class VisualLinePreview {
+     }
+     render(width) {
+         if (this.cachedLines === undefined || this.cachedWidth !== width) {
+-            const { text, maxVisualLines, keep, formatHint } = this.options;
++            const { text, maxVisualLines, keep = "middle", formatHint } = this.options;
+             const preview = truncateToVisualLines(text, maxVisualLines, width, 0, keep);
+             const lines = preview.visualLines;
+             if (preview.skippedCount > 0) {
+-                const hint = truncateToWidth(formatHint(preview.skippedCount), width, "...");
+-                this.cachedLines = keep === "start" ? [...lines, hint] : [hint, ...lines];
++                const hint = truncateToWidth(formatHint(preview.skippedCount), width, width < 3 ? "…" : "...");
++                const split = keep === "start" ? lines.length : keep === "end" ? 0 : Math.floor(lines.length / 2);
++                this.cachedLines = [...lines.slice(0, split), hint, ...lines.slice(split)];
+             }
+             else {
+                 this.cachedLines = lines;
+diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive/interactive-mode.js
+index d4e4b09..868cf83 100644
+--- a/dist/modes/interactive/interactive-mode.js
++++ b/dist/modes/interactive/interactive-mode.js
+@@ -3644,7 +3644,16 @@ export class InteractiveMode {
+         await this.runtimeHost.dispose();
+         const resumeCommand = formatResumeCommand(this.sessionManager);
+         if (resumeCommand) {
+-            process.stdout.write(`${chalk.dim("To resume this session:")} ${resumeCommand}\n`);
++            const cwd = this.sessionManager.getCwd();
++            const home = os.homedir();
++            const directory = cwd === home ? "~" : cwd.startsWith(`${home}${path.sep}`) ? `~${cwd.slice(home.length)}` : cwd;
++            const title = this.sessionManager.getSessionName() || "untitled session";
++            const width = process.stdout.columns || 80;
++            const banner = [`${APP_NAME} · ${title}`, `  ${directory}`].map((line) =>
++                TuiLayouts.truncateToWidth(TuiLayouts.stripTerminalSequences(line).replace(/[\x00-\x1f\x7f-\x9f]/g, " "), width)
++            ).join("\n");
++            // Keep the executable resume command separate from display-only metadata.
++            process.stdout.write(`\n${banner}\n\n${resumeCommand}\n`);
+         }
+         process.exit(0);
+     }
+diff --git a/package.json b/package.json
+index eb98197..01aead0 100644
+--- a/package.json
++++ b/package.json
+@@ -7,7 +7,7 @@
+ 		"configDir": ".pi"
+ 	},
+ 	"bin": {
+-		"pi": "dist/bundle/cli.js"
++		"pi": "dist/cli.js"
+ 	},
+ 	"main": "./dist/index.js",
+ 	"types": "./dist/index.d.ts",

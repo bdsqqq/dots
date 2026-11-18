@@ -42,24 +42,24 @@
     "check": "pnpm run format:check && pnpm run lint && pnpm run typecheck:checks && pnpm run test"
   },
   "dependencies": {
-    "defuddle": "^0.19.5",
+    "defuddle": "^0.19.6",
     "diff": "^9.0.0",
-    "evlog": "^2.33.1",
+    "evlog": "^2.35.1",
     "jiti": "^2.7.0",
-    "linkedom": "^0.18.13"
+    "linkedom": "^0.18.15"
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "catalog:",
     "@earendil-works/pi-coding-agent": "catalog:",
     "@earendil-works/pi-tui": "catalog:",
-    "@types/node": "^26.6.5",
-    "oxfmt": "^0.73.0",
-    "oxlint": "^1.88.0",
-    "oxlint-tsgolint": "^7.0.2004",
-    "tsdown": "^0.23.1",
+    "@types/node": "^26.6.6",
+    "oxfmt": "^0.79.0",
+    "oxlint": "^1.94.0",
+    "oxlint-tsgolint": "^7.0.2007",
+    "tsdown": "^0.23.7",
     "typebox": "catalog:",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "catalog:",

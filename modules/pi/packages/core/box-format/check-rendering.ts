@@ -763,7 +763,7 @@ async function runSampler({
     "node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/tool-execution.js",
     "node_modules/@earendil-works/pi-coding-agent/dist/extensions/codemode/renderer.js",
     "node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/visual-truncate.js",
-    "patches/pi-coding-agent-1.4.0.patch",
+    "patches/pi-coding-agent-1.5.2.patch",
     "node_modules/@earendil-works/pi-tui/package.json",
     "node_modules/@earendil-works/pi-tui/dist/tui.js",
   );
@@ -867,11 +867,11 @@ async function runSampler({
       await delay(40);
     }
   };
-  const evidenceFor = (
+  const findEvidence = (
     index: number,
     width: number,
     expanded = true,
-  ): RenderEvidence => {
+  ): RenderEvidence | undefined => {
     const renders = readFileSync(plan.renders, "utf8")
       .trim()
       .split("\n")
@@ -885,10 +885,7 @@ async function runSampler({
     );
     const call = relevant.findLast((e) => e.phase === "call");
     const result = relevant.findLast((e) => e.phase === "result");
-    assert.ok(
-      call && result,
-      `missing production render boundaries for ${index}/${width}`,
-    );
+    if (!call || !result) return undefined;
     return {
       callLines: call.lines,
       resultLines: result.lines,
@@ -896,6 +893,14 @@ async function runSampler({
         ["write", "edit-preview"].includes(states[index].id) &&
         result.lines.length === 0,
     };
+  };
+  const evidenceFor = (index: number, width: number): RenderEvidence => {
+    const evidence = findEvidence(index, width);
+    assert.ok(
+      evidence,
+      `missing production render boundaries for ${index}/${width}`,
+    );
+    return evidence;
   };
   const capture = (id: string) => {
     const text = tmux("capture-pane", "-p", "-J", "-S", "-", "-t", "sampler");
@@ -969,12 +974,22 @@ async function runSampler({
           "160",
         );
         await delay(160);
-        const collapsed = capture(`${index}-${width}-collapsed`);
+        if (s.calls)
+          await wait(
+            () => findEvidence(index, width, false) !== undefined,
+            `collapsed render for ${s.id}/${width}`,
+          );
         const collapsedEvidence = s.calls
-          ? evidenceFor(index, width, false)
+          ? findEvidence(index, width, false)
           : undefined;
+        const collapsed = capture(`${index}-${width}-collapsed`);
         tmux("send-keys", "-t", "sampler", "C-o");
         await delay(160);
+        if (s.calls)
+          await wait(
+            () => findEvidence(index, width) !== undefined,
+            `expanded render for ${s.id}/${width}`,
+          );
         const expanded = capture(`${index}-${width}-expanded`);
         tmux("send-keys", "-t", "sampler", "C-o");
         await delay(160);
