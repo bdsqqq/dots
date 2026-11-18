@@ -48,6 +48,11 @@ creation_rules:
           - *user_bdsqqq
           - *host_htz_relay
           - *host_lgo_z2e
+  - path_regex: ^modules/samba/secrets\.yaml$
+    key_groups:
+      - age:
+          - *user_bdsqqq
+          - *host_htz_relay
   - path_regex: ^modules/amp/secrets\.yaml$
     key_groups:
       - age:
