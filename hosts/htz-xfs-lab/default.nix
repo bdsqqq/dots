@@ -79,10 +79,8 @@ in
     ../../modules/direnv
     ../../modules/tmux
     ../../modules/agents
-    ../../modules/gog
     ../../modules/wacli
     ../../modules/goplaces
-    ../../modules/annas-archive
     ../../modules/openhue
     ../../modules/xurl
     ../../modules/weather
@@ -101,14 +99,6 @@ in
   my.primaryUser = "bdsqqq";
   my.paths.commonplace = "/home/bdsqqq/commonplace";
   my.t3Code.nativeService.enable = true;
-
-  my.gog = {
-    enable = true;
-    account = "igorbedesqui@gmail.com";
-    client = "amp-gcloud-cli";
-    services = [ "gmail" "calendar" ];
-    keyringBackend = "file";
-  };
 
   sops = {
     age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];

@@ -76,8 +76,9 @@ there are two different things to preserve:
 
 - **static prerequisites:** SOPS owns the desktop client JSON and file-keyring
   password. `secrets.yaml` is encrypted only to the personal owner and
-  `htz-xfs-lab`, the selected runner. do not rotate the
-  keyring password underneath an existing encrypted keyring.
+  the legacy `htz-xfs-lab` recipient. that host no longer imports this module;
+  retaining an encryption recipient does not configure a runner. do not rotate
+  the keyring password underneath an existing encrypted keyring.
 - **native mutable authorization:** `gog` owns refresh tokens and its encrypted
   keyring on the runner. keep the configured user's home on persistent disk;
   for containers, mount that home (or all selected XDG config/data/state/cache

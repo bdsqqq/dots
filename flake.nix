@@ -367,8 +367,6 @@
                 "axiom/personal_token"
                 "axiom/personal_url"
                 "gh_token"
-                "gog_keyring_password"
-                "gog_oauth_client"
                 "hf_token"
                 "parallel_api_key"
                 "rex_netrc"
