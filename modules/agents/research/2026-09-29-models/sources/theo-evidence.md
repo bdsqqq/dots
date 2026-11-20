@@ -70,7 +70,7 @@ reused normalization and timestamp functions from the september 28 acquisition s
 | pacing | 765 / 5,304 | 0–1648 seconds | 1649 seconds | 4.081 seconds |
 
 - sol raw sha256: `c0db1df5e18f6f882f19c903b9d85622204e8a543ef19eaf4425b2ef1e1e5d74`.
-- sol metadata sha256: `844e8541983423a9f0dead12842f9b48ef1b7d3c2fed3116280343587d542ce5`.
+- sol metadata sha256: `8983c8b10b20281a974edb90d66a2dc2be75c44d7a09974a04c3dec2abeb343c`.
 - both new artifact checks passed. isolated temporary-copy corruption of raw captions was rejected.
 - `python3 -B modules/agents/research/2026-09-28/verify.py` passed: 15 existing caption hashes/reading copies, 109,809 words, 74 local links.
 - coverage checks establish preservation of the supplied caption event stream, not that every spoken word was captioned. no audio accuracy, vendor pricing, model performance, or live harness claims were independently verified.
