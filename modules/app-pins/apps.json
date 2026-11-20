@@ -1,0 +1,38 @@
+{
+  "rex": {
+    "bundle": "/Applications/Rex.app",
+    "bundleId": "com.superlogical.rex",
+    "pin": "modules/rex/app-pin.json",
+    "compare": "build",
+    "feed": { "kind": "sparkle", "url": "https://blob.superlogical.com/public/rex-app/snapshot-arm64/appcast.xml" },
+    "linuxRelease": "modules/rex/release.json"
+  },
+  "helium": {
+    "bundle": "/Applications/Helium.app",
+    "bundleId": "net.imput.helium",
+    "pin": "modules/helium/app-pin.json",
+    "compare": "short",
+    "feed": {
+      "kind": "github",
+      "repo": "imputnet/helium-macos",
+      "tag": "{version}",
+      "asset": "helium_{version}_arm64-macos.dmg",
+      "linux": {
+        "repo": "imputnet/helium-linux",
+        "assets": { "x64": "helium-{version}-x86_64.AppImage", "arm64": "helium-{version}-arm64.AppImage" }
+      }
+    }
+  },
+  "t3-code": {
+    "bundle": "/Applications/T3 Code (Nightly).app",
+    "bundleId": "com.t3tools.t3code",
+    "pin": "modules/t3-code/app-pin.json",
+    "compare": "short",
+    "feed": {
+      "kind": "github",
+      "repo": "pingdotgg/t3code",
+      "tag": "v{version}",
+      "asset": "T3-Code-{version}-arm64.zip"
+    }
+  }
+}

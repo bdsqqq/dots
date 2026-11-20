@@ -21,6 +21,7 @@ in
     ../../modules/tailscale
     ../../modules/tailnet-registry
     ../../modules/t3-code
+    ../../modules/app-pins
     ../../modules/secrets
     ../../modules/fonts
     ../../modules/homebrew
@@ -99,6 +100,14 @@ in
     wifiServiceName = "iPad";
   };
   my.kanata.tcpPort = 5829;
+  # self-updating apps record their own updates into tracked pins.
+  my.appPins.apps = [ "rex" "helium" "t3-code" ];
+  # Helium ships with Sparkle checks off; update it like the other pinned apps.
+  system.defaults.CustomUserPreferences."net.imput.helium" = {
+    SUEnableAutomaticChecks = true;
+    SUAutomaticallyUpdate = true;
+  };
+
   my.heliumRemotes = {
     enable = true;
     tabsExtension.enable = true;
