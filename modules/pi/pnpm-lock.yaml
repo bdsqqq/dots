@@ -204,13 +204,16 @@ catalogs:
 
 patchedDependencies:
   '@earendil-works/pi-ai@1.5.2': b27ad553592a0f7add904d61dbcaf90188d6f15f0870b1416acb9e1fe7961c8f
-  '@earendil-works/pi-coding-agent@1.5.2': 4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66
+  '@earendil-works/pi-coding-agent@1.5.2': 57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3
   '@earendil-works/pi-tui@1.5.2': 45d9c6143cc4066c4ea3873a23c42421dc55fabc735124b51f7bd827c6d1d176
 
 importers:
 
   .:
     dependencies:
+      '@earendil-works/pi-telemetry':
+        specifier: 1.5.2
+        version: 1.5.2
       defuddle:
         specifier: ^0.19.6
         version: 0.19.6
@@ -232,7 +235,7 @@ importers:
         version: 1.5.2(patch_hash=b27ad553592a0f7add904d61dbcaf90188d6f15f0870b1416acb9e1fe7961c8f)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(undici@8.12.3)(ws@8.23.0)
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.5.2(patch_hash=45d9c6143cc4066c4ea3873a23c42421dc55fabc735124b51f7bd827c6d1d176)
@@ -272,7 +275,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
 
   packages/core/box-chrome:
     devDependencies:
@@ -294,7 +297,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
       vitest:
         specifier: ^5.1.0
         version: 5.1.0(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.0))
@@ -379,7 +382,7 @@ importers:
         version: link:../interpolate
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
     devDependencies:
       '@earendil-works/pi-ai':
         specifier: 'catalog:'
@@ -396,7 +399,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
 
   packages/core/sessions: {}
 
@@ -458,7 +461,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
       vitest:
         specifier: ^5.1.0
         version: 5.1.0(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.0))
@@ -495,7 +498,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
       vitest:
         specifier: ^5.1.0
         version: 5.1.0(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.0))
@@ -520,7 +523,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.5.2(patch_hash=45d9c6143cc4066c4ea3873a23c42421dc55fabc735124b51f7bd827c6d1d176)
@@ -551,7 +554,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.5.2(patch_hash=45d9c6143cc4066c4ea3873a23c42421dc55fabc735124b51f7bd827c6d1d176)
@@ -566,7 +569,7 @@ importers:
         version: 1.5.2(patch_hash=b27ad553592a0f7add904d61dbcaf90188d6f15f0870b1416acb9e1fe7961c8f)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(undici@8.12.3)(ws@8.23.0)
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.5.2(patch_hash=45d9c6143cc4066c4ea3873a23c42421dc55fabc735124b51f7bd827c6d1d176)
@@ -591,7 +594,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.5.2(patch_hash=45d9c6143cc4066c4ea3873a23c42421dc55fabc735124b51f7bd827c6d1d176)
@@ -607,7 +610,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
 
   packages/extensions/github:
     dependencies:
@@ -626,7 +629,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.5.2(patch_hash=45d9c6143cc4066c4ea3873a23c42421dc55fabc735124b51f7bd827c6d1d176)
@@ -651,7 +654,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.5.2(patch_hash=45d9c6143cc4066c4ea3873a23c42421dc55fabc735124b51f7bd827c6d1d176)
@@ -679,7 +682,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.5.2(patch_hash=45d9c6143cc4066c4ea3873a23c42421dc55fabc735124b51f7bd827c6d1d176)
@@ -707,7 +710,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.5.2(patch_hash=45d9c6143cc4066c4ea3873a23c42421dc55fabc735124b51f7bd827c6d1d176)
@@ -738,7 +741,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.5.2(patch_hash=45d9c6143cc4066c4ea3873a23c42421dc55fabc735124b51f7bd827c6d1d176)
@@ -769,7 +772,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.5.2(patch_hash=45d9c6143cc4066c4ea3873a23c42421dc55fabc735124b51f7bd827c6d1d176)
@@ -806,7 +809,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
 
   packages/extensions/session-recap:
     dependencies:
@@ -825,13 +828,13 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
 
   packages/extensions/session-settlement:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
 
   packages/extensions/skill:
     dependencies:
@@ -847,7 +850,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.5.2(patch_hash=45d9c6143cc4066c4ea3873a23c42421dc55fabc735124b51f7bd827c6d1d176)
@@ -869,7 +872,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
 
   packages/extensions/web-search:
     dependencies:
@@ -891,7 +894,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.5.2(patch_hash=45d9c6143cc4066c4ea3873a23c42421dc55fabc735124b51f7bd827c6d1d176)
@@ -903,7 +906,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
+        version: 1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.5.2(patch_hash=45d9c6143cc4066c4ea3873a23c42421dc55fabc735124b51f7bd827c6d1d176)
@@ -2943,7 +2946,7 @@ snapshots:
     dependencies:
       quickjs-wasi: 3.6.2
 
-  '@earendil-works/pi-coding-agent@1.5.2(patch_hash=4882e55479361f72e514e73b2920c1d230619f8b4640d54d3620c2c6303d6f66)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)':
+  '@earendil-works/pi-coding-agent@1.5.2(patch_hash=57cc165168c0338f72e303fc433f0f9a715fc7ebbe1a7126acfb868172bd1ad3)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)':
     dependencies:
       '@earendil-works/pi-agent-core': 1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(undici@8.12.3)(ws@8.23.0)
       '@earendil-works/pi-ai': 1.5.2(patch_hash=b27ad553592a0f7add904d61dbcaf90188d6f15f0870b1416acb9e1fe7961c8f)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(undici@8.12.3)(ws@8.23.0)

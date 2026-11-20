@@ -26,6 +26,7 @@ import type {
 } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { interpolatePromptVars } from "@bds_pi/interpolate";
+import { SPAWN_TRACE_ENV, spawnTraceBootstrap } from "./trace";
 
 // --- types ---
 
@@ -640,6 +641,12 @@ export async function piSpawn(config: PiSpawnConfig): Promise<PiSpawnResult> {
   };
 
   if (sessionRouting.unsupported) return result;
+
+  // Never accidentally forward this process's bootstrap to an unrelated child.
+  spawnEnv[SPAWN_TRACE_ENV] = spawnTraceBootstrap(
+    inferredOwner,
+    result.session?.sessionId,
+  );
 
   try {
     if (config.systemPromptBody?.trim()) {
