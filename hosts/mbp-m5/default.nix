@@ -19,6 +19,8 @@ in
     ../../modules/ssh
     ../../modules/ssh/authorized-keys.nix
     ../../modules/tailscale
+    ../../modules/tailnet-registry
+    ../../modules/t3-code
     ../../modules/secrets
     ../../modules/fonts
     ../../modules/homebrew

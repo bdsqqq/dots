@@ -91,6 +91,7 @@ in
     ../../modules/go
     ../../modules/fairy-name
     ../../modules/pi
+    ../../modules/t3-code
     ../../modules/t3-code/server.nix
   ];
 

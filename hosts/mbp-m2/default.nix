@@ -74,6 +74,7 @@ in
     ../../modules/fairy-name
     ../../modules/pi
     ../../modules/t3-code/native-credentials.nix
+    ../../modules/t3-code
     ../../modules/e-ink-glass
     ../../modules/ghostty
     ../../modules/rex
