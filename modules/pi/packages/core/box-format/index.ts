@@ -1190,7 +1190,8 @@ if (import.meta.vitest) {
         );
         const shippedPatch = spawnSync(
           "git",
-          ["show", "d92475f6:modules/pi/patches/pi-coding-agent-1.3.0.patch"],
+          // blob ids are content-addressed, so they survive history rewrites.
+          ["cat-file", "blob", "903eb0355670c75a10a32983bf798670d468e8af"],
           { encoding: "utf8" },
         );
         expect(shippedPatch.status).toBe(0);
@@ -1249,7 +1250,7 @@ if (import.meta.vitest) {
         ).toBe(0);
         const shipped = spawnSync(
           "git",
-          ["show", "58c8fd1a:modules/pi/patches/pi-coding-agent-1.3.0.patch"],
+          ["cat-file", "blob", "015332598d8d5555baf20a4df214d5f6e1a9ebc9"],
           { encoding: "utf8" },
         );
         expect(shipped.status).toBe(0);

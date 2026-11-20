@@ -24,6 +24,7 @@ in
     ../../modules/tailnet-registry
     ../../modules/hue-control
     ../../modules/cloudflare/credential.nix
+    ../../modules/mymind/credential.nix
     ../../modules/secrets
     ../../modules/fonts
     ../../modules/nix/auto-upgrade.nix
@@ -100,6 +101,9 @@ in
   };
   my.t3Code.credentialSync.enable = true;
   my.cloudflare.credential.required = true;
+  # its secrets file is encrypted only to the key mbp-m2 shares with the user;
+  # other hosts keep the pi extension's decrypt-on-demand fallback.
+  my.mymind.credential.required = true;
   my.annasArchive.enable = true;
   my.depot = {
     organizationId = "jh98292fq5";

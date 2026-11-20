@@ -27,8 +27,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    nixos-hardware.url = "github:NixOS/nixos-hardware/master";
-
     nix-flatpak.url = "github:gmodena/nix-flatpak";
 
     # Vicinae launcher (no nixpkgs.follows to preserve cachix cache hits)
@@ -69,16 +67,6 @@
     hunk = {
       url = "github:modem-dev/hunk";
       inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    axiom-skills = {
-      url = "github:axiomhq/skills";
-      flake = false;
-    };
-
-    agent-browser = {
-      url = "github:vercel-labs/agent-browser";
-      flake = false;
     };
 
   };
@@ -285,6 +273,8 @@
                 "depot_org_token"
                 "gh_token"
                 "hf_token"
+                "mymind_keyid"
+                "mymind_privatekey"
                 "parallel_api_key"
                 "restic_ssd_01_password"
                 "rex_netrc"
