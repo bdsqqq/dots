@@ -285,6 +285,8 @@
                 "depot_org_token"
                 "gh_token"
                 "hf_token"
+                "mymind_keyid"
+                "mymind_privatekey"
                 "parallel_api_key"
                 "restic_ssd_01_password"
                 "rex_netrc"
