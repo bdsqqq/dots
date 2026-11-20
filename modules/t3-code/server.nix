@@ -11,7 +11,6 @@ let
   toolsDir = "${config.my.paths.commonplace}/01_files/nix/modules/node-pnpm";
   toolsBin = "${toolsDir}/node_modules/.bin";
   developmentServer = "${config.users.users.bdsqqq.home}/.local/share/t3-pi/dist/bin.mjs";
-  tailscaleServePort = if isDarwin then 8443 else 443;
   nativeRuntimePackages =
     if hostSystem == "aarch64-darwin" then
       [
@@ -228,17 +227,6 @@ in
     (
       if isLinux then
         {
-          my.tailnetRegistry.services.t3-code = {
-            title = "t3 code";
-            description = "remote coding workspace";
-            target = "http://127.0.0.1:3773";
-            scheme = "https";
-            port = tailscaleServePort;
-            healthPath = "/.well-known/t3/environment";
-            audience = "owner";
-            adoptExisting = true;
-          };
-
           environment.systemPackages = lib.optionals (!nativeService) [
             t3Fork
             t3PiDeploy
@@ -316,17 +304,6 @@ in
         }
       else if isDarwin then
         {
-          my.tailnetRegistry.services.t3-code = {
-            title = "t3 code";
-            description = "remote coding workspace";
-            target = "http://127.0.0.1:3773";
-            scheme = "https";
-            port = tailscaleServePort;
-            healthPath = "/.well-known/t3/environment";
-            audience = "owner";
-            adoptExisting = true;
-          };
-
           environment.systemPackages = [
             t3Fork
             t3PiDeploy

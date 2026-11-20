@@ -89,6 +89,7 @@ in
     ../../modules/tailscale/private-ingress.nix
     ../../modules/rex
     ../../modules/tailnet-registry
+    ../../modules/t3-code
     ../../modules/secrets
     ../../modules/fonts
     ../../modules/nix/auto-upgrade.nix

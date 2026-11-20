@@ -19,6 +19,7 @@ in
     ../../modules/homebrew/best-effort.nix
     ../../modules/tailscale
     ../../modules/tailnet-registry
+    ../../modules/t3-code
     ../../modules/syncthing
     ../../modules/terraria-sync
     ../../modules/sleepless
