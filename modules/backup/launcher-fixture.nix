@@ -56,7 +56,7 @@ let
         home.stateVersion = "24.11";
         systemd.user.systemctlPath = "${root}/bin/systemctl";
         home.extraActivationPath = lib.mkIf omitActivationTools (lib.mkForce [ ]);
-        launchd.agents.backup-health = lib.mkIf pkgs.stdenv.isDarwin {
+        launchd.agents.backup-health = lib.mkIf pkgs.stdenv.hostPlatform.isDarwin {
           domain = "user";
           config.Label = "org.nix-community.home.backup-fixture";
         };
@@ -71,7 +71,7 @@ let
     # Use the consumer's actual PATH and check dependencies BEFORE substituting
     # service mocks. Otherwise the fixture can hide undeclared activation tools.
     source ${environment}
-    ${lib.optionalString (!probeSystemd && pkgs.stdenv.isDarwin) ''
+    ${lib.optionalString (!probeSystemd && pkgs.stdenv.hostPlatform.isDarwin) ''
       command -v launchctl >/dev/null
       command -v sw_vers >/dev/null
       command -v awk >/dev/null
@@ -101,7 +101,7 @@ pkgs.runCommand "backup-launcher-fixture" { } ''
   mkdir -p "$out/bin"
   ln -s ${evaluated.my.backup.package}/bin/backup-health-server "$out/bin/"
   ln -s ${activation}/bin/backup-fixture-activation "$out/bin/"
-  ${lib.optionalString (probeSystemd || pkgs.stdenv.isLinux) ''
+  ${lib.optionalString (probeSystemd || pkgs.stdenv.hostPlatform.isLinux) ''
     ln -s ${start}/bin/backup-fixture-start "$out/bin/"
   ''}
   ln -s ${home.activationPackage} "$out/home-activation"
