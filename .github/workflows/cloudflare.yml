@@ -37,14 +37,14 @@ jobs:
       TF_VAR_owner_email: ${{ secrets.CLOUDFLARE_OWNER_EMAIL }}
       TF_VAR_state_passphrase: ${{ secrets.TOFU_STATE_PASSPHRASE }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
         with:
           tofu_version: 1.12.3
           tofu_wrapper: false
 
-      - uses: DeterminateSystems/nix-installer-action@c5a866b6ab867e88becbed4467b93592bce69f8a # v21
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
 
       - name: Install secret tooling
         run: nix profile install nixpkgs#sops nixpkgs#jq
