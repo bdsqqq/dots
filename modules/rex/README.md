@@ -6,20 +6,11 @@ installing it; hosts never independently chase the moving upstream channel.
 
 ## publisher
 
-[app-pins](../app-pins/README.md) watches `/Applications/Rex.app` on each mac.
-when Sparkle replaces the bundle, it records the app build in `app-pin.json`
-and reads the CLI commit from that build's signed appcast notes
-("Rex … (`<commit>`)"). it then fetches that exact commit's linux archives
-from `api/releases/rex/snapshot?commit=…` and advances `release.json` only when
-the build is newer. both pins land on `main` as one signed
-`bump rex (auto-committed from <host>)` commit; see app-pins for how it is
-published without touching the checkout.
-
-`release.json` records version, upstream commit, and canonical archive URLs and
-hashes for both linux architectures. `flake.lock` still pins upstream's nix
-module, terminfo, ssh fallback, and bootstrap archive; it is not the runtime
-release authority. the former 15-minute Depot CI publisher is retired: it
-committed whatever upstream published, whether or not anyone ran it.
+the linux pin, `release.json`, follows the CLI build bundled in the Rex.app that a
+mac accepted, not the upstream channel head. [app-pins](../app-pins/README.md)
+publishes it as a side effect of recording the app; see that README for why.
+`flake.lock` still pins upstream's nix module, terminfo, ssh fallback and
+bootstrap archive, but it is not the runtime release authority.
 
 ## host apply
 
@@ -53,9 +44,6 @@ not proof that every existing account server is already on the new version.
 ## observe and catch up
 
 ```bash
-# record the installed Rex.app (and its CLI) on a mac
-node modules/app-pins/cli.ts record --repo "$PWD" rex
-
 # on each activated linux host
 sudo systemctl start rex-update.service
 sudo /run/current-system/sw/bin/rex-update --status

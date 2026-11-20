@@ -1,14 +1,4 @@
-/**
- * the one command line for app-pins. it parses argv, runs one operation per app, emits
- * one context-rich event per operation, and maps outcomes to an exit status. the
- * operations themselves live in pins.ts (record, install) and publish.ts (publish).
- *
- *   cli.ts record  --repo DIR [APP...]
- *   cli.ts install --repo DIR [APP...]
- *   cli.ts publish --remote URL --host NAME [--cache-dir DIR] [--notify] [APP...]
- *
- * no APP means every app in apps.json. unknown apps and flags fail before any work.
- */
+/** the only argv adapter: operations stay free of argv, events and exit codes. */
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -85,7 +75,7 @@ async function publishOne(command: Extract<Command, { op: "publish" }>, app: App
   };
 }
 
-/** returns the exit status; one event per app, success or not. */
+/** one event per app, even when it fails, so a run is reconstructable from the log alone. */
 export async function main(argv: string[], deps: Deps = nativeDeps, log = createEventLogger("app-pins"),
     catalog: Record<string, App> = loadApps()): Promise<number> {
   let command: Command;

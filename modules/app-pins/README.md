@@ -1,105 +1,67 @@
 # app-pins
 
-self-updating mac apps keep their own updaters. this module makes those
-updates reproducible: the mac that ran an update records it into a tracked pin,
-and the next activation anywhere converges on it. same contract as pnpm
-globals: nix kickstarts, updates happen outside the store, and the working tree
-is the source of truth.
+some mac apps update themselves, which normally makes them invisible to nix.
+nix either fights the updater or loses track of the version. here the app
+stays in charge of updating, and the repo records what it actually installed.
+same contract as pnpm globals: nix kickstarts, updates happen outside the
+store, and git carries the result to every other host.
 
-| app | updater | pin | also pins |
-|---|---|---|---|
-| Rex.app | Sparkle (signed appcast) | [`../rex/app-pin.json`](../rex/app-pin.json) | linux CLI [`../rex/release.json`](../rex/release.json), via the commit bundled in the app |
-| Helium | Sparkle | [`../helium/app-pin.json`](../helium/app-pin.json) | linux AppImages, read by [`../helium/default.nix`](../helium/default.nix) |
-| T3 Code (Nightly) | electron-updater (GitHub nightly) | [`../t3-code/app-pin.json`](../t3-code/app-pin.json) | — |
+apps and their feeds are listed in [`apps.json`](apps.json); each app's pin
+lives beside the module that consumes it.
 
-## operations
+## the contract
 
-three operations, one command line ([`cli.ts`](cli.ts)):
+- **a pin is a floor, and it only moves up.** a mac records a build only if it
+  is newer than the pin. activation installs the pin only where the app is
+  missing or older, and never touches a newer or running app. every other
+  property depends on this one: concurrent macs can't conflict into a
+  downgrade, and a stale view of `main` can only cause redundant work.
+- **a pin names one exact build.** it records that build's url and sha256,
+  never the moving head of a channel, so any host can fetch the same bytes
+  later.
+- **the checkout is never involved.** agents publish from private clones of
+  `main`, because a working tree may be dirty, on another branch, or
+  mid-rebase. a bump is an ordinary commit, `bump <app> (auto-committed from
+  <host>)`, signed if your git signs commits, so every published version shows
+  which mac accepted it.
+- **linux follows the mac.** for apps with a linux side (rex's CLI, helium's
+  AppImage), the linux pin tracks what a mac accepted instead of chasing
+  upstream. it replaces a CI job that published every rex snapshot whether or
+  not anyone had run it.
 
-| operation | where | does |
-|---|---|---|
-| `record` | [`pins.ts`](pins.ts) | pin the installed build into a store (working tree or overlay). never downgrades |
-| `install` | [`pins.ts`](pins.ts) | install the pinned build if the app is missing or older; never over a newer or running app |
-| `publish` | [`publish.ts`](publish.ts) | `record` against origin/main, commit, push, without touching the checkout |
+## decisions worth knowing before changing this
 
-each takes an explicit app (from [`apps.json`](apps.json)), store or options, and
-dependencies (`Deps`: shell, feed, download). expected failures throw
-`AppPinError` with a stable `code`; the command line maps those into events and
-exit status. `pins.ts` and `publish.ts` still accept their old argv and forward to
-`cli.ts`, so agents activated before this change keep working until each mac
-switches.
+- **one clone per app, no lock.** launchd never runs two copies of one agent,
+  so separate clones remove all shared git state. two attempts at locking a
+  shared clone both had races.
+- **unchanged runs skip the network, but only within a bounded window.** the
+  mac pin is monotonic, so a lagging clone is harmless. linux follow-ups are not:
+  another mac can publish a newer app whose linux pin still needs advancing.
+  the window bounds how long one host can miss that.
+- **expected failures have codes, not messages, in events.** exception text can
+  hold paths or other private data, so it goes to stderr only. see
+  [service-events](../service-events/README.md).
+- `pins.ts` and `publish.ts` still accept their pre-`cli.ts` argv. this keeps
+  agents and activations built before the change working. drop the shims once
+  every mac has switched past it.
 
-## publish (after a self-update)
+## adding an app
 
-a launchd agent per app (`app-pin-<name>`) watches the bundle's
-`Contents/Info.plist`; Sparkle and electron-updater replace the whole bundle, so
-every update touches it. it also runs at load.
+an app fits if its updater replaces the whole bundle on each update, which is
+what makes watching `Info.plist` reliable. its feed must also let you look up
+an exact build by version. Sparkle appcasts and GitHub releases both qualify.
+an app that patches files in place, or whose vendor deletes old builds,
+doesn't fit.
 
-1. **local first.** each app has its own private blobless clone,
-   `~/.local/state/app-pins/<app>.git`. the bundle id is checked, then, if main
-   was fetched within the last 6 hours and already pins this build and its linux
-   follow-ups, the run ends there: about 0.13 s, no network. for the mac pin a
-   lagging clone is harmless (pins only move up, so it can only cause an extra
-   fetch). linux follow-ups are not monotonic — another mac can publish a newer
-   app whose linux pin still needs advancing — so the window bounds how long this
-   host can miss one.
-2. otherwise it fetches main and runs `record` against an in-memory overlay of
-   that tree. the checkout is never read or written, so a dirty tree, another
-   branch, or a rebase in progress doesn't matter. the feed entry is the one for
-   exactly the installed build, with its url and sha256. for rex, the linux CLI
-   pin advances to the bundled commit if newer, and the CLI version is kept in
-   the pin so later runs can settle offline. helium's linux pin is retried each run
-   until its release exists.
-3. changed pin files are committed on top of main, signed when `commit.gpgsign` is
-   on, as `bump <app> (auto-committed from <host>)` with what changed in the body,
-   and pushed without force. a rejected push refetches and recomputes; losing a race
-   to a newer pin from another mac becomes a no-op.
+## limits
 
-launchd never runs two copies of one agent, and agents don't share clones, so
-there is no lock.
+- rex's linux pin depends on its appcast notes naming the bundled CLI commit.
+  if that line disappears, the mac pin keeps advancing but the linux pin
+  silently stops.
+- the tests use real bundles, zips and git repositories in temporary
+  directories. they don't cover a live Sparkle swap firing the watcher, a dmg
+  mounting on another machine, or pushing from inside launchd itself.
 
-## events
-
-one event per app per run in `~/Library/Logs/app-pins.log`, through
-[`service-events`](../service-events/README.md): `app.record`, `app.install`, or
-`app.publish`, with the app (`action`), outcome (`reasonCode`), `fromVersion` /
-`toVersion`, `changed`, and for publish `networkSkipped`, `attempt`, `fetchMs`,
-`feedMs`, `pushMs`, and the pushed `revision`. failures carry `errorCode` and,
-for expected ones, the `AppPinError` code as `reasonCode`; exception text goes to
-stderr, never into the event.
-
-## install (activation)
-
-`home.activation.installPinnedApps` runs `cli.ts install` for the host's
-`my.appPins.apps`. a missing or older app gets the pinned artifact: download,
-verify sha256, check the bundle id and build inside it, then swap it into
-`/Applications`. a newer app (it self-updated past the pin) and a running app
-are left alone. failures warn without blocking activation.
-
-## add an app
-
-add an entry to [`apps.json`](apps.json) (bundle path/id, pin path, `compare`
-= `build` for Sparkle `CFBundleVersion` or `short` for the version string, and
-its feed), then list it in a host's `my.appPins.apps`. record once on a mac
-that has it installed to create the pin.
-
-## operate
-
-```bash
-node modules/app-pins/cli.ts publish --remote git@github.com:bdsqqq/dots.git --host "$(scutil --get LocalHostName)" rex
-node modules/app-pins/cli.ts record --repo "$PWD"          # working tree only; all apps, or name them
-node modules/app-pins/cli.ts install --repo "$PWD" helium
-jq -c '{t: .timestamp, op: .operation, c: .context}' ~/Library/Logs/app-pins.log | tail
-launchctl list | grep app-pin
-```
-
-## checks
-
-```bash
-node --test modules/app-pins/pins.test.ts modules/app-pins/publish.test.ts modules/app-pins/cli.test.ts
-(cd modules/pi && pnpm exec tsc -p ../app-pins/tsconfig.json)
-```
-
-tests build real app bundles and zip artifacts in temporary directories, and
-publish into local bare repositories; they do not touch `/Applications` or GitHub. they don't prove a live Sparkle swap fires the
-watcher, or that a dmg mounts on another machine.
+usage: `node modules/app-pins/cli.ts` prints it. checks:
+`node --test modules/app-pins/*.test.ts` and
+`(cd modules/pi && pnpm exec tsc -p ../app-pins/tsconfig.json)`.

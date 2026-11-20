@@ -1,10 +1,6 @@
 /**
- * self-updating mac apps keep their own updaters. this module owns two operations:
- * - record: write the exact installed build (url + sha256) into the app's pin. never downgrades.
- * - install: install the pinned build when the app is missing or older. never touches a
- *   newer or running app.
- * both read pins through a `Store`, so the caller decides whether that is the working
- * tree or an overlay of origin/main (see publish.ts). cli.ts is the only command line.
+ * record and install. both go through a `Store` so publish.ts can run them against an
+ * overlay of origin/main instead of the user's checkout.
  */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -32,7 +28,11 @@ type Feed =
   | { kind: "github"; repo: string; tag: string; asset: string;
       linux?: { repo: string; assets: { x64: string; arm64: string } } };
 export type App = {
-  name: string; bundle: string; bundleId: string; pin: string; compare: "build" | "short"; feed: Feed; linuxRelease?: string;
+  name: string; bundle: string; bundleId: string; pin: string;
+  /** "build" for Sparkle apps, whose builds advance under an unchanged marketing version. */
+  compare: "build" | "short";
+  feed: Feed;
+  linuxRelease?: string;
 };
 export type Installed = { version: string; build: string; bundleId: string };
 export type Deps = {
@@ -40,7 +40,6 @@ export type Deps = {
   download: (url: string, dest: string) => Promise<void>;
   run: (command: string, args: string[]) => string;
 };
-/** where pins are read from and written to. */
 export type Store = { read(path: string): string | null; write(path: string, text: string): void };
 
 /** expected failures carry a stable code; callers map it, never the message, into events. */

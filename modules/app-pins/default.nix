@@ -20,9 +20,7 @@ in
   config = lib.mkIf (lib.hasInfix "darwin" hostSystem && cfg.apps != [ ]) {
     home-manager.users.${config.my.primaryUser} = { config, lib, ... }:
     let log = "${config.home.homeDirectory}/Library/Logs/app-pins.log"; in {
-      # first install only: missing or older apps get the pinned build; newer or
-      # running apps are left alone. a failed download must not block activation.
-      # events go to the same log as the agents, so install outcomes stay queryable.
+      # a failed download must not block activation.
       home.activation.installPinnedApps = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
         if [ -f ${lib.escapeShellArg cli} ]; then
           PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH" ${node} ${lib.escapeShellArg cli} install \
@@ -35,7 +33,6 @@ in
       launchd.agents = lib.genAttrs' cfg.apps (name: lib.nameValuePair "app-pin-${name}" {
         enable = true;
         config = {
-          # commit + push from a private clone of main; the checkout's state is irrelevant.
           ProgramArguments = [ node cli "publish" "--remote" "git@github.com:bdsqqq/dots.git" "--host" host "--notify" name ];
           WatchPaths = [ "${apps.${name}.bundle}/Contents/Info.plist" ];
           RunAtLoad = true;

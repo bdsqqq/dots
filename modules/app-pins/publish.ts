@@ -1,13 +1,6 @@
 /**
- * publish: record against origin/main, commit, push, without touching the user's checkout.
- *
- * each app has its own private bare clone. pins are read from and written to an
- * in-memory overlay of main's tree, and the commit is built with a throwaway index,
- * so the checkout may be dirty, elsewhere, or mid-rebase. a rejected push (main moved)
- * refetches and recomputes; pins only move up, so a lost race usually becomes a no-op.
- *
- * most runs change nothing. when a recent fetch of main already pins this build and its
- * linux follow-ups, the run ends there, with no network at all.
+ * pins are read and written through an in-memory overlay of main and committed with a
+ * throwaway index, so the user's checkout is never touched, whatever state it's in.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
@@ -20,7 +13,6 @@ export type PublishOptions = {
   remote: string;
   /** provenance in the commit subject, e.g. "mbp-m2". */
   host: string;
-  /** holds `<app>.git`. */
   cacheDir: string;
   branch?: string;
   attempts?: number;
@@ -45,7 +37,6 @@ function git(cache: string, args: string[], env: NodeJS.ProcessEnv, input?: stri
   }).trim();
 }
 
-/** an overlay of one commit's tree: reads fall through to git, writes stay in memory. */
 function overlay(cache: string, commit: string, env: NodeJS.ProcessEnv): Store & { changes: Map<string, string> } {
   const changes = new Map<string, string>();
   return {
@@ -70,7 +61,6 @@ function clone(cache: string, remote: string, branch: string, env: NodeJS.Proces
   const partial = `${cache}.partial-${process.pid}`;
   rmSync(partial, { recursive: true, force: true });
   try {
-    // blobless: pins are a few KB; history and other files are fetched lazily, if ever.
     execFileSync("git", ["clone", "--bare", "--filter=blob:none", "--single-branch", "--branch", branch, remote, partial],
       { env, stdio: ["ignore", "pipe", "pipe"], timeout: 900_000 });
     renameSync(partial, cache);
@@ -160,7 +150,6 @@ export async function publish(app: App, deps: Deps, options: PublishOptions): Pr
     } catch (error) {
       timings.pushMs += elapsed(started);
       if (attempt === attempts) throw error;
-      // main moved: refetch and recompute against it.
     }
   }
   throw new Error("unreachable");
