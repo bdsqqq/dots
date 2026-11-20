@@ -134,6 +134,17 @@ in
   };
   system.autoUpgrade.runGarbageCollection = true;
 
+  services.journald.settings.Journal.SystemMaxUse = "512M";
+  # each container keeps its own journal on the boot disk, outside the host's cap.
+  containers = lib.genAttrs [
+    "apps"
+    "cloudflare-ingress"
+    "cloudflare-ingress-files"
+    "cloudflare-ingress-t3"
+  ] (_: {
+    config.services.journald.settings.Journal.SystemMaxUse = "256M";
+  });
+
   systemd.services.home-manager-bdsqqq = {
     requires = [ "mnt-storage\\x2d01.mount" ];
     after = [ "mnt-storage\\x2d01.mount" ];
