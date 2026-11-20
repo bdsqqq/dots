@@ -12,25 +12,31 @@ is the source of truth.
 | Helium | Sparkle | [`../helium/app-pin.json`](../helium/app-pin.json) | linux AppImages, read by [`../helium/default.nix`](../helium/default.nix) |
 | T3 Code (Nightly) | electron-updater (GitHub nightly) | [`../t3-code/app-pin.json`](../t3-code/app-pin.json) | — |
 
-## record (after a self-update)
+## record and publish (after a self-update)
 
 a launchd agent per app (`app-pin-<name>`) watches the bundle's
 `Contents/Info.plist`; Sparkle and electron-updater replace the whole bundle,
 so every update touches it. it also runs at load to catch updates made while it
-was stopped. `pins.ts record`:
+was stopped. `publish.ts`:
 
-1. reads the installed version/build and checks the bundle id;
-2. does nothing unless the installed build is **newer** than the pin;
-3. resolves the feed entry for exactly that build (not the channel head), with
-   its download url and sha256 (GitHub asset digests, or a hash of the
-   appcast's enclosure);
-4. writes the pin. for rex, it also advances the linux CLI pin to the bundled
-   commit if that is newer; helium's linux pin keeps its previous value until
-   the matching linux release exists.
+1. fetches `main` into its own private blobless clone
+   (`~/.local/state/app-pins/<app>.git`). the checkout is never read or written,
+   so a dirty tree, another branch, or a rebase in progress doesn't matter;
+2. runs `record` against that tree: does nothing unless the installed build
+   is **newer** than the pin on `main`, then resolves the feed entry for exactly
+   that build (not the channel head) with its url and sha256. for rex it also
+   advances the linux CLI pin to the bundled commit if newer; helium's linux pin
+   is retried each run until its release exists;
+3. commits only the changed pin files on top of `main`, signed when
+   `commit.gpgsign` is on, as `bump <app> (auto-committed from <host>)` with the
+   version change in the body, and pushes. a rejected push (main moved) refetches
+   and recomputes; because pins only move up, losing a race to another mac is a
+   no-op. it never force-pushes.
 
-the result is an **uncommitted** working-tree change plus a notification. commit
-it like any other edit; concurrent edits from several macs resolve in git, and
-"newer wins" means a conflict is never a downgrade.
+each app has its own clone and launchd never runs two copies of one agent, so
+agents need no lock. pulling `main` brings the bump into your
+checkout like any other commit. `pins.ts record "$PWD"` still writes to the
+working tree for manual use.
 
 ## install (activation)
 
@@ -50,7 +56,8 @@ that has it installed to create the pin.
 ## operate
 
 ```bash
-node modules/app-pins/pins.ts record "$PWD"          # all apps, or name them
+node modules/app-pins/publish.ts --remote git@github.com:bdsqqq/dots.git --host "$(scutil --get LocalHostName)" rex
+node modules/app-pins/pins.ts record "$PWD"          # working tree only; all apps, or name them
 node modules/app-pins/pins.ts install "$PWD" helium
 tail -f ~/Library/Logs/app-pins.log                  # one json event per app/run
 launchctl list | grep app-pin
@@ -59,10 +66,10 @@ launchctl list | grep app-pin
 ## checks
 
 ```bash
-node --test modules/app-pins/pins.test.ts
+node --test modules/app-pins/pins.test.ts modules/app-pins/publish.test.ts
 (cd modules/pi && pnpm exec tsc -p ../app-pins/tsconfig.json)
 ```
 
-tests build real app bundles and zip artifacts in temporary directories; they do
-not touch `/Applications`. they don't prove a live Sparkle swap fires the
+tests build real app bundles and zip artifacts in temporary directories, and
+publish into local bare repositories; they do not touch `/Applications` or GitHub. they don't prove a live Sparkle swap fires the
 watcher, or that a dmg mounts on another machine.

@@ -5,6 +5,9 @@ let
   # run the live working-tree source, like node-pnpm: helper edits take effect
   # without a rebuild, and pins are written beside the modules that own them.
   pins = "${repo}/modules/app-pins/pins.ts";
+  publish = "${repo}/modules/app-pins/publish.ts";
+  # "mbp-m5", matching the hand-written provenance, not the mDNS "mbp-m5.local".
+  host = lib.removeSuffix ".local" config.networking.hostName;
   node = "${pkgs.nodejs_latest}/bin/node";
   apps = builtins.fromJSON (builtins.readFile ./apps.json);
 in
@@ -31,13 +34,15 @@ in
       launchd.agents = lib.genAttrs' cfg.apps (name: lib.nameValuePair "app-pin-${name}" {
         enable = true;
         config = {
-          ProgramArguments = [ node pins "record" repo name "--notify" ];
+          # commit + push from a private clone of main; the checkout's state is irrelevant.
+          ProgramArguments = [ node publish "--remote" "git@github.com:bdsqqq/dots.git" "--host" host "--notify" name ];
           WatchPaths = [ "${apps.${name}.bundle}/Contents/Info.plist" ];
           RunAtLoad = true;
           # updaters swap bundles in several steps; let them settle.
           ThrottleInterval = 30;
           ProcessType = "Background";
-          EnvironmentVariables.PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
+          # the user's git (signing, identity) and ssh are the same as an interactive push.
+          EnvironmentVariables.PATH = "/etc/profiles/per-user/${config.home.username}/bin:/usr/bin:/bin:/usr/sbin:/sbin";
           StandardOutPath = "${config.home.homeDirectory}/Library/Logs/app-pins.log";
           StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/app-pins.log";
         };
