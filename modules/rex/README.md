@@ -11,8 +11,9 @@ when Sparkle replaces the bundle, it records the app build in `app-pin.json`
 and reads the CLI commit from that build's signed appcast notes
 ("Rex … (`<commit>`)"). it then fetches that exact commit's linux archives
 from `api/releases/rex/snapshot?commit=…` and advances `release.json` only when
-the build is newer. the change stays uncommitted in the working tree, like a
-pnpm edit; publishing it to `main` is an ordinary commit.
+the build is newer. both pins land on `main` as one signed
+`bump rex (auto-committed from <host>)` commit; see app-pins for how it is
+published without touching the checkout.
 
 `release.json` records version, upstream commit, and canonical archive URLs and
 hashes for both linux architectures. `flake.lock` still pins upstream's nix

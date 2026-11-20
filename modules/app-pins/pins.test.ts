@@ -63,7 +63,7 @@ test("record pins the exact installed build, then ignores equal and older instal
   const v2 = zipArtifact(root, "1.2.0");
   bundle(spec.bundle, "dev.demo", "1.2.0");
   const d = deps({}, release("1.2.0", v2.sha256));
-  assert.deepEqual(await record("demo", repo, d, spec), { app: "demo", status: "recorded", version: "1.2.0", linux: false });
+  assert.deepEqual(await record("demo", repo, d, spec), { app: "demo", status: "recorded", version: "1.2.0", previous: undefined, linux: false });
   const pin = JSON.parse(readFileSync(join(repo, spec.pin), "utf8"));
   assert.equal(pin.darwin.arm64.sha256, v2.sha256);
   assert.equal(pin.darwin.arm64.format, "zip");

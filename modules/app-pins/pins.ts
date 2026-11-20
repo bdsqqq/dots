@@ -73,10 +73,20 @@ export function parsePin(value: unknown, app: string): Pin {
   }
   return p;
 }
-const readPin = (path: string, app: string) => existsSync(path) ? parsePin(JSON.parse(readFileSync(path, "utf8")), app) : null;
-function writeJson(path: string, value: unknown) {
+/** where pins are read from and written to: the working tree, or an in-memory overlay of origin/main. */
+export type Store = { read(path: string): string | null; write(path: string, text: string): void };
+export const worktree = (repo: string): Store => ({
+  read: path => existsSync(join(repo, path)) ? readFileSync(join(repo, path), "utf8") : null,
+  write: (path, text) => writeAtomic(join(repo, path), text),
+});
+const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
+const readPin = (store: Store, path: string, app: string) => {
+  const text = store.read(path);
+  return text === null ? null : parsePin(JSON.parse(text), app);
+};
+function writeAtomic(path: string, text: string) {
   const temporary = `${path}.tmp-${process.pid}`;
-  writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`);
+  writeFileSync(temporary, text);
   renameSync(temporary, path);
 }
 
@@ -133,31 +143,34 @@ async function advanceGithubLinux(spec: AppSpec, pin: Pin, deps: Deps): Promise<
 }
 
 /** the linux CLI follows the build bundled in the accepted mac app, never the channel head. */
-async function advanceRexLinux(path: string, commit: string, deps: Deps): Promise<boolean> {
-  const current = parseRelease(JSON.parse(readFileSync(path, "utf8")));
+async function advanceRexLinux(store: Store, path: string, commit: string, deps: Deps): Promise<boolean> {
+  const current = parseRelease(JSON.parse(store.read(path) ?? "null"));
   if (current.commit === commit) return false;
   const candidate = fromUpstream(JSON.parse(await deps.text(
     `https://blob.superlogical.com/api/releases/rex/snapshot?commit=${commit}`)));
   if (candidate.commit !== commit) throw new Error("rex release api returned a different commit");
   if (!newer(candidate.version, current.version)) return false;
-  writeJson(path, candidate);
+  store.write(path, json(candidate));
   return true;
 }
 
-export type RecordResult = { app: string; status: "recorded" | "unchanged" | "absent"; version?: string; linux?: boolean };
-export async function record(name: string, repo: string, deps: Deps, spec = loadApps()[name]): Promise<RecordResult> {
+export type RecordResult = { app: string; status: "recorded" | "unchanged" | "absent"; version?: string; previous?: string; linux?: boolean };
+export async function record(name: string, target: string | Store, deps: Deps, spec = loadApps()[name]): Promise<RecordResult> {
+  const store = typeof target === "string" ? worktree(target) : target;
   const installed = readInstalled(spec.bundle, deps.run);
   if (!installed) return { app: name, status: "absent" };
   if (installed.bundleId !== spec.bundleId) throw new Error(`${spec.bundle} is ${installed.bundleId}, not ${spec.bundleId}`);
-  const pinPath = join(repo, spec.pin), previous = readPin(pinPath, name);
+  const previous = readPin(store, spec.pin, name);
   const advance = !previous || compare(key(spec, installed), key(spec, previous)) > 0;
   const pin = advance ? await resolve(name, spec, installed, deps, previous) : previous!;
   // linux pins reconcile independently, so a transient feed/api failure is retried next run.
   const helium = await advanceGithubLinux(spec, pin, deps);
-  if (advance || helium) writeJson(pinPath, pin);
-  const rex = pin.rexCommit && spec.linuxRelease ? await advanceRexLinux(join(repo, spec.linuxRelease), pin.rexCommit, deps) : false;
-  if (!advance) return { app: name, status: "unchanged", version: installed.version, linux: helium || rex };
-  return { app: name, status: "recorded", version: pin.version, linux: helium || rex };
+  if (advance || helium) store.write(spec.pin, json(pin));
+  const rex = pin.rexCommit && spec.linuxRelease ? await advanceRexLinux(store, spec.linuxRelease, pin.rexCommit, deps) : false;
+  const was = previous ? (spec.compare === "build" ? `${previous.version} (${previous.build})` : previous.version) : undefined;
+  const now = spec.compare === "build" ? `${pin.version} (${pin.build})` : pin.version;
+  if (!advance) return { app: name, status: "unchanged", version: now, linux: helium || rex };
+  return { app: name, status: "recorded", version: now, previous: was, linux: helium || rex };
 }
 
 const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -172,7 +185,7 @@ function running(spec: AppSpec, deps: Deps): boolean {
 
 export type InstallResult = { app: string; status: "installed" | "current" | "newer" | "running" | "unpinned"; version?: string };
 export async function install(name: string, repo: string, deps: Deps, spec = loadApps()[name]): Promise<InstallResult> {
-  const pin = readPin(join(repo, spec.pin), name);
+  const pin = readPin(worktree(repo), spec.pin, name);
   if (!pin) return { app: name, status: "unpinned" };
   const installed = readInstalled(spec.bundle, deps.run);
   if (installed) {
