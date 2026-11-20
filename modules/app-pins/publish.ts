@@ -1,29 +1,37 @@
 /**
- * record → commit → push, without touching the user's checkout.
+ * publish: record against origin/main, commit, push, without touching the user's checkout.
  *
- * the working tree may be dirty, on another branch, or mid-rebase; none of that
- * matters here. a private bare clone fetches origin/main, pins are read from and
- * written to an in-memory overlay of that tree, and the commit is built with a
- * throwaway index. a rejected push (main moved) refetches and recomputes from the
- * new main; since pins only move up, a lost race usually turns into a no-op.
+ * each app has its own private bare clone. pins are read from and written to an
+ * in-memory overlay of main's tree, and the commit is built with a throwaway index,
+ * so the checkout may be dirty, elsewhere, or mid-rebase. a rejected push (main moved)
+ * refetches and recomputes; pins only move up, so a lost race usually becomes a no-op.
+ *
+ * most runs change nothing. when the clone's last-fetched main already pins this build
+ * and its linux follow-ups, the run ends there, with no network at all.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "node:fs";
-import { homedir, hostname, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { createEventLogger, safeErrorCode } from "../service-events/events.ts";
-import { loadApps, nativeDeps, record, type AppSpec, type Deps, type RecordResult, type Store } from "./pins.ts";
+import { due, readInstalled, record, type App, type Deps, type RecordResult, type Store } from "./pins.ts";
 
 export type PublishOptions = {
-  remote: string;        // e.g. git@github.com:bdsqqq/dots.git
-  branch?: string;       // default main
-  cacheDir?: string;     // holds one private bare clone per app
-  host?: string;         // provenance in the commit message
+  remote: string;
+  /** provenance in the commit subject, e.g. "mbp-m2". */
+  host: string;
+  /** holds `<app>.git`. */
+  cacheDir: string;
+  branch?: string;
   attempts?: number;
   env?: NodeJS.ProcessEnv;
 };
-export type PublishResult = { app: string; status: "published" | "unchanged" | "absent"; commit?: string; attempts: number; result?: RecordResult };
+export type PublishTimings = { fetchMs: number; feedMs: number; pushMs: number };
+export type PublishResult =
+  | { status: "absent" | "unchanged"; networkSkipped: boolean; attempts: number; timings: PublishTimings; record?: RecordResult }
+  | { status: "published"; networkSkipped: false; attempts: number; timings: PublishTimings; record: RecordResult & { status: "recorded" | "unchanged" }; commit: string };
+
+const elapsed = (since: number) => Math.round(performance.now() - since);
 
 function git(cache: string, args: string[], env: NodeJS.ProcessEnv, input?: string): string {
   return execFileSync("git", ["--git-dir", cache, "-c", "core.hooksPath=/dev/null", ...args], {
@@ -50,95 +58,100 @@ function overlay(cache: string, commit: string, env: NodeJS.ProcessEnv): Store &
   };
 }
 
-function ensureCache(cache: string, remote: string, branch: string, env: NodeJS.ProcessEnv) {
-  if (!existsSync(join(cache, "HEAD"))) {
-    // clone beside it and rename into place, so a crash mid-clone never leaves a
-    // half-built cache that later runs would trust.
-    mkdirSync(join(cache, ".."), { recursive: true });
-    rmSync(cache, { recursive: true, force: true });
-    const partial = `${cache}.partial-${process.pid}`;
-    rmSync(partial, { recursive: true, force: true });
-    try {
-      // blobless: pins are a few KB; history and other files are fetched lazily, if ever.
-      execFileSync("git", ["clone", "--bare", "--filter=blob:none", "--single-branch", "--branch", branch, remote, partial],
-        { env, stdio: ["ignore", "pipe", "pipe"], timeout: 900_000 });
-      renameSync(partial, cache);
-    } finally { rmSync(partial, { recursive: true, force: true }); }
-  }
-  git(cache, ["fetch", "--quiet", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`], env);
-  return git(cache, ["rev-parse", `refs/remotes/origin/${branch}`], env);
+function clone(cache: string, remote: string, branch: string, env: NodeJS.ProcessEnv) {
+  // clone beside it and rename into place, so a crash mid-clone never leaves a
+  // half-built cache that later runs would trust.
+  mkdirSync(join(cache, ".."), { recursive: true });
+  rmSync(cache, { recursive: true, force: true });
+  const partial = `${cache}.partial-${process.pid}`;
+  rmSync(partial, { recursive: true, force: true });
+  try {
+    // blobless: pins are a few KB; history and other files are fetched lazily, if ever.
+    execFileSync("git", ["clone", "--bare", "--filter=blob:none", "--single-branch", "--branch", branch, remote, partial],
+      { env, stdio: ["ignore", "pipe", "pipe"], timeout: 900_000 });
+    renameSync(partial, cache);
+  } finally { rmSync(partial, { recursive: true, force: true }); }
+}
+const tracking = (branch: string) => `refs/remotes/origin/${branch}`;
+function localMain(cache: string, branch: string, env: NodeJS.ProcessEnv): string | null {
+  if (!existsSync(join(cache, "HEAD"))) return null;
+  try { return git(cache, ["rev-parse", "--verify", "--quiet", tracking(branch)], env); } catch { return null; }
 }
 
-export function message(name: string, host: string, result: RecordResult) {
-  const subject = `bump ${name} (auto-committed from ${host})`;
+export function message(app: App, host: string, result: RecordResult & { status: "recorded" | "unchanged" }) {
+  const subject = `bump ${app.name} (auto-committed from ${host})`;
   const lines = [];
-  if (result.status === "recorded") lines.push(`${result.previous ?? "unpinned"} -> ${result.version}`);
-  if (result.linux) lines.push("linux pin advanced to match.");
-  return lines.length ? `${subject}\n\n${lines.join("\n")}\n` : `${subject}\n`;
+  if (result.status === "recorded") lines.push(`${result.from ?? "unpinned"} -> ${result.to}`);
+  if (result.linuxAdvanced) lines.push("linux pin advanced to match.");
+  // a change with neither is pin metadata (e.g. the bundled rex CLI version); say so.
+  if (!lines.length) lines.push(`${result.to}: pin metadata updated, version unchanged.`);
+  return `${subject}\n\n${lines.join("\n")}\n`;
 }
 
-/** every app's agent fires at load; they share one private clone, so serialize on it. */
-export async function publish(name: string, deps: Deps, options: PublishOptions, spec: AppSpec = loadApps()[name]): Promise<PublishResult> {
-  // one private clone per app: agents never share git state, and launchd never
-  // runs two instances of the same agent, so no cross-process lock is needed.
-  const cache = join(options.cacheDir ?? join(homedir(), ".local/state/app-pins"), `${name}.git`);
-  const branch = options.branch ?? "main", env = { ...process.env, ...options.env, GIT_TERMINAL_PROMPT: "0",
-    GIT_SSH_COMMAND: "ssh -o BatchMode=yes -o ConnectTimeout=20" };
-  const host = options.host ?? hostname().replace(/\.local$/, "");
+function commit(cache: string, base: string, changes: Map<string, string>, text: string, env: NodeJS.ProcessEnv): string {
+  const work = mkdtempSync(join(tmpdir(), "app-pins-index-"));
+  try {
+    const indexEnv = { ...env, GIT_INDEX_FILE: join(work, "index") };
+    git(cache, ["read-tree", base], indexEnv);
+    for (const [path, content] of changes) {
+      const blob = git(cache, ["hash-object", "-w", "--stdin"], env, content);
+      git(cache, ["update-index", "--add", "--cacheinfo", `100644,${blob},${path}`], indexEnv);
+    }
+    const tree = git(cache, ["write-tree"], indexEnv);
+    // commit-tree takes the user's identity from config but ignores commit.gpgsign: pass it on.
+    let sign: string[] = [];
+    try { if (git(cache, ["config", "--bool", "commit.gpgsign"], env) === "true") sign = ["-S"]; } catch { /* unset */ }
+    return git(cache, ["commit-tree", ...sign, tree, "-p", base, "-F", "-"], env, text);
+  } finally { rmSync(work, { recursive: true, force: true }); }
+}
+
+export async function publish(app: App, deps: Deps, options: PublishOptions): Promise<PublishResult> {
+  const cache = join(options.cacheDir, `${app.name}.git`), branch = options.branch ?? "main";
+  const env = { ...process.env, ...options.env, GIT_TERMINAL_PROMPT: "0", GIT_SSH_COMMAND: "ssh -o BatchMode=yes -o ConnectTimeout=20" };
+  const timings: PublishTimings = { fetchMs: 0, feedMs: 0, pushMs: 0 };
+
+  const installed = readInstalled(app.bundle, deps.run);
+  if (!installed) return { status: "absent", networkSkipped: true, attempts: 0, timings };
+  const known = localMain(cache, branch, env);
+  if (known && !due(app, overlay(cache, known, env), installed)) {
+    return { status: "unchanged", networkSkipped: true, attempts: 0, timings };
+  }
+
   const attempts = options.attempts ?? 5;
   for (let attempt = 1; attempt <= attempts; attempt++) {
-    const base = ensureCache(cache, options.remote, branch, env);
-    const store = overlay(cache, base, env);
-    const result = await record(name, store, deps, spec);
-    if (result.status === "absent") return { app: name, status: "absent", attempts: attempt };
-    if (store.changes.size === 0) return { app: name, status: "unchanged", attempts: attempt, result };
+    let started = performance.now();
+    if (!existsSync(join(cache, "HEAD"))) clone(cache, options.remote, branch, env);
+    git(cache, ["fetch", "--quiet", "origin", `+refs/heads/${branch}:${tracking(branch)}`], env);
+    const base = git(cache, ["rev-parse", tracking(branch)], env);
+    timings.fetchMs += elapsed(started);
 
-    const work = mkdtempSync(join(tmpdir(), "app-pins-index-"));
+    started = performance.now();
+    const store = overlay(cache, base, env);
+    const result = await record(app, store, deps);
+    timings.feedMs += elapsed(started);
+    if (result.status === "absent") return { status: "absent", networkSkipped: false, attempts: attempt, timings };
+    if (store.changes.size === 0) return { status: "unchanged", networkSkipped: false, attempts: attempt, timings, record: result };
+
+    started = performance.now();
+    const created = commit(cache, base, store.changes, message(app, options.host, result), env);
     try {
-      const indexEnv = { ...env, GIT_INDEX_FILE: join(work, "index") };
-      git(cache, ["read-tree", base], indexEnv);
-      for (const [path, text] of store.changes) {
-        const blob = git(cache, ["hash-object", "-w", "--stdin"], env, text);
-        git(cache, ["update-index", "--add", "--cacheinfo", `100644,${blob},${path}`], indexEnv);
-      }
-      const tree = git(cache, ["write-tree"], indexEnv);
-      // commit-tree takes the user's identity from config but ignores commit.gpgsign: pass it on.
-      let sign: string[] = [];
-      try { if (git(cache, ["config", "--bool", "commit.gpgsign"], env) === "true") sign = ["-S"]; } catch { /* unset */ }
-      const commit = git(cache, ["commit-tree", ...sign, tree, "-p", base, "-F", "-"], env, message(name, host, result));
-      try {
-        // a plain push: a moved main is rejected, never overwritten.
-        git(cache, ["push", "--quiet", "origin", `${commit}:refs/heads/${branch}`], env);
-        git(cache, ["update-ref", `refs/remotes/origin/${branch}`, commit, base], env);
-        return { app: name, status: "published", commit, attempts: attempt, result };
-      } catch (error) {
-        if (attempt === attempts) throw error;
-        // fall through: refetch the new main and recompute against it.
-      }
-    } finally { rmSync(work, { recursive: true, force: true }); }
+      // a plain push: a moved main is rejected, never overwritten.
+      git(cache, ["push", "--quiet", "origin", `${created}:refs/heads/${branch}`], env);
+      git(cache, ["update-ref", tracking(branch), created, base], env);
+      timings.pushMs += elapsed(started);
+      return { status: "published", networkSkipped: false, attempts: attempt, timings, record: result, commit: created };
+    } catch (error) {
+      timings.pushMs += elapsed(started);
+      if (attempt === attempts) throw error;
+      // main moved: refetch and recompute against it.
+    }
   }
   throw new Error("unreachable");
 }
 
+// agents activated before cli.ts existed still launch this file with the old argv
+// (`--remote URL --host NAME [--notify] APP`). forward them until every mac has switched.
+// no top-level await: cli.ts imports this module, which must finish loading first.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const args = process.argv.slice(2), flag = (n: string) => { const i = args.indexOf(n); return i >= 0 ? args.splice(i, 2)[1] : undefined; };
-  const remote = flag("--remote"), host = flag("--host"), notify = args.includes("--notify");
-  const names = args.filter(a => a !== "--notify");
-  if (!remote || !names.length) throw new Error("usage: publish.ts --remote URL [--host NAME] [--notify] APP...");
-  let failed = false;
-  for (const name of names) {
-    const event = createEventLogger("app-pins").begin("app.publish", "background", { action: name });
-    try {
-      const r = await publish(name, nativeDeps, { remote, host });
-      event.finish("succeeded", { action: name, reasonCode: r.status, revision: r.commit, attempt: r.attempts, changed: r.status === "published" });
-      if (notify && r.status === "published") {
-        try { nativeDeps.run("osascript", ["-e", `display notification "pushed ${name} ${r.result?.version} to main" with title "app-pins"`]); } catch { /* cosmetic */ }
-      }
-    } catch (error) {
-      failed = true;
-      event.finish("failed", { action: name, errorCode: safeErrorCode(error) });
-      console.error(`app-pins publish ${name}: ${(error as Error).message ?? error}`);
-    }
-  }
-  process.exitCode = failed ? 1 : 0;
+  void import("./cli.ts").then(async ({ main }) => { process.exitCode = await main(["publish", ...process.argv.slice(2)]); });
 }

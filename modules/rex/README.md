@@ -54,7 +54,7 @@ not proof that every existing account server is already on the new version.
 
 ```bash
 # record the installed Rex.app (and its CLI) on a mac
-node modules/app-pins/pins.ts record "$PWD" rex
+node modules/app-pins/cli.ts record --repo "$PWD" rex
 
 # on each activated linux host
 sudo systemctl start rex-update.service
