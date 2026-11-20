@@ -123,3 +123,23 @@ test("agents firing together serialize on the shared clone instead of corrupting
   assert.deepEqual(results.map(r => r.status).sort(), ["published", "unchanged"]);
   assert.equal(git(f.remote, "rev-list", "--count", "main"), "2", "exactly one bump commit");
 });
+
+test("a lock left by a crashed agent is reclaimed at once; a live owner's lock is waited on", async t => {
+  const f = fixture(t);
+  plist(f.spec.bundle, "1.2.0");
+  const lock = `${f.options.cache}.lock`;
+  // a dead pid's lock, as left by a crash: no age needed to reclaim it.
+  const dead = execFileSync("sh", ["-c", "sh -c 'echo $$' "], { encoding: "utf8" }).trim();
+  writeFileSync(lock, `${dead}:0:0`);
+  const started = Date.now();
+  assert.equal((await publish("demo", f.deps(), f.options, f.spec)).status, "published");
+  assert.ok(Date.now() - started < 10_000, "no wait for an expiry");
+  // a live owner (this test process) blocks until released, and its lock is not stolen.
+  writeFileSync(lock, `${process.pid}:0:live`);
+  plist(f.spec.bundle, "1.3.0");
+  const pending = publish("demo", f.deps(), f.options, f.spec);
+  await new Promise(r => setTimeout(r, 1500));
+  assert.equal(readFileSync(lock, "utf8"), `${process.pid}:0:live`, "live lock untouched");
+  rmSync(lock);
+  assert.equal((await pending).status, "published");
+});
