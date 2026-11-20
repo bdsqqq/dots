@@ -8,7 +8,7 @@
  * new main; since pins only move up, a lost race usually turns into a no-op.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "node:fs";
 import { homedir, hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -18,7 +18,7 @@ import { loadApps, nativeDeps, record, type AppSpec, type Deps, type RecordResul
 export type PublishOptions = {
   remote: string;        // e.g. git@github.com:bdsqqq/dots.git
   branch?: string;       // default main
-  cache?: string;        // private bare clone
+  cacheDir?: string;     // holds one private bare clone per app
   host?: string;         // provenance in the commit message
   attempts?: number;
   env?: NodeJS.ProcessEnv;
@@ -52,10 +52,18 @@ function overlay(cache: string, commit: string, env: NodeJS.ProcessEnv): Store &
 
 function ensureCache(cache: string, remote: string, branch: string, env: NodeJS.ProcessEnv) {
   if (!existsSync(join(cache, "HEAD"))) {
-    mkdirSync(cache, { recursive: true });
-    // blobless: pins are a few KB; history and other files are fetched lazily, if ever.
-    execFileSync("git", ["clone", "--bare", "--filter=blob:none", "--single-branch", "--branch", branch, remote, cache],
-      { env, stdio: ["ignore", "pipe", "pipe"], timeout: 900_000 });
+    // clone beside it and rename into place, so a crash mid-clone never leaves a
+    // half-built cache that later runs would trust.
+    mkdirSync(join(cache, ".."), { recursive: true });
+    rmSync(cache, { recursive: true, force: true });
+    const partial = `${cache}.partial-${process.pid}`;
+    rmSync(partial, { recursive: true, force: true });
+    try {
+      // blobless: pins are a few KB; history and other files are fetched lazily, if ever.
+      execFileSync("git", ["clone", "--bare", "--filter=blob:none", "--single-branch", "--branch", branch, remote, partial],
+        { env, stdio: ["ignore", "pipe", "pipe"], timeout: 900_000 });
+      renameSync(partial, cache);
+    } finally { rmSync(partial, { recursive: true, force: true }); }
   }
   git(cache, ["fetch", "--quiet", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`], env);
   return git(cache, ["rev-parse", `refs/remotes/origin/${branch}`], env);
@@ -70,48 +78,10 @@ export function message(name: string, host: string, result: RecordResult) {
 }
 
 /** every app's agent fires at load; they share one private clone, so serialize on it. */
-const alive = (pid: number) => {
-  try { process.kill(pid, 0); return true; }
-  catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
-};
-/** the lock is a file naming its owner. it is reclaimed only from a dead owner, never by age. */
-async function locked<T>(cache: string, run: () => Promise<T>): Promise<T> {
-  const lock = `${cache}.lock`, token = `${process.pid}:${Date.now()}:${Math.random()}`;
-  const deadline = Date.now() + 20 * 60_000;
-  mkdirSync(join(cache, ".."), { recursive: true });
-  for (;;) {
-    try { writeFileSync(lock, token, { flag: "wx" }); break; }
-    catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      let held = "";
-      try { held = readFileSync(lock, "utf8"); } catch { continue; /* released meanwhile */ }
-      const owner = Number(held.split(":")[0]);
-      if (held && !(owner > 0 && alive(owner))) {
-        // move it aside first: only one waiter can win the rename, and only if it
-        // still holds the dead owner's token.
-        const aside = `${lock}.stale-${process.pid}`;
-        try { renameSync(lock, aside); } catch { continue; }
-        if (readFileSync(aside, "utf8") !== held) renameSync(aside, lock);
-        rmSync(aside, { force: true });
-        continue;
-      }
-      if (Date.now() > deadline) throw new Error(`timed out waiting for ${lock}`);
-      await new Promise(r => setTimeout(r, 500));
-    }
-  }
-  try { return await run(); }
-  finally {
-    // release only our own lock; never a successor's.
-    try { if (readFileSync(lock, "utf8") === token) rmSync(lock, { force: true }); } catch { /* already gone */ }
-  }
-}
-
 export async function publish(name: string, deps: Deps, options: PublishOptions, spec: AppSpec = loadApps()[name]): Promise<PublishResult> {
-  const cache = options.cache ?? join(homedir(), ".local/state/app-pins/dots.git");
-  return locked(cache, () => publishLocked(name, deps, options, spec, cache));
-}
-
-async function publishLocked(name: string, deps: Deps, options: PublishOptions, spec: AppSpec, cache: string): Promise<PublishResult> {
+  // one private clone per app: agents never share git state, and launchd never
+  // runs two instances of the same agent, so no cross-process lock is needed.
+  const cache = join(options.cacheDir ?? join(homedir(), ".local/state/app-pins"), `${name}.git`);
   const branch = options.branch ?? "main", env = { ...process.env, ...options.env, GIT_TERMINAL_PROMPT: "0",
     GIT_SSH_COMMAND: "ssh -o BatchMode=yes -o ConnectTimeout=20" };
   const host = options.host ?? hostname().replace(/\.local$/, "");

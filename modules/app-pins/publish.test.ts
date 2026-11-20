@@ -45,7 +45,7 @@ function fixture(t: { after: (f: () => void) => void }) {
     },
     download: async () => { throw new Error("publish must not download artifacts"); },
   });
-  return { root, remote, user, spec, deps, options: { remote, cache: join(root, "cache.git"), host: "mbp-test", env } };
+  return { root, remote, user, spec, deps, options: { remote, cacheDir: join(root, "caches"), host: "mbp-test", env } };
 }
 
 test("publishes a bump commit to main with host provenance", async t => {
@@ -115,31 +115,19 @@ test("losing a race to a newer pin from another host is a no-op, not a downgrade
   assert.match(git(f.remote, "show", "main:modules/demo/app-pin.json"), /1\.3\.0/);
 });
 
-test("agents firing together serialize on the shared clone instead of corrupting it", async t => {
+test("agents for different apps publish concurrently without sharing git state", async t => {
   const f = fixture(t);
   plist(f.spec.bundle, "1.2.0");
-  const other: AppSpec = { ...f.spec, pin: "modules/demo/app-pin.json" };
-  const results = await Promise.all([publish("demo", f.deps(), f.options, f.spec), publish("demo", f.deps(), f.options, other)]);
-  assert.deepEqual(results.map(r => r.status).sort(), ["published", "unchanged"]);
-  assert.equal(git(f.remote, "rev-list", "--count", "main"), "2", "exactly one bump commit");
+  const other: AppSpec = { ...f.spec, pin: "modules/demo2/app-pin.json" };
+  const results = await Promise.all([publish("demo", f.deps(), f.options, f.spec), publish("demo2", f.deps(), f.options, other)]);
+  assert.deepEqual(results.map(r => r.status), ["published", "published"]);
+  assert.deepEqual(git(f.remote, "log", "--format=%s", "main").split("\n").slice(0, 2).sort(),
+    ["bump demo (auto-committed from mbp-test)", "bump demo2 (auto-committed from mbp-test)"]);
 });
 
-test("a lock left by a crashed agent is reclaimed at once; a live owner's lock is waited on", async t => {
+test("a cache left half-built by a crash is rebuilt, not trusted", async t => {
   const f = fixture(t);
   plist(f.spec.bundle, "1.2.0");
-  const lock = `${f.options.cache}.lock`;
-  // a dead pid's lock, as left by a crash: no age needed to reclaim it.
-  const dead = execFileSync("sh", ["-c", "sh -c 'echo $$' "], { encoding: "utf8" }).trim();
-  writeFileSync(lock, `${dead}:0:0`);
-  const started = Date.now();
+  mkdirSync(join(f.options.cacheDir, "demo.git"), { recursive: true }); // crash before HEAD existed
   assert.equal((await publish("demo", f.deps(), f.options, f.spec)).status, "published");
-  assert.ok(Date.now() - started < 10_000, "no wait for an expiry");
-  // a live owner (this test process) blocks until released, and its lock is not stolen.
-  writeFileSync(lock, `${process.pid}:0:live`);
-  plist(f.spec.bundle, "1.3.0");
-  const pending = publish("demo", f.deps(), f.options, f.spec);
-  await new Promise(r => setTimeout(r, 1500));
-  assert.equal(readFileSync(lock, "utf8"), `${process.pid}:0:live`, "live lock untouched");
-  rmSync(lock);
-  assert.equal((await pending).status, "published");
 });

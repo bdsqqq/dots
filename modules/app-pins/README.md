@@ -19,8 +19,8 @@ a launchd agent per app (`app-pin-<name>`) watches the bundle's
 so every update touches it. it also runs at load to catch updates made while it
 was stopped. `publish.ts`:
 
-1. fetches `main` into a private blobless clone
-   (`~/.local/state/app-pins/dots.git`). the checkout is never read or written,
+1. fetches `main` into its own private blobless clone
+   (`~/.local/state/app-pins/<app>.git`). the checkout is never read or written,
    so a dirty tree, another branch, or a rebase in progress doesn't matter;
 2. runs `record` against that tree: does nothing unless the installed build
    is **newer** than the pin on `main`, then resolves the feed entry for exactly
@@ -33,7 +33,8 @@ was stopped. `publish.ts`:
    and recomputes; because pins only move up, losing a race to another mac is a
    no-op. it never force-pushes.
 
-agents share the clone through a lock. pulling `main` brings the bump into your
+each app has its own clone and launchd never runs two copies of one agent, so
+agents need no lock. pulling `main` brings the bump into your
 checkout like any other commit. `pins.ts record "$PWD"` still writes to the
 working tree for manual use.
 
