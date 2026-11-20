@@ -62,7 +62,7 @@ in
                 pkgs.nodejs_latest
                 pnpm
               ]
-              ++ lib.optionals pkgs.stdenv.isLinux [
+              ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [
                 pkgs.gcc
                 pkgs.gnumake
               ]

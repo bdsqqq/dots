@@ -164,7 +164,7 @@
               cachix
               direnv
 
-            ] ++ (if pkgs.stdenv.isDarwin then
+            ] ++ (if pkgs.stdenv.hostPlatform.isDarwin then
               [ inputs.nix-darwin.packages.${system}.darwin-rebuild ]
             else [
               nixos-rebuild
@@ -180,7 +180,7 @@
             echo "  - deadnix: Find unused code"
             echo "  - cachix: Binary cache management"
             echo "  - direnv: Environment management"
-            ${if pkgs.stdenv.isDarwin then ''
+            ${if pkgs.stdenv.hostPlatform.isDarwin then ''
               echo "  - darwin-rebuild: System configuration management"
             '' else ''
               echo "  - nixos-rebuild: NixOS system management"
@@ -353,6 +353,7 @@
                 "cloudflare-tunnel-money"
                 "cloudflare-tunnel-photos"
                 "cloudflare-tunnel-t3"
+                "relay_smb_password"
                 "rex_netrc"
                 "syncthing_gui_password"
                 "tailscale_auth_key"
