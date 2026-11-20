@@ -113,20 +113,23 @@ export async function resolve(name: string, spec: AppSpec, installed: Installed,
   const assetName = expand(f.asset, installed.version);
   const darwin = await githubAsset(deps, f.repo, expand(f.tag, installed.version), assetName);
   const pin: Pin = { ...base, darwin: { arm64: { ...darwin, format: assetName.endsWith(".zip") ? "zip" : "dmg" } } };
-  if (f.linux) {
-    try {
-      const tag = expand(f.tag, installed.version);
-      pin.linux = {
-        version: installed.version,
-        x64: await githubAsset(deps, f.linux.repo, tag, expand(f.linux.assets.x64, installed.version)),
-        arm64: await githubAsset(deps, f.linux.repo, tag, expand(f.linux.assets.arm64, installed.version)),
-      };
-    } catch {
-      // linux builds publish separately; keep the last known-good linux pin until they exist.
-      if (previous?.linux) pin.linux = previous.linux;
-    }
-  }
+  if (previous?.linux) pin.linux = previous.linux;
   return pin;
+}
+
+/** linux builds publish separately; retried on every run until they match the mac pin. */
+async function advanceGithubLinux(spec: AppSpec, pin: Pin, deps: Deps): Promise<boolean> {
+  const f = spec.feed;
+  if (f.kind !== "github" || !f.linux || pin.linux?.version === pin.version) return false;
+  const tag = expand(f.tag, pin.version);
+  try {
+    pin.linux = {
+      version: pin.version,
+      x64: await githubAsset(deps, f.linux.repo, tag, expand(f.linux.assets.x64, pin.version)),
+      arm64: await githubAsset(deps, f.linux.repo, tag, expand(f.linux.assets.arm64, pin.version)),
+    };
+    return true;
+  } catch { return false; /* not published yet; keep the last known-good linux pin */ }
 }
 
 /** the linux CLI follows the build bundled in the accepted mac app, never the channel head. */
@@ -147,11 +150,24 @@ export async function record(name: string, repo: string, deps: Deps, spec = load
   if (!installed) return { app: name, status: "absent" };
   if (installed.bundleId !== spec.bundleId) throw new Error(`${spec.bundle} is ${installed.bundleId}, not ${spec.bundleId}`);
   const pinPath = join(repo, spec.pin), previous = readPin(pinPath, name);
-  if (previous && compare(key(spec, installed), key(spec, previous)) <= 0) return { app: name, status: "unchanged", version: installed.version };
-  const pin = await resolve(name, spec, installed, deps, previous);
-  writeJson(pinPath, pin);
-  const linux = pin.rexCommit && spec.linuxRelease ? await advanceRexLinux(join(repo, spec.linuxRelease), pin.rexCommit, deps) : undefined;
-  return { app: name, status: "recorded", version: pin.version, linux };
+  const advance = !previous || compare(key(spec, installed), key(spec, previous)) > 0;
+  const pin = advance ? await resolve(name, spec, installed, deps, previous) : previous!;
+  // linux pins reconcile independently, so a transient feed/api failure is retried next run.
+  const helium = await advanceGithubLinux(spec, pin, deps);
+  if (advance || helium) writeJson(pinPath, pin);
+  const rex = pin.rexCommit && spec.linuxRelease ? await advanceRexLinux(join(repo, spec.linuxRelease), pin.rexCommit, deps) : false;
+  if (!advance) return { app: name, status: "unchanged", version: installed.version, linux: helium || rex };
+  return { app: name, status: "recorded", version: pin.version, linux: helium || rex };
+}
+
+const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function running(spec: AppSpec, deps: Deps): boolean {
+  try { deps.run("pgrep", ["-f", `${escapeRegex(spec.bundle)}/Contents/MacOS/`]); return true; }
+  catch (error) {
+    // pgrep exits 1 for "no match"; anything else must not be read as "not running".
+    if ((error as { status?: number }).status === 1) return false;
+    throw error;
+  }
 }
 
 export type InstallResult = { app: string; status: "installed" | "current" | "newer" | "running" | "unpinned"; version?: string };
@@ -163,8 +179,7 @@ export async function install(name: string, repo: string, deps: Deps, spec = loa
     const order = compare(key(spec, installed), key(spec, pin));
     if (order > 0) return { app: name, status: "newer", version: installed.version };
     if (order === 0) return { app: name, status: "current", version: installed.version };
-    try { deps.run("pgrep", ["-f", `${spec.bundle}/Contents/MacOS/`]); return { app: name, status: "running", version: installed.version }; }
-    catch { /* not running */ }
+    if (running(spec, deps)) return { app: name, status: "running", version: installed.version };
   }
   const work = mkdtempSync(join(tmpdir(), `app-pin-${name}-`));
   const artifact = pin.darwin.arm64, file = join(work, `artifact.${artifact.format}`);
@@ -182,9 +197,19 @@ export async function install(name: string, repo: string, deps: Deps, spec = loa
       // stage on the target filesystem so the final swap is a rename.
       const target = spec.bundle, next = `${dirname(target)}/.${name}-pin-${process.pid}.app`, old = `${next}.old`;
       deps.run("ditto", [join(source, apps[0]), next]);
-      if (existsSync(target)) renameSync(target, old);
-      try { renameSync(next, target); } catch (error) { if (existsSync(old)) renameSync(old, target); throw error; }
-      rmSync(old, { recursive: true, force: true });
+      try {
+        // the download takes a while: recheck right before publishing, so an update or
+        // launch that happened meanwhile wins over the pin.
+        const now = readInstalled(target, deps.run);
+        if (now && now.bundleId !== spec.bundleId) throw new Error(`${target} is ${now.bundleId}, not ${spec.bundleId}`);
+        if (now && compare(key(spec, now), key(spec, pin)) >= 0) {
+          return { app: name, status: compare(key(spec, now), key(spec, pin)) > 0 ? "newer" : "current", version: now.version };
+        }
+        if (now && running(spec, deps)) return { app: name, status: "running", version: now.version };
+        if (now) renameSync(target, old);
+        try { renameSync(next, target); } catch (error) { if (existsSync(old)) renameSync(old, target); throw error; }
+        rmSync(old, { recursive: true, force: true });
+      } finally { rmSync(next, { recursive: true, force: true }); }
     } finally {
       if (artifact.format === "dmg") try { deps.run("hdiutil", ["detach", source, "-force"]); } catch { /* best effort */ }
     }

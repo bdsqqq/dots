@@ -35,7 +35,7 @@ function deps(files: Record<string, string>, api: Record<string, unknown>, calls
   return {
     run: (command, args) => {
       calls.push(command);
-      if (command === "pgrep") throw new Error("not running");
+      if (command === "pgrep") throw Object.assign(new Error("not running"), { status: 1 });
       return execFileSync(command, args, { encoding: "utf8" });
     },
     text: async url => { if (!(url in api)) throw new Error(`no fixture for ${url}`); return JSON.stringify(api[url]); },
@@ -63,7 +63,7 @@ test("record pins the exact installed build, then ignores equal and older instal
   const v2 = zipArtifact(root, "1.2.0");
   bundle(spec.bundle, "dev.demo", "1.2.0");
   const d = deps({}, release("1.2.0", v2.sha256));
-  assert.deepEqual(await record("demo", repo, d, spec), { app: "demo", status: "recorded", version: "1.2.0", linux: undefined });
+  assert.deepEqual(await record("demo", repo, d, spec), { app: "demo", status: "recorded", version: "1.2.0", linux: false });
   const pin = JSON.parse(readFileSync(join(repo, spec.pin), "utf8"));
   assert.equal(pin.darwin.arm64.sha256, v2.sha256);
   assert.equal(pin.darwin.arm64.format, "zip");
@@ -138,4 +138,47 @@ test("sparkle record pins the installed build, not the newest appcast item", asy
   assert.equal(pin.darwin.arm64.url, "https://example.test/Demo-41.zip");
   assert.equal(pin.darwin.arm64.sha256, artifact.sha256);
   assert.equal(pin.rexCommit, "a".repeat(40));
+});
+
+test("a newer app installed while the pin downloads is not overwritten", async t => {
+  const root = fixture(t), spec = githubSpec(root), repo = join(root, "repo");
+  const v2 = zipArtifact(root, "1.2.0");
+  bundle(spec.bundle, "dev.demo", "1.2.0");
+  await record("demo", repo, deps({}, release("1.2.0", v2.sha256)), spec);
+  bundle(spec.bundle, "dev.demo", "1.0.0");
+  const d = deps({ "https://example.test/Demo-1.2.0.zip": v2.file }, {});
+  const racing: Deps = { ...d, download: async (url, dest) => { await d.download(url, dest); bundle(spec.bundle, "dev.demo", "3.0.0"); } };
+  assert.equal((await install("demo", repo, racing, spec)).status, "newer");
+  assert.match(readFileSync(join(spec.bundle, "Contents/Info.plist"), "utf8"), /3\.0\.0/);
+});
+
+test("the running check matches bundle paths with regex metacharacters", async t => {
+  const root = fixture(t), spec = { ...githubSpec(root), bundle: join(root, "apps/Demo (Nightly).app") };
+  const repo = join(root, "repo"), v2 = zipArtifact(root, "1.2.0");
+  bundle(spec.bundle, "dev.demo", "1.2.0");
+  await record("demo", repo, deps({}, release("1.2.0", v2.sha256)), spec);
+  bundle(spec.bundle, "dev.demo", "1.0.0");
+  // a real process whose argv starts with the bundle executable path.
+  const exe = join(spec.bundle, "Contents/MacOS/Demo");
+  mkdirSync(join(spec.bundle, "Contents/MacOS"), { recursive: true });
+  writeFileSync(exe, "#!/bin/sh\nsleep 30\n", { mode: 0o755 });
+  const child = (await import("node:child_process")).spawn(exe, [], { stdio: "ignore" });
+  t.after(() => child.kill());
+  await new Promise(r => setTimeout(r, 300));
+  const real: Deps = { ...deps({}, {}), run: (command, args) => execFileSync(command, args, { encoding: "utf8" }) };
+  assert.equal((await install("demo", repo, real, spec)).status, "running");
+});
+
+test("a linux pin that failed to resolve is retried without a new mac update", async t => {
+  const root = fixture(t), repo = join(root, "repo"), v2 = zipArtifact(root, "1.2.0");
+  const spec: AppSpec = { ...githubSpec(root), feed: { kind: "github", repo: "o/demo", tag: "v{version}", asset: "Demo-{version}.zip",
+    linux: { repo: "o/demo-linux", assets: { x64: "demo-{version}-x64", arm64: "demo-{version}-arm64" } } } };
+  bundle(spec.bundle, "dev.demo", "1.2.0");
+  await record("demo", repo, deps({}, release("1.2.0", v2.sha256)), spec);
+  assert.equal(JSON.parse(readFileSync(join(repo, spec.pin), "utf8")).linux, undefined, "linux not published yet");
+  const linux = { "https://api.github.com/repos/o/demo-linux/releases/tags/v1.2.0": { assets: ["x64", "arm64"].map(a => (
+    { name: `demo-1.2.0-${a}`, browser_download_url: `https://example.test/demo-1.2.0-${a}`, digest: `sha256:${"b".repeat(64)}` })) } };
+  const later = await record("demo", repo, deps({}, { ...release("1.2.0", v2.sha256), ...linux }), spec);
+  assert.deepEqual([later.status, later.linux], ["unchanged", true]);
+  assert.equal(JSON.parse(readFileSync(join(repo, spec.pin), "utf8")).linux.version, "1.2.0");
 });
