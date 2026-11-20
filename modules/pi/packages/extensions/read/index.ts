@@ -15,11 +15,10 @@ import { withPromptPatch } from "@bds_pi/prompt-patch";
 import {
   Type,
   type Static,
-  type TInteger,
   type TObject,
   type TOptional,
   type TString,
-  type TTuple,
+  type TUnsafe,
 } from "typebox";
 import {
   clearConfigCache,
@@ -80,11 +79,16 @@ const readDescription =
 // isolated declarations need a portable type rather than the SDK's nested typebox path.
 const readParameters: TObject<{
   path: TString;
-  read_range: TOptional<TTuple<[TInteger, TInteger]>>;
+  read_range: TOptional<TUnsafe<[number, number]>>;
 }> = Type.Object({
   path: nativeRead.parameters.properties.path,
   read_range: Type.Optional(
-    Type.Tuple([Type.Integer({ minimum: 1 }), Type.Integer({ minimum: 1 })], {
+    // Type.Tuple emits draft-7 items; providers require the 2020-12 form.
+    Type.Unsafe<[number, number]>({
+      type: "array",
+      prefixItems: [Type.Integer({ minimum: 1 }), Type.Integer({ minimum: 1 })],
+      minItems: 2,
+      maxItems: 2,
       description: "inclusive 1-indexed start and end lines.",
     }),
   ),
@@ -263,6 +267,37 @@ if (import.meta.vitest) {
   });
 
   describe("read SDK adapter", () => {
+    it("validates an optional pair of positive line numbers with a 2020-12 tuple", async () => {
+      const { validateToolArguments } = await import("@earendil-works/pi-ai");
+      const tool = withPromptPatch(createReadTool());
+      expect(tool.parameters.properties.read_range).toMatchObject({
+        type: "array",
+        prefixItems: [
+          { type: "integer", minimum: 1 },
+          { type: "integer", minimum: 1 },
+        ],
+        minItems: 2,
+        maxItems: 2,
+      });
+      const validate = (
+        args: Parameters<typeof validateToolArguments>[1]["arguments"],
+      ) =>
+        validateToolArguments(tool, {
+          type: "toolCall",
+          id: "range-schema",
+          name: tool.name,
+          arguments: args,
+        });
+      expect(validate({ path: "file" })).toEqual({ path: "file" });
+      expect(validate({ path: "file", read_range: [1, 3] })).toEqual({
+        path: "file",
+        read_range: [1, 3],
+      });
+      for (const range of [[], [1], [1, 2, 3], [0, 2], [-1, 2]]) {
+        expect(() => validate({ path: "file", read_range: range })).toThrow();
+      }
+    });
+
     it("reads Unicode text and inclusive ranges through the SDK", async () => {
       const cwd = makeDirectory();
       const file = path.join(cwd, "unicode.txt");

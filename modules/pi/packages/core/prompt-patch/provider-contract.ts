@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolve } from "node:path";
-import type { Tool } from "@earendil-works/pi-ai";
+import type { Model, Tool } from "@earendil-works/pi-ai";
 import {
   createCodingTools,
   getPackageDir,
@@ -98,6 +98,52 @@ if (import.meta.vitest) {
   const { stream } =
     await import("@earendil-works/pi-ai/api/openai-codex-responses");
   const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
+  const { Ajv2020 } = await import("ajv/dist/2020.js");
+  const schemaValidator = new Ajv2020({ strict: false, allErrors: true });
+
+  function expectDraft2020Schema(
+    name: string,
+    schema: Parameters<typeof schemaValidator.validateSchema>[0],
+  ) {
+    const valid = schemaValidator.validateSchema(schema);
+    expect(valid, `${name}: ${JSON.stringify(schemaValidator.errors)}`).toBe(
+      true,
+    );
+  }
+
+  it.each(process.env.PI_TEST_BUILT_TOOLS === "1" ? [false, true] : [false])(
+    "validates every loaded tool schema against draft 2020-12 (built: %s)",
+    async (built) => {
+      for (const tool of await loadProviderContractTools(built)) {
+        expectDraft2020Schema(tool.name, tool.parameters);
+      }
+    },
+  );
+
+  it.each(process.env.PI_TEST_BUILT_TOOLS === "1" ? [false, true] : [false])(
+    "keeps the codemode read range declaration a tuple (built: %s)",
+    async (built) => {
+      const { createCodemodeDescription } = await import(
+        pathToFileURL(
+          resolve(getPackageDir(), "dist/extensions/codemode/tool.js"),
+        ).href
+      );
+      const read = (await loadProviderContractTools(built)).find(
+        (tool) => tool.name === "read",
+      );
+      if (!read) throw new Error("read tool missing");
+      const description = createCodemodeDescription([
+        {
+          ...read,
+          label: "read",
+          async execute() {
+            throw new Error("tool execution forbidden");
+          },
+        },
+      ]);
+      expect(description).toContain("read_range?: [number, number]");
+    },
+  );
 
   it("launches the current unbundled SDK, not an aliased or bundled CLI", async () => {
     const { execFileSync } = await import("node:child_process");
@@ -131,6 +177,85 @@ if (import.meta.vitest) {
       );
     },
   );
+
+  function expectReadRangeSchema(
+    properties: Record<string, unknown> | undefined,
+  ) {
+    const range = properties?.read_range as {
+      type?: string;
+      anyOf?: Array<{ type?: string }>;
+    };
+    expect(range).toBeDefined();
+    const array =
+      range.anyOf?.find((schema) => schema.type === "array") ?? range;
+    expect(array).toMatchObject({
+      type: "array",
+      prefixItems: [
+        { type: "integer", minimum: 1 },
+        { type: "integer", minimum: 1 },
+      ],
+      minItems: 2,
+      maxItems: 2,
+    });
+  }
+
+  it("sends 2020-12-compatible tool schemas through the Anthropic request builder", async () => {
+    const { stream } =
+      await import("@earendil-works/pi-ai/api/anthropic-messages");
+    const tools = await loadProviderContractTools();
+    const runtime = await ModelRuntime.create({
+      credentials: new InMemoryCredentialStore(),
+      refreshOnCreate: false,
+      modelsPath: null,
+    });
+    const model = runtime
+      .getModels("anthropic")
+      .find((model) => model.api === "anthropic-messages");
+    if (!model) throw new Error("Anthropic test model missing");
+    const network = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("network forbidden"));
+    let payload:
+      | {
+          tools?: Array<{
+            name: string;
+            input_schema: { properties: Record<string, unknown> };
+          }>;
+        }
+      | undefined;
+    try {
+      const result = await stream(
+        model as Model<"anthropic-messages">,
+        normalizeContext({
+          messages: [
+            { role: "user", content: "offline schema check", timestamp: 0 },
+          ],
+          tools,
+        }),
+        {
+          apiKey: "offline-test",
+          onPayload(value) {
+            payload = value as typeof payload;
+            throw new Error("captured before transport");
+          },
+        },
+      ).result();
+      expect(result.errorMessage).toContain("captured before transport");
+      expect(payload?.tools?.map((tool) => tool.name)).toEqual(
+        expect.arrayContaining(tools.map((tool) => tool.name)),
+      );
+      for (const tool of payload?.tools ?? []) {
+        expectDraft2020Schema(tool.name, tool.input_schema);
+      }
+      expectReadRangeSchema(
+        payload?.tools?.find((tool) => tool.name === "read")?.input_schema
+          .properties,
+      );
+      expect(network).not.toHaveBeenCalled();
+    } finally {
+      network.mockRestore();
+    }
+  });
 
   it("reads both Codex declaration locations without counting unrelated input", () => {
     const tool = (name: string) => ({ name, type: "function" });
@@ -215,6 +340,16 @@ if (import.meta.vitest) {
         ).toMatchObject({
           strict: true,
         });
+        for (const tool of payload ?? []) {
+          expect(tool.parameters).toBeDefined();
+          expectDraft2020Schema(tool.name, tool.parameters!);
+        }
+        expect(payload?.find((tool) => tool.name === "read")).toMatchObject({
+          strict: false,
+        });
+        expectReadRangeSchema(
+          payload?.find((tool) => tool.name === "read")?.parameters?.properties,
+        );
         for (const name of ["edit", "write"]) {
           const wire = payload?.find((tool) => tool.name === name);
           expect(wire).toMatchObject({
