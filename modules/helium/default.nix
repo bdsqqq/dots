@@ -4,89 +4,23 @@ if !(lib.hasInfix "linux" hostSystem) || headMode != "graphical" then
   { }
 else
   let
-    version = "0.19.4.1";
+    # app-pins records the version a mac accepted; linux follows the same pin.
+    pin = (builtins.fromJSON (builtins.readFile ./app-pin.json)).linux;
+    inherit (pin) version;
     asset =
-      if pkgs.stdenv.hostPlatform.isx86_64 then {
-        suffix = "x86_64.AppImage";
-        hash = "sha256-Wy2zkrPth/JKqESTYFnWisqYvCBUjqqg3s+jwoCioKc=";
-      } else if pkgs.stdenv.hostPlatform.isAarch64 then {
-        suffix = "arm64.AppImage";
-        hash = "sha256-/aD54IM9fxsmKXxkiovhTqnkZgS+V6R9TZTheICcGss=";
-      } else
-        throw "helium: unsupported Linux architecture ${pkgs.stdenv.hostPlatform.system}";
+      if pkgs.stdenv.hostPlatform.isx86_64 then pin.x64
+      else if pkgs.stdenv.hostPlatform.isAarch64 then pin.arm64
+      else throw "helium: unsupported Linux architecture ${pkgs.stdenv.hostPlatform.system}";
 
     appimage = pkgs.stdenvNoCC.mkDerivation {
       pname = "helium-appimage";
       inherit version;
       src = pkgs.fetchurl {
-        url = "https://github.com/imputnet/helium-linux/releases/download/${version}/helium-${version}-${asset.suffix}";
-        inherit (asset) hash;
+        inherit (asset) url sha256;
       };
       dontUnpack = true;
       installPhase = ''
         install -Dm755 $src $out/bin/helium.AppImage
-      '';
-    };
-
-    updateScript = pkgs.writeText "helium-update.ts" ''
-      import { readFileSync, writeFileSync } from "node:fs";
-
-      const [path, version, x86Hash, armHash] = Bun.argv.slice(2);
-      let text = readFileSync(path, "utf8");
-      text = text.replace(
-        /version = "[^"]+";/,
-        `version = "''${version}";`,
-      );
-      text = text.replace(
-        /(suffix = "x86_64\.AppImage";\n\s+hash = ")[^"]+(";)/,
-        `$1''${x86Hash}$2`,
-      );
-      text = text.replace(
-        /(suffix = "arm64\.AppImage";\n\s+hash = ")[^"]+(";)/,
-        `$1''${armHash}$2`,
-      );
-      writeFileSync(path, text);
-    '';
-
-    helium-update = pkgs.writeShellApplication {
-      name = "helium-update";
-      runtimeInputs = [ pkgs.bun pkgs.coreutils pkgs.curl pkgs.gnugrep pkgs.gnused pkgs.nix ];
-      text = ''
-        set -euo pipefail
-
-        file="''${1:-''${DOTS_NIX:-$HOME/commonplace/01_files/nix}/modules/helium/default.nix}"
-        if [ ! -f "$file" ]; then
-          echo "helium-update: cannot find $file" >&2
-          echo "usage: helium-update [path/to/helium.nix]" >&2
-          exit 1
-        fi
-
-        latest_release="$(${pkgs.curl}/bin/curl -fsSL -H "Accept: application/vnd.github+json" \
-          "https://api.github.com/repos/imputnet/helium-linux/releases/latest")"
-        latest_version="$(printf '%s' "$latest_release" \
-          | ${pkgs.gnugrep}/bin/grep '"tag_name": ' \
-          | head -1 \
-          | ${pkgs.gnused}/bin/sed 's/.*"tag_name": "//; s/",\?$//')"
-
-        if [ -z "$latest_version" ]; then
-          echo "helium-update: failed to resolve latest version" >&2
-          exit 1
-        fi
-
-        hash_for() {
-          suffix="$1"
-          url="https://github.com/imputnet/helium-linux/releases/download/$latest_version/helium-$latest_version-$suffix"
-          nix_hash="$(nix-prefetch-url "$url")"
-          nix hash convert --hash-algo sha256 --to sri "$nix_hash"
-        }
-
-        x86_hash="$(hash_for x86_64.AppImage)"
-        arm_hash="$(hash_for arm64.AppImage)"
-
-        bun ${updateScript} "$file" "$latest_version" "$x86_hash" "$arm_hash"
-
-        nix fmt "$file"
-        echo "helium-update: updated $file to $latest_version"
       '';
     };
 
@@ -109,7 +43,7 @@ else
   in
   {
     home-manager.users.bdsqqq = { ... }: {
-      home.packages = [ helium-launcher helium-update ];
+      home.packages = [ helium-launcher ];
 
       xdg.desktopEntries.helium = {
         name = "Helium";

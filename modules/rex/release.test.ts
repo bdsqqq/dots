@@ -2,10 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fromUpstream, parseRelease, prepare, withVerifiedArchive } from "./release.ts";
+import { fromUpstream, parseRelease, withVerifiedArchive } from "./release.ts";
 import type { Release, Run } from "./release.ts";
 
 const archive = "verified archive";
@@ -64,25 +63,6 @@ test("upstream conversion freezes both hashes without trusting arbitrary downloa
   assert.throws(() => fromUpstream({ ...upstream(), artifacts: [] }), /missing/);
 });
 
-test("prepare advances only its explicit release file and leaves equal/older pins untouched", t => {
-  const root = temporary(t), file = join(root, "release.json"), unrelated = join(root, "settings.json");
-  writeFileSync(file, JSON.stringify(record("0.0.100-gaaa")));
-  writeFileSync(unrelated, "unpublished settings");
-  assert.equal(prepare(file, () => JSON.stringify(upstream())), true);
-  assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), record());
-  assert.equal(prepare(file, () => JSON.stringify(upstream())), false);
-  assert.equal(prepare(file, () => JSON.stringify(upstream(record("0.0.100-gaaa")))), false);
-  assert.equal(readFileSync(unrelated, "utf8"), "unpublished settings");
-});
-
-test("republishing a pinned version with a different hash fails without rewriting it", t => {
-  const file = join(temporary(t), "release.json"), original = JSON.stringify(record());
-  writeFileSync(file, original);
-  const changed = upstream(); changed.artifacts[0].sha256 = "0".repeat(64);
-  assert.throws(() => prepare(file, () => JSON.stringify(changed)), /already pinned/);
-  assert.equal(readFileSync(file, "utf8"), original);
-});
-
 test("verified archive reaches the consumer only after checksum and exact build checks", () => {
   const f = verifier();
   assert.equal(withVerifiedArchive(record(), "x64", binary => readFileSync(binary, "utf8"), f.run), "binary");
@@ -108,11 +88,3 @@ test("archive symlinks are rejected before execution", () => {
   assert.equal(f.probes(), 0);
 });
 
-test("cli rejects mismatched runtime validation before fetching anything", t => {
-  const file = join(temporary(t), "release.json");
-  writeFileSync(file, JSON.stringify(record()));
-  const wrongArch = process.arch === "x64" ? "arm64" : "x64";
-  const result = spawnSync(process.execPath, [new URL("./release.ts", import.meta.url).pathname, "verify", file, wrongArch], { encoding: "utf8" });
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /native linux runner/);
-});

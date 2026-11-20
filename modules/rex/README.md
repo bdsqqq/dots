@@ -1,51 +1,24 @@
 # rex
 
-rex is the pilot for **upstream → validated git pin → main → host apply**.
-publishing the release decision is separate from installing it. hosts never
-independently chase the moving upstream channel.
+the linux CLI follows the build bundled in the **Rex.app a mac accepted**, not
+the upstream channel head. publishing the release decision is separate from
+installing it; hosts never independently chase the moving upstream channel.
 
 ## publisher
 
-`.depot/workflows/rex-update.yml` runs on Depot CI every 15 minutes. manual
-runs default to validation only; publication requires `publish=true` on `main`.
-
-1. check out `main`, run the helper tests, and prepare `release.json` from the
-   upstream snapshot feed. unchanged/older releases do not create a commit;
-   changed hashes for an already pinned version fail closed.
-2. freeze that candidate as one workflow artifact. native x64 and arm64 linux
-   Depot CI sandboxes download its exact archives, verify sha256, and
-   check `--help`, exact version, and commit. neither validator refetches the
-   moving channel.
-3. only after both pass, a write-scoped job commits **only** `release.json` and
-   pushes directly to `main`. a moving main or protected-branch rejection fails;
-   there is no force-push, rebase, or policy bypass. the next run can retry.
+[app-pins](../app-pins/README.md) watches `/Applications/Rex.app` on each mac.
+when Sparkle replaces the bundle, it records the app build in `app-pin.json`
+and reads the CLI commit from that build's signed appcast notes
+("Rex … (`<commit>`)"). it then fetches that exact commit's linux archives
+from `api/releases/rex/snapshot?commit=…` and advances `release.json` only when
+the build is newer. the change stays uncommitted in the working tree, like a
+pnpm edit; publishing it to `main` is an ordinary commit.
 
 `release.json` records version, upstream commit, and canonical archive URLs and
-hashes for both linux architectures. its initial entry matches the existing
-bootstrap pin. `flake.lock` still pins upstream's nix module, terminfo, ssh
-fallback, and bootstrap archive; it is not the runtime release authority.
-
-the publisher needs no pre-release token: upstream's release feed and binary
-artifacts are public. only its final job gets the repository's `GITHUB_TOKEN`
-write permission. git remains the distribution boundary, so the publisher could
-move to a designated local host without changing host consumers. the Depot CI
-schedule is best effort, not a 15-minute delivery guarantee.
-
-### depot connection
-
-this personal GitHub repository uses **Depot CI**, not Depot's GitHub Actions
-runner product, which requires a GitHub organization. the Depot Code Access app
-must have access to `bdsqqq/dots` under the personal **bedesqui** Depot organization.
-all jobs use native Linux CI sandboxes (`depot-ubuntu-24.04` and its arm variant).
-the organization token remains in `modules/depot/secrets.yaml` for local
-management; it is not copied into workflow secrets.
-
-there is no GitHub-scheduled copy of this publisher: running both would create
-two independent writers. a local `depot ci run` tests the working tree with
-publication disabled by default. only a schedule on main, or explicit
-`publish=true` dispatch on main, can request the write-scoped publish job.
-Depot CI does not provide macOS sandboxes; future Darwin CI needs a separate
-supported execution route. this pilot publishes Linux server artifacts only.
+hashes for both linux architectures. `flake.lock` still pins upstream's nix
+module, terminfo, ssh fallback, and bootstrap archive; it is not the runtime
+release authority. the former 15-minute Depot CI publisher is retired: it
+committed whatever upstream published, whether or not anyone ran it.
 
 ## host apply
 
@@ -79,13 +52,8 @@ not proof that every existing account server is already on the new version.
 ## observe and catch up
 
 ```bash
-# validate the working tree on Depot CI, without a publishing job
-depot-org ci run --org jh98292fq5 --repo bdsqqq/dots --forge github \
-  --workflow .depot/workflows/rex-update.yml --job prepare --job validate
-
-# manually publish a verified candidate after the workflow is merged
-depot-org ci dispatch --org jh98292fq5 --repo bdsqqq/dots \
-  --workflow rex-update.yml --ref main --input publish=true
+# record the installed Rex.app (and its CLI) on a mac
+node modules/app-pins/pins.ts record "$PWD" rex
 
 # on each activated linux host
 sudo systemctl start rex-update.service
@@ -150,9 +118,7 @@ node --test modules/rex/*.test.ts
 nix eval --impure --expr 'import ./modules/rex/test.nix { flake = builtins.getFlake (toString ./.); }'
 ```
 
-publisher tests execute the actual workflow push gate against temporary local
-bare repositories, including moving-main and unexpected-staged-file failures.
-updater tests use isolated files/fake service commands. neither proves live
+app-pins tests cover recording/installing the mac app. updater tests use isolated files/fake service commands. neither proves live
 linux nix-ld/pam loading, tailscale enrollment, or session preservation.
 
 upstream:

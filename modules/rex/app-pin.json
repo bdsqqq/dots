@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "app": "rex",
+  "version": "0.1.0",
+  "build": "2067",
+  "darwin": {
+    "arm64": {
+      "url": "https://blob.superlogical.com/public/rex-app/snapshot-arm64/Rex-0.1.0-2067.dmg",
+      "sha256": "5e1222c33c60b500f8cb79c4c45e7688f79807e4585a1b0e8abbc74d3118705e",
+      "format": "dmg"
+    }
+  },
+  "rexCommit": "a086db17db8d464627c77e3bb0be6d462668b0ac"
+}

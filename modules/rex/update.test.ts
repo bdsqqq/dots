@@ -5,7 +5,7 @@ import fs, { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSy
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { applyInstalled, newer, publish, status, update } from "./update.ts";
-import { publishedReleaseUrl, upstreamReleaseUrl } from "./release.ts";
+import { publishedReleaseUrl } from "./release.ts";
 
 function fixture(t: { after: (callback: () => void) => void }) {
   const root = mkdtempSync(join(tmpdir(), "rex-test-"));
@@ -67,7 +67,7 @@ test("published pins validate, persist an install receipt, and restart the login
   assert.equal(update(f.options), "updated to 0.0.200-gbbb");
   assert.equal(f.contents(), "0.0.200-gbbb");
   assert.ok(f.calls.some(c => c.includes(publishedReleaseUrl)));
-  assert.ok(!f.calls.some(c => c.includes(upstreamReleaseUrl)));
+  assert.ok(!f.calls.some(c => c.includes("blob.superlogical.com/api/")), "hosts never chase the upstream channel");
   const receipt = JSON.parse(readFileSync(join(f.options.root, "var/lib/rex-update/applied.json"), "utf8"));
   assert.equal(receipt.source, publishedReleaseUrl);
   assert.equal(receipt.release.version, "0.0.200-gbbb");

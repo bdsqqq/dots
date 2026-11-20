@@ -1,11 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, lstatSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 
-export const upstreamReleaseUrl = "https://blob.superlogical.com/api/releases/rex/snapshot";
 export const publishedReleaseUrl = "https://raw.githubusercontent.com/bdsqqq/dots/main/modules/rex/release.json";
 export type Architecture = "x64" | "arm64";
 export type Run = (command: string, args: string[]) => string;
@@ -89,24 +87,6 @@ export function fetchRelease(source: string, run: Run = runCommand): Release {
   return parseRelease(JSON.parse(run("curl", [...curl, "--header", "Cache-Control: no-cache", source])));
 }
 
-/** publication freezes one candidate; validators must never refetch a moving channel. */
-export function prepare(path: string, run: Run = runCommand): boolean {
-  const previous = parseRelease(JSON.parse(readFileSync(path, "utf8")));
-  const candidate = fromUpstream(JSON.parse(run("curl", [...curl, upstreamReleaseUrl])));
-  if (candidate.version === previous.version && JSON.stringify(candidate) !== JSON.stringify(previous)) {
-    throw new Error("upstream changed an already pinned rex version");
-  }
-  if (!newer(candidate.version, previous.version)) return false;
-  const temporary = `${path}.candidate-${process.pid}`;
-  try {
-    writeFileSync(temporary, `${JSON.stringify(candidate, null, 2)}\n`);
-    renameSync(temporary, path);
-  } finally {
-    rmSync(temporary, { force: true });
-  }
-  return true;
-}
-
 /** checksum and exact build identity must pass before a consumer can publish/install. */
 export function withVerifiedArchive<T>(release: Release, arch: Architecture, consume: (binary: string) => T,
   run: Run = runCommand): T {
@@ -129,17 +109,4 @@ export function withVerifiedArchive<T>(release: Release, arch: Architecture, con
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
-}
-
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const [command, path, arch] = process.argv.slice(2);
-  if (!path) throw new Error("usage: release.ts prepare FILE | verify FILE x64|arm64");
-  if (command === "prepare") console.log(prepare(path) ? "rex candidate advanced" : "rex pin unchanged");
-  else if (command === "verify") {
-    if (process.platform !== "linux" || arch !== process.arch || (arch !== "x64" && arch !== "arm64")) {
-      throw new Error("rex validation requires a native linux runner matching the artifact architecture");
-    }
-    const release = parseRelease(JSON.parse(readFileSync(path, "utf8")));
-    withVerifiedArchive(release, arch, () => console.log(`verified ${release.version} ${release.commit} ${arch}`));
-  } else throw new Error(`unsupported rex release command: ${command}`);
 }

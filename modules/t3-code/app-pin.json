@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "app": "t3-code",
+  "version": "0.1.11-nightly.20261118.4877",
+  "build": "0.1.11-nightly.20261118.4877",
+  "darwin": {
+    "arm64": {
+      "url": "https://github.com/pingdotgg/t3code/releases/download/v0.1.11-nightly.20261118.4877/T3-Code-0.1.11-nightly.20261118.4877-arm64.zip",
+      "sha256": "3787b23c56b8a5b602868df41da612fa1c306ccb4e83702fe1a779c24305cf91",
+      "format": "zip"
+    }
+  }
+}
