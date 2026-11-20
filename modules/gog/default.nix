@@ -27,7 +27,7 @@ in {
     account = lib.mkOption { type = lib.types.nullOr lib.types.str; default = null; description = "Explicit expected Google account email; never inferred."; };
     client = lib.mkOption { type = lib.types.nullOr lib.types.str; default = null; description = "Explicit named gog OAuth client, including default if intentional."; };
     services = lib.mkOption { type = lib.types.listOf (lib.types.enum [ "gmail" "calendar" ]); default = [ "gmail" "calendar" ]; description = "Services that readiness must authenticate."; };
-    keyringBackend = lib.mkOption { type = lib.types.enum [ "file" "keychain" ]; default = if pkgs.stdenv.isDarwin then "keychain" else "file"; description = "Native Keychain on macOS or SOPS-password-backed unattended file keyring."; };
+    keyringBackend = lib.mkOption { type = lib.types.enum [ "file" "keychain" ]; default = if pkgs.stdenv.hostPlatform.isDarwin then "keychain" else "file"; description = "Native Keychain on macOS or SOPS-password-backed unattended file keyring."; };
   };
   config = {
     my.gog.credential.required = lib.mkIf cfg.enable true;
@@ -36,7 +36,7 @@ in {
       { assertion = !cfg.enable || (cfg.account != null && builtins.match "[^[:space:]@]+@[^[:space:]@]+" cfg.account != null); message = "gog auth requires an explicit my.gog.account email."; }
       { assertion = !cfg.enable || (cfg.client != null && builtins.match "[a-z0-9_-]+" cfg.client != null); message = "gog auth requires an explicit normalized my.gog.client name."; }
       { assertion = !cfg.enable || cfg.services != []; message = "gog auth requires at least one declared Gmail/Calendar service."; }
-      { assertion = !cfg.enable || !pkgs.stdenv.isLinux || cfg.keyringBackend == "file"; message = "unattended Linux gog auth requires the file keyring and its SOPS password."; }
+      { assertion = !cfg.enable || !pkgs.stdenv.hostPlatform.isLinux || cfg.keyringBackend == "file"; message = "unattended Linux gog auth requires the file keyring and its SOPS password."; }
     ];
     home-manager.users.bdsqqq = { ... }: {
       home.packages = [ (if cfg.enable then wrapped else pkgs.gogcli) auth ];

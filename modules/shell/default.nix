@@ -20,7 +20,7 @@
 
   home-manager.users.bdsqqq = { config, pkgs, lib, ... }:
   let
-    graphicalLinux = pkgs.stdenv.isLinux && headMode == "graphical";
+    graphicalLinux = pkgs.stdenv.hostPlatform.isLinux && headMode == "graphical";
   in {
     # define my.defaultShell option here, derived from enabled shell programs
     # other modules (tmux, etc.) can reference config.my.defaultShell
@@ -38,7 +38,7 @@
 
     config = {
       xdg.enable = true;
-      xdg.userDirs = if pkgs.stdenv.isDarwin then
+      xdg.userDirs = if pkgs.stdenv.hostPlatform.isDarwin then
         { }
       else {
         enable = true;
