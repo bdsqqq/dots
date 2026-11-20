@@ -27,8 +27,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    nixos-hardware.url = "github:NixOS/nixos-hardware/master";
-
     nix-flatpak.url = "github:gmodena/nix-flatpak";
 
     # Vicinae launcher (no nixpkgs.follows to preserve cachix cache hits)
@@ -69,16 +67,6 @@
     hunk = {
       url = "github:modem-dev/hunk";
       inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    axiom-skills = {
-      url = "github:axiomhq/skills";
-      flake = false;
-    };
-
-    agent-browser = {
-      url = "github:vercel-labs/agent-browser";
-      flake = false;
     };
 
   };

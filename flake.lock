@@ -1,21 +1,5 @@
 {
   "nodes": {
-    "agent-browser": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1792534650,
-        "narHash": "sha256-DachbA1H6nDaAt5I8K/6qDdI8ixraY6L7sAG+YkUL7M=",
-        "owner": "vercel-labs",
-        "repo": "agent-browser",
-        "rev": "fd93075e55a21a47fcb36d7433361daa867a0580",
-        "type": "github"
-      },
-      "original": {
-        "owner": "vercel-labs",
-        "repo": "agent-browser",
-        "type": "github"
-      }
-    },
     "axiom-deploy-annotation": {
       "inputs": {
         "nixpkgs": [
@@ -33,22 +17,6 @@
       "original": {
         "owner": "bdsqqq",
         "repo": "axiom-deploy-annotation",
-        "type": "github"
-      }
-    },
-    "axiom-skills": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1792576071,
-        "narHash": "sha256-BYFHbYsS7DWs92ASyKqh4XHn2yihl8MyhdmCYh4uRAg=",
-        "owner": "axiomhq",
-        "repo": "skills",
-        "rev": "a392cdb775b3514fd3e2acb4da75f603d1385ebc",
-        "type": "github"
-      },
-      "original": {
-        "owner": "axiomhq",
-        "repo": "skills",
         "type": "github"
       }
     },
@@ -555,25 +523,6 @@
         "type": "github"
       }
     },
-    "nixos-hardware": {
-      "inputs": {
-        "nixpkgs": "nixpkgs_2"
-      },
-      "locked": {
-        "lastModified": 1792491056,
-        "narHash": "sha256-6n1Dn+WYtD8lprnSi+0k4FjbKfIVNG8lblpJ5MiiqXs=",
-        "owner": "NixOS",
-        "repo": "nixos-hardware",
-        "rev": "efb6d0d5e2394c3c5416a18652808aba206c0988",
-        "type": "github"
-      },
-      "original": {
-        "owner": "NixOS",
-        "ref": "master",
-        "repo": "nixos-hardware",
-        "type": "github"
-      }
-    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1785828668,
@@ -670,19 +619,6 @@
     },
     "nixpkgs_2": {
       "locked": {
-        "lastModified": 1789546076,
-        "narHash": "sha256-vWkSk5bbfTqdtMoSgD9FshACO8JCvXTFi+3cqEp0mH0=",
-        "rev": "b1b875982b17dabde9b4a37f3e229e74913e6db3",
-        "type": "tarball",
-        "url": "https://releases.nixos.org/nixos/unstable/nixos-26.11pre1074753.b1b875982b17/nixexprs.tar.xz"
-      },
-      "original": {
-        "type": "tarball",
-        "url": "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz"
-      }
-    },
-    "nixpkgs_3": {
-      "locked": {
         "lastModified": 1794890597,
         "narHash": "sha256-lME2lHoDHAaSHP3/okgiVoJ0icVEvsQH8LeU3We7tcc=",
         "owner": "NixOS",
@@ -697,7 +633,7 @@
         "type": "github"
       }
     },
-    "nixpkgs_4": {
+    "nixpkgs_3": {
       "locked": {
         "lastModified": 1792094642,
         "narHash": "sha256-zp8ToDMnqZcu4o4IH9pdwXFXGp7yLm/M0dEnNWnyd7I=",
@@ -799,9 +735,7 @@
     },
     "root": {
       "inputs": {
-        "agent-browser": "agent-browser",
         "axiom-deploy-annotation": "axiom-deploy-annotation",
-        "axiom-skills": "axiom-skills",
         "berkeley-mono": "berkeley-mono",
         "copyparty": "copyparty",
         "disko": "disko",
@@ -813,8 +747,7 @@
         "niri": "niri",
         "nix-darwin": "nix-darwin",
         "nix-flatpak": "nix-flatpak",
-        "nixos-hardware": "nixos-hardware",
-        "nixpkgs": "nixpkgs_3",
+        "nixpkgs": "nixpkgs_2",
         "nixpkgs-unstable": "nixpkgs-unstable",
         "quickshell": "quickshell",
         "rex": "rex",
@@ -1047,7 +980,7 @@
     },
     "vicinae": {
       "inputs": {
-        "nixpkgs": "nixpkgs_4",
+        "nixpkgs": "nixpkgs_3",
         "numen": "numen",
         "soulver-cpp": "soulver-cpp",
         "systems": "systems_4"
