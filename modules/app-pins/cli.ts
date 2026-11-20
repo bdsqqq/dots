@@ -76,7 +76,8 @@ async function runOne(command: Command, app: App, deps: Deps): Promise<Outcome> 
 }
 async function publishOne(command: Extract<Command, { op: "publish" }>, app: App, deps: Deps): Promise<Outcome> {
   const r = await publish(app, deps, command);
-  const versions = r.record && r.record.status !== "absent" ? { fromVersion: r.record.from, toVersion: r.record.to } : {};
+  const versions = r.status === "absent" ? {}
+    : "record" in r ? { fromVersion: r.record.from, toVersion: r.record.to } : { fromVersion: r.from, toVersion: r.to };
   return {
     context: { reasonCode: r.status, changed: r.status === "published", networkSkipped: r.networkSkipped,
       attempt: r.attempts, ...r.timings, ...versions, ...(r.status === "published" ? { revision: r.commit } : {}) },

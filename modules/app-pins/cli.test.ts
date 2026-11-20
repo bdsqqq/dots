@@ -52,3 +52,14 @@ test("usage errors exit 2 without emitting events", async () => {
   assert.equal(await main(["record"], undefined, createEventLogger("app-pins", { sink: e => events.push(e) })), 2);
   assert.equal(events.length, 0);
 });
+
+test("publish for an app that is not installed reports absent without touching the network", async t => {
+  const root = mkdtempSync(join(tmpdir(), "app-pins-cli-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const events: ServiceEvent[] = [];
+  const log = createEventLogger("app-pins", { sink: e => events.push(e) });
+  // helium is absent here, so publish never reaches the network and reports absent.
+  const local = { helium: { ...catalog.helium, bundle: join(root, "Helium.app") } };
+  assert.equal(await main(["publish", "--remote", "x", "--host", "h", "--cache-dir", root, "helium"], nativeDeps, log, local), 0);
+  assert.deepEqual([events[0].context.reasonCode, events[0].context.networkSkipped], ["absent", true]);
+});

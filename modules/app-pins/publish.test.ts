@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { message, publish } from "./publish.ts";
-import { loadApps, type App, type Deps } from "./pins.ts";
+import { AppPinError, loadApps, type App, type Deps } from "./pins.ts";
 
 // isolated git: no user config, hooks, signing, or credentials leak in or out.
 const env = { ...process.env, HOME: "/nonexistent", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1",
@@ -162,4 +162,36 @@ test("every bump commit says what changed, including metadata-only bumps", () =>
     "bump rex (auto-committed from mbp-m2)\n\n0.1.0 (1) -> 0.1.0 (2)\n");
   assert.equal(message(app, "mbp-m2", { status: "unchanged", from: "0.1.0 (2)", to: "0.1.0 (2)", linuxAdvanced: false, changed: true }),
     "bump rex (auto-committed from mbp-m2)\n\n0.1.0 (2): pin metadata updated, version unchanged.\n");
+});
+
+test("an old fetch is not trusted: linux follow-ups settled elsewhere are picked up", async t => {
+  const f = fixture(t);
+  plist(f.spec.bundle, "1.2.0");
+  await publish(f.spec, f.deps(), f.options);                       // local clone: 1.2.0, fetched now
+  const other = join(f.root, "other");                               // another mac pushes 1.3.0
+  git(f.root, "clone", f.remote, other);
+  writeFileSync(join(other, "modules/demo/app-pin.json"), pin("1.3.0"));
+  git(other, "commit", "-am", "bump demo (auto-committed from mbp-other)"); git(other, "push", "origin", "main");
+  const offline: Deps = { ...f.deps(), text: async () => { throw new Error("network used"); } };
+  assert.equal((await publish(f.spec, offline, f.options)).networkSkipped, true, "a recent fetch decides offline");
+  const stale = await publish(f.spec, f.deps(), { ...f.options, maxStaleMs: 0 });
+  assert.equal(stale.networkSkipped, false, "past the window, main is fetched again");
+  assert.equal(stale.status === "unchanged" && "record" in stale && stale.record.from, "1.3.0", "and its newer pin is seen");
+});
+
+test("the offline path still rejects a foreign bundle", async t => {
+  const f = fixture(t);
+  plist(f.spec.bundle, "1.2.0");
+  await publish(f.spec, f.deps(), f.options);
+  const impostor = { ...f.spec, bundleId: "dev.someone-else" };
+  await assert.rejects(publish(impostor, f.deps(), f.options), (e: unknown) => e instanceof AppPinError && e.code === "bundle_identity_mismatch");
+});
+
+test("offline no-op results still name the build they checked", async t => {
+  const f = fixture(t);
+  plist(f.spec.bundle, "1.2.0");
+  await publish(f.spec, f.deps(), f.options);
+  const r = await publish(f.spec, f.deps(), f.options);
+  assert.ok(r.status === "unchanged" && r.networkSkipped);
+  assert.deepEqual([r.from, r.to], ["1.2.0", "1.2.0"]);
 });

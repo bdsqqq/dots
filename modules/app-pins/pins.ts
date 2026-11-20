@@ -88,7 +88,7 @@ export function readInstalled(bundle: string, run: Deps["run"]): Installed | nul
   const read = (k: string) => run("plutil", ["-extract", k, "raw", "-o", "-", plist]).trim();
   return { version: read("CFBundleShortVersionString"), build: read("CFBundleVersion"), bundleId: read("CFBundleIdentifier") };
 }
-function installedApp(app: App, deps: Deps): Installed | null {
+export function installedApp(app: App, deps: Deps): Installed | null {
   const installed = readInstalled(app.bundle, deps.run);
   if (installed && installed.bundleId !== app.bundleId) {
     throw new AppPinError("bundle_identity_mismatch", `${app.bundle} is ${installed.bundleId}, not ${app.bundleId}`);
@@ -185,14 +185,18 @@ async function advanceRexLinux(app: App, pin: Pin, store: Store, deps: Deps): Pr
 }
 
 /**
- * true when `record` could change anything, decided from the store alone. a store that
- * lags origin/main is safe: pins only move up, so a stale pin can only make this true.
+ * whether `record` could change anything, decided from the store alone, with the
+ * versions it compared. a lagging store can only err towards true for the mac pin
+ * (pins only move up); linux follow-ups are not monotonic, so callers must bound how
+ * stale a store they trust (see publish.ts).
  */
-export function due(app: App, store: Store, installed: Installed | null): boolean {
-  if (!installed) return false;
+export function due(app: App, store: Store, installed: Installed): { due: boolean; from?: string; to: string } {
   const pin = readPin(app, store);
-  if (!pin || compare(key(app, installed), key(app, pin)) > 0) return true;
-  return !githubLinuxSettled(app, pin) || !rexLinuxSettled(app, pin, store);
+  const to = label(app, installed);
+  if (!pin) return { due: true, to };
+  const from = label(app, pin);
+  if (compare(key(app, installed), key(app, pin)) > 0) return { due: true, from, to };
+  return { due: !githubLinuxSettled(app, pin) || !rexLinuxSettled(app, pin, store), from, to: from };
 }
 
 export type RecordResult =

@@ -36,10 +36,13 @@ a launchd agent per app (`app-pin-<name>`) watches the bundle's
 every update touches it. it also runs at load.
 
 1. **local first.** each app has its own private blobless clone,
-   `~/.local/state/app-pins/<app>.git`. if the main it last fetched already pins
-   this build and its linux follow-ups, the run ends there: about 0.13 s, no
-   network. a clone that lags main is safe: pins only move up, so an old pin can
-   only cause an extra fetch, never a skipped bump.
+   `~/.local/state/app-pins/<app>.git`. the bundle id is checked, then, if main
+   was fetched within the last 6 hours and already pins this build and its linux
+   follow-ups, the run ends there: about 0.13 s, no network. for the mac pin a
+   lagging clone is harmless (pins only move up, so it can only cause an extra
+   fetch). linux follow-ups are not monotonic — another mac can publish a newer
+   app whose linux pin still needs advancing — so the window bounds how long this
+   host can miss one.
 2. otherwise it fetches main and runs `record` against an in-memory overlay of
    that tree. the checkout is never read or written, so a dirty tree, another
    branch, or a rebase in progress doesn't matter. the feed entry is the one for

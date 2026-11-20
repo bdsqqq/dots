@@ -6,15 +6,15 @@
  * so the checkout may be dirty, elsewhere, or mid-rebase. a rejected push (main moved)
  * refetches and recomputes; pins only move up, so a lost race usually becomes a no-op.
  *
- * most runs change nothing. when the clone's last-fetched main already pins this build
- * and its linux follow-ups, the run ends there, with no network at all.
+ * most runs change nothing. when a recent fetch of main already pins this build and its
+ * linux follow-ups, the run ends there, with no network at all.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { due, readInstalled, record, type App, type Deps, type RecordResult, type Store } from "./pins.ts";
+import { due, installedApp, record, type App, type Deps, type RecordResult, type Store } from "./pins.ts";
 
 export type PublishOptions = {
   remote: string;
@@ -24,11 +24,15 @@ export type PublishOptions = {
   cacheDir: string;
   branch?: string;
   attempts?: number;
+  /** how old a local fetch may be and still decide "nothing to do" offline. */
+  maxStaleMs?: number;
   env?: NodeJS.ProcessEnv;
 };
 export type PublishTimings = { fetchMs: number; feedMs: number; pushMs: number };
 export type PublishResult =
-  | { status: "absent" | "unchanged"; networkSkipped: boolean; attempts: number; timings: PublishTimings; record?: RecordResult }
+  | { status: "absent"; networkSkipped: boolean; attempts: number; timings: PublishTimings }
+  | { status: "unchanged"; networkSkipped: true; attempts: 0; timings: PublishTimings; from?: string; to: string }
+  | { status: "unchanged"; networkSkipped: false; attempts: number; timings: PublishTimings; record: RecordResult & { status: "recorded" | "unchanged" } }
   | { status: "published"; networkSkipped: false; attempts: number; timings: PublishTimings; record: RecordResult & { status: "recorded" | "unchanged" }; commit: string };
 
 const elapsed = (since: number) => Math.round(performance.now() - since);
@@ -73,9 +77,17 @@ function clone(cache: string, remote: string, branch: string, env: NodeJS.Proces
   } finally { rmSync(partial, { recursive: true, force: true }); }
 }
 const tracking = (branch: string) => `refs/remotes/origin/${branch}`;
-function localMain(cache: string, branch: string, env: NodeJS.ProcessEnv): string | null {
-  if (!existsSync(join(cache, "HEAD"))) return null;
-  try { return git(cache, ["rev-parse", "--verify", "--quiet", tracking(branch)], env); } catch { return null; }
+/** a stamp touched after every successful fetch; its age bounds how stale an offline decision can be. */
+const fetchedStamp = (cache: string) => join(cache, "app-pins-fetched");
+function freshMain(cache: string, branch: string, env: NodeJS.ProcessEnv, maxStaleMs: number): string | null {
+  try {
+    if (Date.now() - statSync(fetchedStamp(cache)).mtimeMs > maxStaleMs) return null;
+    return git(cache, ["rev-parse", "--verify", "--quiet", tracking(branch)], env);
+  } catch { return null; }
+}
+function markFetched(cache: string) {
+  const stamp = fetchedStamp(cache), now = new Date();
+  try { utimesSync(stamp, now, now); } catch { writeFileSync(stamp, ""); }
 }
 
 export function message(app: App, host: string, result: RecordResult & { status: "recorded" | "unchanged" }) {
@@ -110,11 +122,15 @@ export async function publish(app: App, deps: Deps, options: PublishOptions): Pr
   const env = { ...process.env, ...options.env, GIT_TERMINAL_PROMPT: "0", GIT_SSH_COMMAND: "ssh -o BatchMode=yes -o ConnectTimeout=20" };
   const timings: PublishTimings = { fetchMs: 0, feedMs: 0, pushMs: 0 };
 
-  const installed = readInstalled(app.bundle, deps.run);
+  // identity is checked before any shortcut, so a foreign bundle always fails.
+  const installed = installedApp(app, deps);
   if (!installed) return { status: "absent", networkSkipped: true, attempts: 0, timings };
-  const known = localMain(cache, branch, env);
-  if (known && !due(app, overlay(cache, known, env), installed)) {
-    return { status: "unchanged", networkSkipped: true, attempts: 0, timings };
+  // the mac pin only moves up, so a lagging clone can only ask for an extra fetch.
+  // linux follow-ups can be settled by another mac, so trust a clone only briefly.
+  const known = freshMain(cache, branch, env, options.maxStaleMs ?? 6 * 60 * 60_000);
+  if (known) {
+    const check = due(app, overlay(cache, known, env), installed);
+    if (!check.due) return { status: "unchanged", networkSkipped: true, attempts: 0, timings, from: check.from, to: check.to };
   }
 
   const attempts = options.attempts ?? 5;
@@ -122,6 +138,7 @@ export async function publish(app: App, deps: Deps, options: PublishOptions): Pr
     let started = performance.now();
     if (!existsSync(join(cache, "HEAD"))) clone(cache, options.remote, branch, env);
     git(cache, ["fetch", "--quiet", "origin", `+refs/heads/${branch}:${tracking(branch)}`], env);
+    markFetched(cache);
     const base = git(cache, ["rev-parse", tracking(branch)], env);
     timings.fetchMs += elapsed(started);
 
