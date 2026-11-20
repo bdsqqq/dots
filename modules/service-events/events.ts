@@ -41,6 +41,15 @@ export interface EventContext {
   deliveryErrorCount?: number;
   pendingCount?: number;
   uncertainCount?: number;
+  /** app/package versions, e.g. "0.1.0" or "0.1.11-nightly.20261118.4877"; never paths. */
+  fromVersion?: string;
+  toVersion?: string;
+  /** phase timings inside one operation, so slow runs can be attributed. */
+  fetchMs?: number;
+  feedMs?: number;
+  pushMs?: number;
+  /** the operation decided from local state alone, without network calls. */
+  networkSkipped?: boolean;
 }
 
 export interface ServiceEvent {
@@ -60,13 +69,15 @@ export interface ServiceEvent {
 const stringKeys = new Set([
   "method", "route", "errorCode", "reasonCode", "readiness", "fromState", "toState", "trigger", "action",
 ]);
-const booleanKeys = new Set(["ready", "sourceAvailable", "enrolled", "connected", "changed"]);
+const booleanKeys = new Set(["ready", "sourceAvailable", "enrolled", "connected", "changed", "networkSkipped"]);
 const numberKeys = new Set([
   "statusCode", "attempt", "retryInMs", "itemCount", "changedCount", "missingCount", "candidateCount",
   "providerCount", "healthyProviderCount", "unhealthyProviderCount", "requestBytes", "responseBytes",
   "generation", "observationCount", "queryErrorCount", "transitionCount", "deliveryErrorCount",
-  "pendingCount", "uncertainCount",
+  "pendingCount", "uncertainCount", "fetchMs", "feedMs", "pushMs",
 ]);
+const versionKeys = new Set(["fromVersion", "toVersion"]);
+const versionText = /^[0-9][0-9A-Za-z.+_ ()-]{0,63}$/;
 const symbol = /^[a-zA-Z][a-zA-Z0-9_.:-]{0,95}$/;
 
 function context(values: EventContext): EventContext {
@@ -74,6 +85,7 @@ function context(values: EventContext): EventContext {
   for (const [key, value] of Object.entries(values)) {
     if ((key === "revision" || key === "appliedRevision") && typeof value === "string" && /^[a-f0-9]{40}$/.test(value)) result[key] = value;
     if (stringKeys.has(key) && typeof value === "string" && symbol.test(value)) result[key] = value;
+    if (versionKeys.has(key) && typeof value === "string" && versionText.test(value) && !value.includes("/")) result[key] = value;
     if (booleanKeys.has(key) && typeof value === "boolean") result[key] = value;
     if (numberKeys.has(key) && typeof value === "number" && Number.isFinite(value) && value >= 0) result[key] = value;
   }

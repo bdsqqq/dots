@@ -4,8 +4,7 @@ let
   repo = "${config.my.paths.commonplace}/01_files/nix";
   # run the live working-tree source, like node-pnpm: helper edits take effect
   # without a rebuild, and pins are written beside the modules that own them.
-  pins = "${repo}/modules/app-pins/pins.ts";
-  publish = "${repo}/modules/app-pins/publish.ts";
+  cli = "${repo}/modules/app-pins/cli.ts";
   # "mbp-m5", matching the hand-written provenance, not the mDNS "mbp-m5.local".
   host = lib.removeSuffix ".local" config.networking.hostName;
   node = "${pkgs.nodejs_latest}/bin/node";
@@ -19,14 +18,14 @@ in
   };
 
   config = lib.mkIf (lib.hasInfix "darwin" hostSystem && cfg.apps != [ ]) {
-    home-manager.users.${config.my.primaryUser} = { config, lib, ... }: {
-      # first install only: missing or older apps get the pinned build; newer or
-      # running apps are left alone. a failed download must not block activation.
+    home-manager.users.${config.my.primaryUser} = { config, lib, ... }:
+    let log = "${config.home.homeDirectory}/Library/Logs/app-pins.log"; in {
+      # a failed download must not block activation.
       home.activation.installPinnedApps = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
-        if [ -f ${lib.escapeShellArg pins} ]; then
-          PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH" ${node} ${lib.escapeShellArg pins} install \
-            ${lib.escapeShellArg repo} ${lib.escapeShellArgs cfg.apps} >/dev/null \
-            || echo >&2 "warning: app-pins install failed; see the app-pins events above"
+        if [ -f ${lib.escapeShellArg cli} ]; then
+          PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH" ${node} ${lib.escapeShellArg cli} install \
+            --repo ${lib.escapeShellArg repo} ${lib.escapeShellArgs cfg.apps} >>${lib.escapeShellArg log} 2>&1 \
+            || echo >&2 "warning: app-pins install failed; see ${log}"
         fi
       '';
 
@@ -34,8 +33,7 @@ in
       launchd.agents = lib.genAttrs' cfg.apps (name: lib.nameValuePair "app-pin-${name}" {
         enable = true;
         config = {
-          # commit + push from a private clone of main; the checkout's state is irrelevant.
-          ProgramArguments = [ node publish "--remote" "git@github.com:bdsqqq/dots.git" "--host" host "--notify" name ];
+          ProgramArguments = [ node cli "publish" "--remote" "git@github.com:bdsqqq/dots.git" "--host" host "--notify" name ];
           WatchPaths = [ "${apps.${name}.bundle}/Contents/Info.plist" ];
           RunAtLoad = true;
           # updaters swap bundles in several steps; let them settle.
@@ -43,8 +41,8 @@ in
           ProcessType = "Background";
           # the user's git (signing, identity) and ssh are the same as an interactive push.
           EnvironmentVariables.PATH = "/etc/profiles/per-user/${config.home.username}/bin:/usr/bin:/bin:/usr/sbin:/sbin";
-          StandardOutPath = "${config.home.homeDirectory}/Library/Logs/app-pins.log";
-          StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/app-pins.log";
+          StandardOutPath = log;
+          StandardErrorPath = log;
         };
       });
     };

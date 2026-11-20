@@ -5,8 +5,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { publish } from "./publish.ts";
-import type { AppSpec, Deps } from "./pins.ts";
+import { message, publish } from "./publish.ts";
+import { AppPinError, loadApps, type App, type Deps } from "./pins.ts";
 
 // isolated git: no user config, hooks, signing, or credentials leak in or out.
 const env = { ...process.env, HOME: "/nonexistent", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1",
@@ -33,7 +33,7 @@ function fixture(t: { after: (f: () => void) => void }) {
   writeFileSync(join(user, "modules/demo/app-pin.json"), pin("1.0.0"));
   writeFileSync(join(user, "notes.md"), "committed\n");
   git(user, "add", "."); git(user, "commit", "-m", "initial"); git(user, "push", "origin", "main");
-  const spec: AppSpec = { bundle: join(root, "apps/Demo.app"), bundleId: "dev.demo", pin: "modules/demo/app-pin.json",
+  const spec: App = { name: "demo", bundle: join(root, "apps/Demo.app"), bundleId: "dev.demo", pin: "modules/demo/app-pin.json",
     compare: "short", feed: { kind: "github", repo: "o/demo", tag: "v{version}", asset: "Demo-{version}.zip" } };
   const deps = (onFetch?: () => void): Deps => ({
     run: (command, args) => execFileSync(command, args, { encoding: "utf8" }),
@@ -51,13 +51,13 @@ function fixture(t: { after: (f: () => void) => void }) {
 test("publishes a bump commit to main with host provenance", async t => {
   const f = fixture(t);
   plist(f.spec.bundle, "1.2.0");
-  const r = await publish("demo", f.deps(), f.options, f.spec);
+  const r = await publish(f.spec, f.deps(), f.options);
   assert.equal(r.status, "published");
   const log = git(f.remote, "log", "-1", "--format=%s%n%n%b", "main");
   assert.equal(log, "bump demo (auto-committed from mbp-test)\n\n1.0.0 -> 1.2.0");
   assert.equal(git(f.remote, "show", "main:modules/demo/app-pin.json"), pin("1.2.0").trim());
   assert.equal(git(f.remote, "diff", "--name-only", "main~1", "main"), "modules/demo/app-pin.json", "only the pin changes");
-  assert.equal((await publish("demo", f.deps(), f.options, f.spec)).status, "unchanged", "no empty commits");
+  assert.equal((await publish(f.spec, f.deps(), f.options)).status, "unchanged", "no empty commits");
 });
 
 test("the user's checkout is untouched, whatever state it is in", async t => {
@@ -71,7 +71,7 @@ test("the user's checkout is untouched, whatever state it is in", async t => {
   const before = [git(f.user, "status", "--porcelain=v1"), git(f.user, "rev-parse", "HEAD"), git(f.user, "branch", "--show-current"),
     readFileSync(join(f.user, ".git/index")).toString("base64")];
   plist(f.spec.bundle, "1.2.0");
-  assert.equal((await publish("demo", f.deps(), f.options, f.spec)).status, "published");
+  assert.equal((await publish(f.spec, f.deps(), f.options)).status, "published");
   const after = [git(f.user, "status", "--porcelain=v1"), git(f.user, "rev-parse", "HEAD"), git(f.user, "branch", "--show-current"),
     readFileSync(join(f.user, ".git/index")).toString("base64")];
   assert.deepEqual(after, before);
@@ -91,7 +91,7 @@ test("a concurrent push to main is preserved: the bump retries on top of it", as
     writeFileSync(join(other, "notes.md"), "from another host\n");
     git(other, "commit", "-am", "unrelated"); git(other, "push", "origin", "main");
   });
-  const r = await publish("demo", deps, f.options, f.spec);
+  const r = await publish(f.spec, deps, f.options);
   assert.equal(r.status, "published");
   assert.equal(r.attempts, 2);
   assert.equal(git(f.remote, "log", "--format=%s", "main"), "bump demo (auto-committed from mbp-test)\nunrelated\ninitial");
@@ -110,7 +110,7 @@ test("losing a race to a newer pin from another host is a no-op, not a downgrade
     writeFileSync(join(other, "modules/demo/app-pin.json"), pin("1.3.0"));
     git(other, "commit", "-am", "bump demo (auto-committed from mbp-other)"); git(other, "push", "origin", "main");
   });
-  assert.equal((await publish("demo", deps, f.options, f.spec)).status, "unchanged");
+  assert.equal((await publish(f.spec, deps, f.options)).status, "unchanged");
   assert.equal(git(f.remote, "log", "-1", "--format=%s", "main"), "bump demo (auto-committed from mbp-other)");
   assert.match(git(f.remote, "show", "main:modules/demo/app-pin.json"), /1\.3\.0/);
 });
@@ -118,8 +118,8 @@ test("losing a race to a newer pin from another host is a no-op, not a downgrade
 test("agents for different apps publish concurrently without sharing git state", async t => {
   const f = fixture(t);
   plist(f.spec.bundle, "1.2.0");
-  const other: AppSpec = { ...f.spec, pin: "modules/demo2/app-pin.json" };
-  const results = await Promise.all([publish("demo", f.deps(), f.options, f.spec), publish("demo2", f.deps(), f.options, other)]);
+  const other: App = { ...f.spec, name: "demo2", pin: "modules/demo2/app-pin.json" };
+  const results = await Promise.all([publish(f.spec, f.deps(), f.options), publish(other, f.deps(), f.options)]);
   assert.deepEqual(results.map(r => r.status), ["published", "published"]);
   assert.deepEqual(git(f.remote, "log", "--format=%s", "main").split("\n").slice(0, 2).sort(),
     ["bump demo (auto-committed from mbp-test)", "bump demo2 (auto-committed from mbp-test)"]);
@@ -129,5 +129,69 @@ test("a cache left half-built by a crash is rebuilt, not trusted", async t => {
   const f = fixture(t);
   plist(f.spec.bundle, "1.2.0");
   mkdirSync(join(f.options.cacheDir, "demo.git"), { recursive: true }); // crash before HEAD existed
-  assert.equal((await publish("demo", f.deps(), f.options, f.spec)).status, "published");
+  assert.equal((await publish(f.spec, f.deps(), f.options)).status, "published");
+});
+
+test("an unchanged app is decided from the local clone, with no network at all", async t => {
+  const f = fixture(t);
+  plist(f.spec.bundle, "1.2.0");
+  assert.equal((await publish(f.spec, f.deps(), f.options)).status, "published");
+  // break every network path: an unreachable remote and a feed that throws.
+  const offline: Deps = { ...f.deps(), text: async () => { throw new Error("network used"); } };
+  const r = await publish(f.spec, offline, { ...f.options, remote: join(f.root, "missing.git") });
+  assert.deepEqual([r.status, r.networkSkipped, r.attempts], ["unchanged", true, 0]);
+});
+
+test("a clone that lags main still publishes a newer install, and never downgrades", async t => {
+  const f = fixture(t);
+  plist(f.spec.bundle, "1.2.0");
+  await publish(f.spec, f.deps(), f.options);                 // clone now knows 1.2.0
+  const other = join(f.root, "other");                         // another mac pushes 1.5.0
+  git(f.root, "clone", f.remote, other);
+  writeFileSync(join(other, "modules/demo/app-pin.json"), pin("1.5.0"));
+  git(other, "commit", "-am", "bump demo (auto-committed from mbp-other)"); git(other, "push", "origin", "main");
+  plist(f.spec.bundle, "1.3.0");                               // newer than the stale clone, older than main
+  const r = await publish(f.spec, f.deps(), f.options);
+  assert.deepEqual([r.status, r.networkSkipped], ["unchanged", false], "stale clone forces a fetch; main wins");
+  assert.match(git(f.remote, "show", "main:modules/demo/app-pin.json"), /1\.5\.0/);
+});
+
+test("every bump commit says what changed, including metadata-only bumps", () => {
+  const app = loadApps().rex;
+  assert.equal(message(app, "mbp-m2", { status: "recorded", from: "0.1.0 (1)", to: "0.1.0 (2)", linuxAdvanced: false, changed: true }),
+    "bump rex (auto-committed from mbp-m2)\n\n0.1.0 (1) -> 0.1.0 (2)\n");
+  assert.equal(message(app, "mbp-m2", { status: "unchanged", from: "0.1.0 (2)", to: "0.1.0 (2)", linuxAdvanced: false, changed: true }),
+    "bump rex (auto-committed from mbp-m2)\n\n0.1.0 (2): pin metadata updated, version unchanged.\n");
+});
+
+test("an old fetch is not trusted: linux follow-ups settled elsewhere are picked up", async t => {
+  const f = fixture(t);
+  plist(f.spec.bundle, "1.2.0");
+  await publish(f.spec, f.deps(), f.options);                       // local clone: 1.2.0, fetched now
+  const other = join(f.root, "other");                               // another mac pushes 1.3.0
+  git(f.root, "clone", f.remote, other);
+  writeFileSync(join(other, "modules/demo/app-pin.json"), pin("1.3.0"));
+  git(other, "commit", "-am", "bump demo (auto-committed from mbp-other)"); git(other, "push", "origin", "main");
+  const offline: Deps = { ...f.deps(), text: async () => { throw new Error("network used"); } };
+  assert.equal((await publish(f.spec, offline, f.options)).networkSkipped, true, "a recent fetch decides offline");
+  const stale = await publish(f.spec, f.deps(), { ...f.options, maxStaleMs: 0 });
+  assert.equal(stale.networkSkipped, false, "past the window, main is fetched again");
+  assert.equal(stale.status === "unchanged" && "record" in stale && stale.record.from, "1.3.0", "and its newer pin is seen");
+});
+
+test("the offline path still rejects a foreign bundle", async t => {
+  const f = fixture(t);
+  plist(f.spec.bundle, "1.2.0");
+  await publish(f.spec, f.deps(), f.options);
+  const impostor = { ...f.spec, bundleId: "dev.someone-else" };
+  await assert.rejects(publish(impostor, f.deps(), f.options), (e: unknown) => e instanceof AppPinError && e.code === "bundle_identity_mismatch");
+});
+
+test("offline no-op results still name the build they checked", async t => {
+  const f = fixture(t);
+  plist(f.spec.bundle, "1.2.0");
+  await publish(f.spec, f.deps(), f.options);
+  const r = await publish(f.spec, f.deps(), f.options);
+  assert.ok(r.status === "unchanged" && r.networkSkipped);
+  assert.deepEqual([r.from, r.to], ["1.2.0", "1.2.0"]);
 });

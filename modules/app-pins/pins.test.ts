@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { compare, install, record, type AppSpec, type Deps } from "./pins.ts";
+import { compare, install, record, worktree, type App, type Deps } from "./pins.ts";
 
 const plist = (id: string, version: string, build: string) => `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict>
@@ -42,8 +42,8 @@ function deps(files: Record<string, string>, api: Record<string, unknown>, calls
     download: async (url, dest) => { writeFileSync(dest, readFileSync(files[url])); },
   };
 }
-const githubSpec = (root: string): AppSpec => ({
-  bundle: join(root, "apps/Demo.app"), bundleId: "dev.demo", pin: "modules/demo/app-pin.json", compare: "short",
+const githubSpec = (root: string): App => ({
+  name: "demo", bundle: join(root, "apps/Demo.app"), bundleId: "dev.demo", pin: "modules/demo/app-pin.json", compare: "short",
   feed: { kind: "github", repo: "o/demo", tag: "v{version}", asset: "Demo-{version}.zip" },
 });
 const release = (version: string, sha256: string) => ({
@@ -63,20 +63,20 @@ test("record pins the exact installed build, then ignores equal and older instal
   const v2 = zipArtifact(root, "1.2.0");
   bundle(spec.bundle, "dev.demo", "1.2.0");
   const d = deps({}, release("1.2.0", v2.sha256));
-  assert.deepEqual(await record("demo", repo, d, spec), { app: "demo", status: "recorded", version: "1.2.0", previous: undefined, linux: false });
+  assert.deepEqual(await record(spec, worktree(repo), d), { status: "recorded", from: undefined, to: "1.2.0", linuxAdvanced: false, changed: true });
   const pin = JSON.parse(readFileSync(join(repo, spec.pin), "utf8"));
   assert.equal(pin.darwin.arm64.sha256, v2.sha256);
   assert.equal(pin.darwin.arm64.format, "zip");
-  assert.equal((await record("demo", repo, d, spec)).status, "unchanged");
+  assert.equal((await record(spec, worktree(repo), d)).status, "unchanged");
   bundle(spec.bundle, "dev.demo", "1.1.0");
-  assert.equal((await record("demo", repo, d, spec)).status, "unchanged", "an older install never downgrades the pin");
+  assert.equal((await record(spec, worktree(repo), d)).status, "unchanged", "an older install never downgrades the pin");
   assert.equal(JSON.parse(readFileSync(join(repo, spec.pin), "utf8")).version, "1.2.0");
 });
 
 test("record refuses a bundle with a different identity", async t => {
   const root = fixture(t), spec = githubSpec(root);
   bundle(spec.bundle, "dev.impostor", "9.0.0");
-  await assert.rejects(record("demo", join(root, "repo"), deps({}, {}), spec), /not dev\.demo/);
+  await assert.rejects(record(spec, worktree(join(root, "repo")), deps({}, {})), /not dev\.demo/);
 });
 
 test("install fills missing or older apps, and leaves newer ones alone", async t => {
@@ -84,18 +84,18 @@ test("install fills missing or older apps, and leaves newer ones alone", async t
   const v2 = zipArtifact(root, "1.2.0");
   bundle(spec.bundle, "dev.demo", "1.2.0");
   const d = deps({ "https://example.test/Demo-1.2.0.zip": v2.file }, release("1.2.0", v2.sha256));
-  await record("demo", repo, d, spec);
+  await record(spec, worktree(repo), d);
 
   rmSync(spec.bundle, { recursive: true });
-  assert.equal((await install("demo", repo, d, spec)).status, "installed");
+  assert.equal((await install(spec, worktree(repo), d)).status, "installed");
   assert.match(readFileSync(join(spec.bundle, "Contents/Info.plist"), "utf8"), /1\.2\.0/);
-  assert.equal((await install("demo", repo, d, spec)).status, "current");
+  assert.equal((await install(spec, worktree(repo), d)).status, "current");
 
   bundle(spec.bundle, "dev.demo", "1.0.0");
-  assert.equal((await install("demo", repo, d, spec)).status, "installed", "older install is upgraded to the pin");
+  assert.equal((await install(spec, worktree(repo), d)).status, "installed", "older install is upgraded to the pin");
 
   bundle(spec.bundle, "dev.demo", "2.0.0");
-  assert.equal((await install("demo", repo, d, spec)).status, "newer", "a self-updated app is never downgraded");
+  assert.equal((await install(spec, worktree(repo), d)).status, "newer", "a self-updated app is never downgraded");
   assert.match(readFileSync(join(spec.bundle, "Contents/Info.plist"), "utf8"), /2\.0\.0/);
 });
 
@@ -103,10 +103,10 @@ test("install rejects a corrupted artifact and keeps the existing app", async t 
   const root = fixture(t), spec = githubSpec(root), repo = join(root, "repo");
   const v2 = zipArtifact(root, "1.2.0"), tampered = zipArtifact(root, "6.6.6");
   bundle(spec.bundle, "dev.demo", "1.2.0");
-  await record("demo", repo, deps({}, release("1.2.0", v2.sha256)), spec);
+  await record(spec, worktree(repo), deps({}, release("1.2.0", v2.sha256)));
   bundle(spec.bundle, "dev.demo", "1.0.0");
   const d = deps({ "https://example.test/Demo-1.2.0.zip": tampered.file }, {});
-  await assert.rejects(install("demo", repo, d, spec), /hash mismatch/);
+  await assert.rejects(install(spec, worktree(repo), d), /hash mismatch/);
   assert.match(readFileSync(join(spec.bundle, "Contents/Info.plist"), "utf8"), /1\.0\.0/);
 });
 
@@ -114,17 +114,17 @@ test("install skips an older app while it is running", async t => {
   const root = fixture(t), spec = githubSpec(root), repo = join(root, "repo");
   const v2 = zipArtifact(root, "1.2.0");
   bundle(spec.bundle, "dev.demo", "1.2.0");
-  await record("demo", repo, deps({}, release("1.2.0", v2.sha256)), spec);
+  await record(spec, worktree(repo), deps({}, release("1.2.0", v2.sha256)));
   bundle(spec.bundle, "dev.demo", "1.0.0");
   const running: Deps = { ...deps({}, {}), run: (command, args) =>
     command === "pgrep" ? "123\n" : execFileSync(command, args, { encoding: "utf8" }) };
-  assert.equal((await install("demo", repo, running, spec)).status, "running");
+  assert.equal((await install(spec, worktree(repo), running)).status, "running");
 });
 
 test("sparkle record pins the installed build, not the newest appcast item", async t => {
   const root = fixture(t), repo = join(root, "repo");
   const artifact = zipArtifact(root, "1.0.0");
-  const spec: AppSpec = { bundle: join(root, "apps/Demo.app"), bundleId: "dev.demo", pin: "modules/demo/app-pin.json",
+  const spec: App = { name: "demo", bundle: join(root, "apps/Demo.app"), bundleId: "dev.demo", pin: "modules/demo/app-pin.json",
     compare: "build", feed: { kind: "sparkle", url: "https://example.test/appcast.xml" } };
   bundle(spec.bundle, "dev.demo", "1.0.0", "41");
   const item = (build: string) => `<item><sparkle:version>${build}</sparkle:version>
@@ -132,7 +132,7 @@ test("sparkle record pins the installed build, not the newest appcast item", asy
     <enclosure url="https://example.test/Demo-${build}.zip"/></item>`;
   const d: Deps = { ...deps({ "https://example.test/Demo-41.zip": artifact.file }, {}),
     text: async () => `<rss><channel>${item("42")}${item("41")}</channel></rss>` };
-  await record("demo", repo, d, spec);
+  await record(spec, worktree(repo), d);
   const pin = JSON.parse(readFileSync(join(repo, spec.pin), "utf8"));
   assert.equal(pin.build, "41");
   assert.equal(pin.darwin.arm64.url, "https://example.test/Demo-41.zip");
@@ -144,11 +144,11 @@ test("a newer app installed while the pin downloads is not overwritten", async t
   const root = fixture(t), spec = githubSpec(root), repo = join(root, "repo");
   const v2 = zipArtifact(root, "1.2.0");
   bundle(spec.bundle, "dev.demo", "1.2.0");
-  await record("demo", repo, deps({}, release("1.2.0", v2.sha256)), spec);
+  await record(spec, worktree(repo), deps({}, release("1.2.0", v2.sha256)));
   bundle(spec.bundle, "dev.demo", "1.0.0");
   const d = deps({ "https://example.test/Demo-1.2.0.zip": v2.file }, {});
   const racing: Deps = { ...d, download: async (url, dest) => { await d.download(url, dest); bundle(spec.bundle, "dev.demo", "3.0.0"); } };
-  assert.equal((await install("demo", repo, racing, spec)).status, "newer");
+  assert.equal((await install(spec, worktree(repo), racing)).status, "newer");
   assert.match(readFileSync(join(spec.bundle, "Contents/Info.plist"), "utf8"), /3\.0\.0/);
 });
 
@@ -156,7 +156,7 @@ test("the running check matches bundle paths with regex metacharacters", async t
   const root = fixture(t), spec = { ...githubSpec(root), bundle: join(root, "apps/Demo (Nightly).app") };
   const repo = join(root, "repo"), v2 = zipArtifact(root, "1.2.0");
   bundle(spec.bundle, "dev.demo", "1.2.0");
-  await record("demo", repo, deps({}, release("1.2.0", v2.sha256)), spec);
+  await record(spec, worktree(repo), deps({}, release("1.2.0", v2.sha256)));
   bundle(spec.bundle, "dev.demo", "1.0.0");
   // a real process whose argv starts with the bundle executable path.
   const exe = join(spec.bundle, "Contents/MacOS/Demo");
@@ -166,19 +166,19 @@ test("the running check matches bundle paths with regex metacharacters", async t
   t.after(() => child.kill());
   await new Promise(r => setTimeout(r, 300));
   const real: Deps = { ...deps({}, {}), run: (command, args) => execFileSync(command, args, { encoding: "utf8" }) };
-  assert.equal((await install("demo", repo, real, spec)).status, "running");
+  assert.equal((await install(spec, worktree(repo), real)).status, "running");
 });
 
 test("a linux pin that failed to resolve is retried without a new mac update", async t => {
   const root = fixture(t), repo = join(root, "repo"), v2 = zipArtifact(root, "1.2.0");
-  const spec: AppSpec = { ...githubSpec(root), feed: { kind: "github", repo: "o/demo", tag: "v{version}", asset: "Demo-{version}.zip",
+  const spec: App = { ...githubSpec(root), feed: { kind: "github", repo: "o/demo", tag: "v{version}", asset: "Demo-{version}.zip",
     linux: { repo: "o/demo-linux", assets: { x64: "demo-{version}-x64", arm64: "demo-{version}-arm64" } } } };
   bundle(spec.bundle, "dev.demo", "1.2.0");
-  await record("demo", repo, deps({}, release("1.2.0", v2.sha256)), spec);
+  await record(spec, worktree(repo), deps({}, release("1.2.0", v2.sha256)));
   assert.equal(JSON.parse(readFileSync(join(repo, spec.pin), "utf8")).linux, undefined, "linux not published yet");
   const linux = { "https://api.github.com/repos/o/demo-linux/releases/tags/v1.2.0": { assets: ["x64", "arm64"].map(a => (
     { name: `demo-1.2.0-${a}`, browser_download_url: `https://example.test/demo-1.2.0-${a}`, digest: `sha256:${"b".repeat(64)}` })) } };
-  const later = await record("demo", repo, deps({}, { ...release("1.2.0", v2.sha256), ...linux }), spec);
-  assert.deepEqual([later.status, later.linux], ["unchanged", true]);
+  const later = await record(spec, worktree(repo), deps({}, { ...release("1.2.0", v2.sha256), ...linux }));
+  assert.ok(later.status === "unchanged" && later.linuxAdvanced && later.changed);
   assert.equal(JSON.parse(readFileSync(join(repo, spec.pin), "utf8")).linux.version, "1.2.0");
 });
