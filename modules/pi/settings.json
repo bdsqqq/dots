@@ -16,7 +16,7 @@
   "compaction": {
     "enabled": true
   },
-  "lastChangelogVersion": "1.4.0",
+  "lastChangelogVersion": "1.5.2",
   "defaultModel": "gpt-6.1-sol",
   "defaultThinkingLevel": "medium",
   "hideThinkingBlock": true,
@@ -39,5 +39,8 @@
   "fullscreenExitOutput": "resume-hint",
   "packages": [
     "https://github.com/earendil-works/pi-claude-code"
-  ]
+  ],
+  "@bds_pi/session-recap": {
+    "enabled": false
+  }
 }
