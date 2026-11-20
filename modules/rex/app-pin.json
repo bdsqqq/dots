@@ -10,5 +10,6 @@
       "format": "dmg"
     }
   },
-  "rexCommit": "a086db17db8d464627c77e3bb0be6d462668b0ac"
+  "rexCommit": "a086db17db8d464627c77e3bb0be6d462668b0ac",
+  "rexCliVersion": "0.0.1795116584-ga086db"
 }
