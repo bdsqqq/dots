@@ -33,6 +33,20 @@ test("metadata allowlist rejects bodies, paths, tokens, messages, and non-finite
   assert.ok(!JSON.stringify(event).includes("secret"));
 });
 
+test("version and timing fields accept versions and durations, not paths or text", () => {
+  const logger = createEventLogger("fixture", { sink: () => {} });
+  const event = logger.begin("app.publish").finish("succeeded", {
+    fromVersion: "0.1.0 (2071)", toVersion: "0.1.11-nightly.20261118.4877", fetchMs: 1864, feedMs: 98, pushMs: 0,
+    networkSkipped: true,
+  });
+  assert.deepEqual(event.context, { fromVersion: "0.1.0 (2071)", toVersion: "0.1.11-nightly.20261118.4877",
+    fetchMs: 1864, feedMs: 98, pushMs: 0, networkSkipped: true });
+  const rejected = logger.begin("app.publish").finish("failed", {
+    fromVersion: "/Applications/Rex.app", toVersion: "latest; rm -rf", fetchMs: -1, networkSkipped: "yes" as unknown as boolean,
+  });
+  assert.deepEqual(rejected.context, {});
+});
+
 test("upgrade revisions accept only full commit hashes", () => {
   const logger = createEventLogger("fixture", { sink: () => {} });
   const safe = logger.begin("upgrade.attempt").finish("succeeded", { revision: "a".repeat(40), appliedRevision: "1".repeat(40) });
