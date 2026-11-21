@@ -540,7 +540,7 @@ async function runSampler({
       commit_search: "GH_FIXTURE",
       diff: "Changed files",
       skill: "skill loaded",
-      agent_message: "queued agent message",
+      agent_message: "sent message to session",
       history_list: "SESSION_FIXTURE",
       history_read: "SESSION_FIXTURE",
       web_search: "SEARCH_FIXTURE",

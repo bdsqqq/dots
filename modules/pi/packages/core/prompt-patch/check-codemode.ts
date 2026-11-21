@@ -220,7 +220,7 @@ try {
     [
       "agent_message",
       { sessionId: targetId, message: "MESSAGE_FIXTURE" },
-      "queued agent message",
+      "sent message to session",
     ],
     ["finder", { query: "find fixture" }, "SUBAGENT_FIXTURE"],
     ["oracle", { task: "explain fixture" }, "SUBAGENT_FIXTURE"],
