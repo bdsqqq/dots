@@ -229,6 +229,11 @@ in
     initializeVdo
   ];
 
+  # 3.7 GiB and 2 cores: two parallel source builds (otelcol-contrib, wacli) ran
+  # the hourly upgrade out of memory, killing it and t3code with it. one build at
+  # a time is slow but finishes.
+  nix.settings = { max-jobs = 1; cores = 1; };
+
   # like htz-lab: no syncthing here, so the upgrade moves the checkout that the
   # live-source modules (app-pins, node-pnpm) read. --ff-only keeps local commits.
   systemd.services.nixos-upgrade.serviceConfig.ExecStartPre = [
