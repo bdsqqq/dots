@@ -8,16 +8,19 @@
  * transport is a mailbox directory per target session. a message file stays
  * there until its id is in the target's transcript, so a closed session
  * receives it on resume, and a crash between persisting and deleting can't
- * deliver it twice. resuming appends that mail without starting a turn: the
- * person resuming is present, and a run started during startup would make pi
- * reject their first prompt as busy.
+ * deliver it twice. mail found during startup is appended without starting a
+ * turn: the person resuming is present, and a run started before startup
+ * finishes (`resources_discover`, after every `session_start` handler) would
+ * make pi reject their first prompt as busy.
  *
- * pi's queue can drop a steer: escape in the TUI clears it, while an RPC abort
- * keeps it for the next run. either way the next run that settles normally has
- * drained every queued steer, so anything still unacknowledged then was dropped
- * and is sent again, after the settle emission so pi runs the batch as one
- * turn. an aborted settle re-sends nothing, which avoids both duplicating a
- * kept steer and restarting a run the user just stopped.
+ * escape in the TUI clears pi's queue, dropping our steers with it; an RPC
+ * abort keeps them for the next run, even across a reload. so an aborted run
+ * re-sends nothing, and the next run that completes, which has drained any
+ * kept steers into its transcript, re-sends whatever is still missing as
+ * transcript entries plus one continuation. sending from that boundary,
+ * rather than after settling, keeps the batch in one turn instead of a run
+ * per message. a reload right after an abort treats its mail the same way,
+ * since pi's queue may still hold it.
  *
  * there is no cross-process claim: the same session open in two processes may
  * receive a message twice.
@@ -30,6 +33,7 @@ import { randomUUID } from "node:crypto";
 import {
   getAgentDir,
   type ExtensionAPI,
+  type ExtensionContext,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { type TObject, type TString, Type } from "typebox";
@@ -280,16 +284,20 @@ export function createAgentMessageExtension(
     let sessionId: string | undefined;
     let transcript: () => readonly unknown[] = () => [];
     let watcher: fs.FSWatcher | undefined;
-    let afterSettle: NodeJS.Timeout | undefined;
     let poll: NodeJS.Timeout | undefined;
-    /** ids handed to pi since the last normal settle, so polls don't resend them. */
-    const inFlight = new Set<string>();
+    let started = false;
+    /** ids handed to pi and not yet in the transcript. */
+    const sent = new Set<string>();
+    /** what `sent` held when a run was aborted: possibly dropped with the queue. */
+    const maybeDropped = new Set<string>();
 
-    const deliver = (triggerTurn = true) => {
-      if (!sessionId) return;
+    /** unacknowledged mail, oldest first; removes acknowledged and malformed files. */
+    const pending = (): AgentMessage[] => {
+      if (!sessionId) return [];
       const dir = mailboxDir(queueDir, sessionId);
+      const persisted = deliveredIds(transcript());
+      const messages: AgentMessage[] = [];
       try {
-        const persisted = deliveredIds(transcript());
         const names = fs
           .readdirSync(dir)
           .filter((name) => !name.startsWith(".") && name.endsWith(".json"))
@@ -299,9 +307,9 @@ export function createAgentMessageExtension(
           const id = name.slice(name.indexOf("_") + 1, -".json".length);
           if (persisted.has(id)) {
             fs.rmSync(file, { force: true });
+            sent.delete(id);
             continue;
           }
-          if (inFlight.has(id)) continue;
           let message: AgentMessage | undefined;
           try {
             message = parseAgentMessage(
@@ -319,34 +327,39 @@ export function createAgentMessageExtension(
             fs.renameSync(file, `${file}.rejected`);
             continue;
           }
-          inFlight.add(message.id);
-          pi.sendMessage(
-            {
-              customType: CUSTOM_TYPE,
-              content: formatAgentMessage(message),
-              display: true,
-              details: message,
-            },
-            { deliverAs: "steer", triggerTurn },
-          );
+          messages.push(message);
         }
       } catch (error) {
-        console.error("[@bds_pi/agent-message] delivery failed:", error);
+        console.error("[@bds_pi/agent-message] mailbox read failed:", error);
+      }
+      return messages;
+    };
+
+    const deliver = () => {
+      const triggerTurn = started;
+      for (const message of pending()) {
+        if (sent.has(message.id)) continue;
+        sent.add(message.id);
+        pi.sendMessage(asCustomMessage(message), {
+          deliverAs: "steer",
+          triggerTurn,
+        });
       }
     };
 
     const stop = () => {
       watcher?.close();
       watcher = undefined;
-      clearTimeout(afterSettle);
       clearInterval(poll);
       poll = undefined;
       sessionId = undefined;
+      started = false;
       transcript = () => [];
-      inFlight.clear();
+      sent.clear();
+      maybeDropped.clear();
     };
 
-    pi.on("session_start", (_event, ctx) => {
+    pi.on("session_start", (event, ctx) => {
       stop();
       sessionId = ctx.sessionManager.getSessionId();
       transcript = () => ctx.sessionManager.getEntries();
@@ -362,19 +375,68 @@ export function createAgentMessageExtension(
       }
       poll = setInterval(() => deliver(), POLL_MS);
       poll.unref();
-      deliver(false);
+      if (event.reason === "reload" && lastRunAborted(ctx.sessionManager))
+        for (const message of pending()) {
+          sent.add(message.id);
+          maybeDropped.add(message.id);
+        }
+      else deliver();
+    });
+
+    pi.on("resources_discover", () => {
+      started = true;
+    });
+
+    pi.on("agent_before_settle", (event) => {
+      if (event.outcome !== "completed" || maybeDropped.size === 0) return;
+      const dropped = pending().filter((message) =>
+        maybeDropped.has(message.id),
+      );
+      maybeDropped.clear();
+      if (dropped.length === 0) return;
+      return {
+        entries: [
+          ...event.entries,
+          ...dropped.map((message) => ({
+            type: "custom_message" as const,
+            ...asCustomMessage(message),
+          })),
+        ],
+        continue: true,
+      };
     });
 
     pi.on("agent_settled", (event) => {
-      if (event.aborted) return;
-      inFlight.clear();
-      // pi turns each send made during settlement into its own run, and would
-      // re-send the rest of a batch while the first one runs.
-      clearTimeout(afterSettle);
-      afterSettle = setTimeout(deliver, 0);
+      if (event.aborted) for (const id of sent) maybeDropped.add(id);
+      pending(); // removes mail this run acknowledged
     });
 
     pi.on("session_shutdown", stop);
+  };
+}
+
+function lastRunAborted(
+  sessionManager: ExtensionContext["sessionManager"],
+): boolean {
+  const last = sessionManager
+    .getBranch()
+    .filter(
+      (entry) => entry.type === "message" && entry.message.role === "assistant",
+    )
+    .at(-1);
+  return (
+    last?.type === "message" &&
+    last.message.role === "assistant" &&
+    last.message.stopReason === "aborted"
+  );
+}
+
+function asCustomMessage(message: AgentMessage) {
+  return {
+    customType: CUSTOM_TYPE,
+    content: formatAgentMessage(message),
+    display: true,
+    details: message,
   };
 }
 
@@ -719,17 +781,23 @@ if (import.meta.vitest) {
       const cwd = path.join(root, "work");
       const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
       const target = SessionManager.inMemory(cwd);
-      const { session, faux } = await receiver(root, target, config);
+      const { session, faux } = await receiver(root, target, config, [
+        // a slow settle handler, like session-name's summary request.
+        (pi) =>
+          pi.on("agent_settled", () => new Promise((r) => setTimeout(r, 50))),
+      ]);
+      // peekQueuedMessages() shows only the head in one-at-a-time mode.
+      const queuedTexts = () =>
+        (session.agent as any).steeringQueue.messages.map(
+          (m: any) => (m.details as AgentMessage | undefined)?.text,
+        );
       faux.setResponses([
         async () => {
           const now = Date.now();
           post(config, target.getSessionId(), "first", new Date(now));
           post(config, target.getSessionId(), "second", new Date(now + 1));
           await eventually(() =>
-            expect(session.getSteeringMessages()).toHaveLength(0),
-          );
-          await eventually(() =>
-            expect(session.agent.hasQueuedMessages()).toBe(true),
+            expect(queuedTexts()).toEqual(["first", "second"]),
           );
           session.clearQueue();
           void session.abort();
@@ -750,12 +818,45 @@ if (import.meta.vitest) {
         await session.prompt("start");
         await session.waitForIdle();
         await session.prompt("carry on");
-        await eventually(() => expect(delivered()).toHaveLength(2));
         await session.waitForIdle();
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 150));
         await session.waitForIdle();
         expect(delivered()).toEqual(["first", "second"]);
+        // interrupted, "carry on", then one continuation for both messages.
         expect(faux.state.callCount).toBe(3);
+      } finally {
+        session.dispose();
+      }
+    });
+
+    it("keeps a steer an rpc abort left queued across reload", async () => {
+      const root = tempRoot();
+      const cwd = path.join(root, "work");
+      const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
+      const target = SessionManager.inMemory(cwd);
+      const { session, faux } = await receiver(root, target, config);
+      faux.setResponses([
+        async () => {
+          post(config, target.getSessionId(), "ping");
+          await eventually(() =>
+            expect(session.agent.hasQueuedMessages()).toBe(true),
+          );
+          void session.abort();
+          return fauxAssistantMessage("interrupted");
+        },
+        () => fauxAssistantMessage("pong"),
+      ]);
+      const delivered = () =>
+        target.getEntries().filter((e) => e.type === "custom_message");
+      try {
+        await session.bindExtensions({});
+        await session.prompt("start");
+        await session.waitForIdle();
+        await session.reload();
+        await session.prompt("carry on");
+        await session.waitForIdle();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(delivered()).toHaveLength(1);
       } finally {
         session.dispose();
       }
@@ -771,9 +872,13 @@ if (import.meta.vitest) {
       fs.writeFileSync(path.join(dir, "2026_bad.json"), "{");
       vi.spyOn(console, "error").mockImplementation(() => {});
       const { session, faux } = await receiver(root, target, config, [
-        // a slower startup handler, like the editor's git status.
+        // a slower startup handler, like the editor's git status, during
+        // which more mail arrives.
         (pi) =>
-          pi.on("session_start", () => new Promise((r) => setTimeout(r, 50))),
+          pi.on("session_start", async () => {
+            post(config, target.getSessionId(), "during startup");
+            await new Promise((resolve) => setTimeout(resolve, 200));
+          }),
       ]);
       const seen: string[][] = [];
       faux.setResponses([
@@ -793,6 +898,7 @@ if (import.meta.vitest) {
         expect(seen).toEqual([
           [
             "message from pi session sender:\n\nwhile you were away",
+            "message from pi session sender:\n\nduring startup",
             "startup prompt",
           ],
         ]);
