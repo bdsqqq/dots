@@ -53,7 +53,7 @@ export class VisualLinePreview {
     formatHint: (count: number) => string;
   };
   cachedWidth: number | undefined;
-  cachedLines: string[] | undefined;
+  cachedLines: readonly string[] | undefined;
   constructor(options: VisualLinePreview["options"]) {
     this.options = options;
   }

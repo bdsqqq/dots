@@ -252,6 +252,9 @@ try {
           for (const pad of [1, 3]) {
             terminal.columns = width;
             row.setOutputPad(pad);
+            // Production pad changes call requestRender(), which marks content changed;
+            // doRender() alone reuses the previous frame's component output.
+            fullscreen.contentChanged = true;
             fullscreen.doRender();
             const lines: string[] = row.render(width, false);
             const anchor = lines.findIndex((line) => line.includes("\x1b_G"));
@@ -763,7 +766,7 @@ async function runSampler({
     "node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/tool-execution.js",
     "node_modules/@earendil-works/pi-coding-agent/dist/extensions/codemode/renderer.js",
     "node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/visual-truncate.js",
-    "patches/pi-coding-agent-1.5.2.patch",
+    "patches/pi-coding-agent-1.6.0.patch",
     "node_modules/@earendil-works/pi-tui/package.json",
     "node_modules/@earendil-works/pi-tui/dist/tui.js",
   );

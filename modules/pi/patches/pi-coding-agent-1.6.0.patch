@@ -1,8 +1,8 @@
 diff --git a/dist/core/agent-session.js b/dist/core/agent-session.js
-index d67feeb..6932ba3 100644
+index 009632b..22e96bb 100644
 --- a/dist/core/agent-session.js
 +++ b/dist/core/agent-session.js
-@@ -1191,15 +1191,15 @@ export class AgentSession {
+@@ -1198,15 +1198,15 @@ export class AgentSession {
          this._rebuildSystemPrompt(tools.map((tool) => tool.name));
      }
      /**
@@ -62,7 +62,7 @@ index 39214dc..d4ed199 100644
                          resultHtmlExpanded: rendered.expanded,
                      };
 diff --git a/dist/core/export-html/template.js b/dist/core/export-html/template.js
-index 3702281..7f63595 100644
+index f7961ff..2309759 100644
 --- a/dist/core/export-html/template.js
 +++ b/dist/core/export-html/template.js
 @@ -1049,7 +1049,7 @@
@@ -116,10 +116,10 @@ index 8da1d1e..58fc531 100644
          expanded?: string;
      } | undefined;
 diff --git a/dist/core/export-html/tool-renderer.js b/dist/core/export-html/tool-renderer.js
-index a20324d..1ceed16 100644
+index 819bc9d..b1cd94c 100644
 --- a/dist/core/export-html/tool-renderer.js
 +++ b/dist/core/export-html/tool-renderer.js
-@@ -1,113 +1,54 @@
+@@ -1,112 +1,52 @@
 -/**
 - * Tool HTML renderer for custom tools in HTML export.
 - *
@@ -127,18 +127,15 @@ index a20324d..1ceed16 100644
 - * and converting the ANSI output to HTML.
 - */
 -import { keyHint, keyText } from "../../modes/interactive/components/keybinding-hints.js";
-+/** Static HTML snapshots use the same composition and renderer state as the transcript. */
-+import { ToolExecutionComponent } from "../../modes/interactive/components/tool-execution.js";
- import { ansiLinesToHtml } from "./ansi-to-html.js";
+-import { ansiLinesToHtml, stripAnsiEscapes } from "./ansi-to-html.js";
 -/**
 - * Create a tool HTML renderer.
 - *
 - * The renderer looks up tool definitions and invokes their renderCall/renderResult
 - * methods, converting the resulting TUI Component output (ANSI) to HTML.
 - */
--const ANSI_ESCAPE_REGEX = /\x1b\[[\d;]*m/g;
 -function isBlankRenderedLine(line) {
--    return line.replace(ANSI_ESCAPE_REGEX, "").trim().length === 0;
+-    return stripAnsiEscapes(line).trim().length === 0;
 -}
 -function trimRenderedResultLines(lines) {
 -    let start = 0;
@@ -149,6 +146,9 @@ index a20324d..1ceed16 100644
 -        end--;
 -    return lines.slice(start, end);
 -}
++/** Static HTML snapshots use the same composition and renderer state as the transcript. */
++import { ToolExecutionComponent } from "../../modes/interactive/components/tool-execution.js";
++import { ansiLinesToHtml } from "./ansi-to-html.js";
  export function createToolHtmlRenderer(deps) {
      const { getToolRenderers, theme, cwd, width = 100 } = deps;
 -    const renderedCallComponents = new Map();
@@ -192,10 +192,8 @@ index a20324d..1ceed16 100644
 +        else if (args !== undefined) component.updateArgs(args);
 +        return component;
      };
-+    // OSC 8 hyperlinks are terminal controls, not HTML. Keep their labels and
-+    // ANSI highlighting without leaking terminal control bytes into the document.
-+    const render = (component) => ansiLinesToHtml(component.render(width, false)
-+        .map((line) => line.replace(/\x1b\]8;[^\x07\x1b]*(?:\x07|\x1b\\)/g, "")));
++    // ansiLinesToHtml turns safe OSC 8 hyperlinks into anchors and drops other controls.
++    const render = (component) => ansiLinesToHtml(component.render(width, false));
      return {
          renderCall(toolCallId, toolName, args) {
              try {
@@ -332,7 +330,7 @@ index a64a3d1..fd7fe9d 100644
      },
  };
 diff --git a/dist/core/tools/renderers/read.js b/dist/core/tools/renderers/read.js
-index c76b38e..5dd6318 100644
+index 1aaa89c..1ae7ae3 100644
 --- a/dist/core/tools/renderers/read.js
 +++ b/dist/core/tools/renderers/read.js
 @@ -9,6 +9,7 @@ import { basename, dirname, isAbsolute, relative, resolve as resolvePath, sep }
@@ -343,7 +341,7 @@ index c76b38e..5dd6318 100644
  import { getLanguageFromPath, highlightCode } from "../../../modes/interactive/theme/theme.js";
  import { formatPathRelativeToCwdOrAbsolute } from "../../../utils/paths.js";
  import { resolveToCwd } from "../path-utils.js";
-@@ -88,13 +89,7 @@ function formatReadResult(args, result, options, theme, showImages, _cwd, isErro
+@@ -92,13 +93,7 @@ function formatReadResult(args, result, options, theme, showImages, _cwd, isErro
      const lang = !isError && rawPath ? getLanguageFromPath(rawPath) : undefined;
      const renderedLines = lang ? highlightCode(replaceTabs(output), lang) : output.split("\n");
      const lines = trimTrailingEmptyLines(renderedLines);
@@ -358,7 +356,7 @@ index c76b38e..5dd6318 100644
      const truncation = result.details?.truncation;
      if (truncation?.truncated) {
          if (truncation.firstLineExceedsLimit) {
-@@ -118,9 +113,17 @@ export const readRenderers = {
+@@ -122,9 +117,17 @@ export const readRenderers = {
          return text;
      },
      renderResult(result, options, theme, context) {
@@ -1021,7 +1019,7 @@ index 67aa2b8..791ae75 100644
                  }));
                  const fullOutputPath = result.details?.fullOutputPath;
 diff --git a/dist/modes/interactive/components/assistant-message.d.ts b/dist/modes/interactive/components/assistant-message.d.ts
-index c58f050..540e2bb 100644
+index a5211b8..c41b67b 100644
 --- a/dist/modes/interactive/components/assistant-message.d.ts
 +++ b/dist/modes/interactive/components/assistant-message.d.ts
 @@ -6,6 +6,7 @@ import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
@@ -1032,20 +1030,21 @@ index c58f050..540e2bb 100644
      private hideThinkingBlock;
      private markdownTheme;
      private hiddenThinkingLabel;
-@@ -17,8 +18,11 @@ export declare class AssistantMessageComponent extends Container {
+@@ -17,9 +18,11 @@ export declare class AssistantMessageComponent extends Container {
      private messageId?;
      private timestamp?;
      private thinkingVisibilityOverrides;
 +    private cachedWidth;
 +    private cachedLines;
      private markdownSlots;
+-    private zoneLines?;
      constructor(message?: AssistantMessage, hideThinkingBlock?: boolean, markdownTheme?: MarkdownTheme, hiddenThinkingLabel?: string, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[], messageId?: string, timestamp?: string);
 +    private updateMarker;
      invalidate(): void;
      setHideThinkingBlock(hide: boolean): void;
      setHiddenThinkingLabel(label: string): void;
 diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes/interactive/components/assistant-message.js
-index 1e16f4c..cdf26ed 100644
+index 4789d61..178ccd2 100644
 --- a/dist/modes/interactive/components/assistant-message.js
 +++ b/dist/modes/interactive/components/assistant-message.js
 @@ -1,4 +1,4 @@
@@ -1062,16 +1061,18 @@ index 1e16f4c..cdf26ed 100644
      hideThinkingBlock;
      markdownTheme;
      hiddenThinkingLabel;
-@@ -20,6 +21,8 @@ export class AssistantMessageComponent extends Container {
+@@ -20,8 +21,9 @@ export class AssistantMessageComponent extends Container {
      messageId;
      timestamp;
      thinkingVisibilityOverrides = new Map();
 +    cachedWidth;
 +    cachedLines;
      markdownSlots = [];
+-    zoneLines;
      constructor(message, hideThinkingBlock = false, markdownTheme = getMarkdownTheme(), hiddenThinkingLabel = "Thinking...", outputPad = 1, markdownTransformers = [], messageId, timestamp) {
          super();
-@@ -32,12 +35,31 @@ export class AssistantMessageComponent extends Container {
+         this.hideThinkingBlock = hideThinkingBlock;
+@@ -33,12 +35,31 @@ export class AssistantMessageComponent extends Container {
          this.timestamp = timestamp;
          // Container for text/thinking content
          this.contentContainer = new Container();
@@ -1104,24 +1105,35 @@ index 1e16f4c..cdf26ed 100644
          super.invalidate();
          if (this.lastMessage) {
              this.updateContent(this.lastMessage);
-@@ -65,7 +87,14 @@ export class AssistantMessageComponent extends Container {
+@@ -66,23 +87,28 @@ export class AssistantMessageComponent extends Container {
          }
      }
      render(width) {
 -        const lines = super.render(width);
+-        if (this.hasToolCalls || lines.length === 0) {
+-            return lines;
+-        }
+-        // Container output is shared across frames; copy it once per change instead of mutating it.
+-        if (this.zoneLines?.source !== lines) {
+-            const zoned = [...lines];
+-            zoned[0] = OSC133_ZONE_START + zoned[0];
+-            zoned[zoned.length - 1] = OSC133_ZONE_END + OSC133_ZONE_FINAL + zoned[zoned.length - 1];
+-            this.zoneLines = { source: lines, lines: zoned };
 +        if (width <= 0)
 +            return [];
 +        const safeWidth = Math.floor(width);
 +        if (this.cachedWidth === safeWidth && this.cachedLines)
 +            return this.cachedLines;
++        // map() returns a fresh array, so zone markers can be added before caching it.
 +        const lines = super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
++        if (!this.hasToolCalls && lines.length > 0) {
++            lines[0] = OSC133_ZONE_START + lines[0];
++            lines[lines.length - 1] = OSC133_ZONE_END + OSC133_ZONE_FINAL + lines[lines.length - 1];
+         }
+-        return this.zoneLines.lines;
 +        this.cachedWidth = safeWidth;
 +        this.cachedLines = lines;
-         if (this.hasToolCalls || lines.length === 0) {
-             return lines;
-         }
-@@ -74,9 +103,12 @@ export class AssistantMessageComponent extends Container {
-         return lines;
++        return lines;
      }
      updateContent(message, isStreaming = this.isStreaming) {
 +        this.cachedWidth = undefined;
@@ -1134,7 +1146,7 @@ index 1e16f4c..cdf26ed 100644
          this.contentContainer.clear();
          const previousSlots = this.markdownSlots;
          this.markdownSlots = [];
-@@ -90,7 +122,7 @@ export class AssistantMessageComponent extends Container {
+@@ -96,7 +122,7 @@ export class AssistantMessageComponent extends Container {
          // Spacers are added lazily, right before the next visible content block. This puts a blank
          // line before the first visible block and after each visible thinking run that is followed
          // by more visible content, while hidden thinking runs without a label contribute nothing.
@@ -1143,7 +1155,7 @@ index 1e16f4c..cdf26ed 100644
          const addVisibleChild = (child) => {
              if (needsSpacer) {
                  this.contentContainer.addChild(new Spacer(1));
-@@ -106,7 +138,7 @@ export class AssistantMessageComponent extends Container {
+@@ -112,7 +138,7 @@ export class AssistantMessageComponent extends Container {
                  // Assistant text messages with no background - trim the text
                  // Set paddingY=0 to avoid extra spacing before tool executions
                  const text = content.text.trim();
@@ -1152,7 +1164,7 @@ index 1e16f4c..cdf26ed 100644
                      transform: createMarkdownTransform("assistant", () => this.isStreaming, this.markdownTransformers, this.messageId, this.timestamp),
                  })));
              }
-@@ -134,8 +166,8 @@ export class AssistantMessageComponent extends Container {
+@@ -140,8 +166,8 @@ export class AssistantMessageComponent extends Container {
                  }
                  const thinking = thinkingBlocks.join("\n\n");
                  const thinkingComponent = hidden
@@ -1163,7 +1175,7 @@ index 1e16f4c..cdf26ed 100644
                          color: (text) => theme.fg("thinkingText", text),
                          italic: true,
                      }, {
-@@ -160,23 +192,33 @@ export class AssistantMessageComponent extends Container {
+@@ -166,23 +192,33 @@ export class AssistantMessageComponent extends Container {
          const hasToolCalls = message.content.some((c) => c.type === "toolCall");
          this.hasToolCalls = hasToolCalls;
          if (message.stopReason === "length") {
@@ -1606,7 +1618,7 @@ index 1c120bd..f5772a5 100644
 \ No newline at end of file
 +//# sourceMappingURL=custom-message.js.map
 diff --git a/dist/modes/interactive/components/tool-execution.d.ts b/dist/modes/interactive/components/tool-execution.d.ts
-index 89cf051..b1e0f6c 100644
+index 0c69a2e..3f8ad51 100644
 --- a/dist/modes/interactive/components/tool-execution.d.ts
 +++ b/dist/modes/interactive/components/tool-execution.d.ts
 @@ -1,16 +1,22 @@
@@ -1638,9 +1650,9 @@ index 89cf051..b1e0f6c 100644
      setShowImages(show: boolean): void;
      setImageWidthCells(width: number): void;
      invalidate(): void;
--    render(width: number): string[];
+-    render(width: number): readonly string[];
 +    /** Static exports disable scheduled lifecycle animation. */
-+    render(width: number, animate?: boolean): string[];
++    render(width: number, animate?: boolean): readonly string[];
      handleMouse(event: TuiMouseEvent): ReturnType<Container["handleMouse"]>;
      private updateDisplay;
      private getTextOutput;
@@ -1649,7 +1661,7 @@ index 89cf051..b1e0f6c 100644
  //# sourceMappingURL=tool-execution.d.ts.map
 \ No newline at end of file
 diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/interactive/components/tool-execution.js
-index 611416e..ca55efb 100644
+index ec6a2f6..19ff269 100644
 --- a/dist/modes/interactive/components/tool-execution.js
 +++ b/dist/modes/interactive/components/tool-execution.js
 @@ -1,13 +1,17 @@
@@ -1754,7 +1766,7 @@ index 611416e..ca55efb 100644
              return [];
          }
          if (this.hasRendererDefinition() && this.getRenderShell() === "self") {
-@@ -194,7 +195,18 @@ export class ToolExecutionComponent extends Container {
+@@ -196,7 +197,18 @@ export class ToolExecutionComponent extends Container {
              }
              return lines;
          }
@@ -1774,7 +1786,7 @@ index 611416e..ca55efb 100644
      }
      handleMouse(event) {
          if (!this.hasRendererDefinition() || this.getRenderShell() !== "self")
-@@ -209,19 +221,24 @@ export class ToolExecutionComponent extends Container {
+@@ -211,19 +223,24 @@ export class ToolExecutionComponent extends Container {
      }
      updateDisplay() {
          this.argsPending = false;
@@ -1810,7 +1822,7 @@ index 611416e..ca55efb 100644
              renderContainer.clear();
              const callRenderer = this.getCallRenderer();
              if (!callRenderer) {
-@@ -230,7 +247,7 @@ export class ToolExecutionComponent extends Container {
+@@ -232,7 +249,7 @@ export class ToolExecutionComponent extends Container {
              }
              else {
                  try {
@@ -1819,7 +1831,7 @@ index 611416e..ca55efb 100644
                      this.callRendererComponent = component;
                      renderContainer.addChild(this.createResultRegion(component));
                      hasContent = true;
-@@ -252,7 +269,7 @@ export class ToolExecutionComponent extends Container {
+@@ -254,7 +271,7 @@ export class ToolExecutionComponent extends Container {
                  }
                  else {
                      try {
@@ -1828,7 +1840,7 @@ index 611416e..ca55efb 100644
                          this.resultRendererComponent = component;
                          renderContainer.addChild(this.createResultRegion(component));
                          hasContent = true;
-@@ -268,12 +285,6 @@ export class ToolExecutionComponent extends Container {
+@@ -270,12 +287,6 @@ export class ToolExecutionComponent extends Container {
                  }
              }
          }
@@ -1841,7 +1853,7 @@ index 611416e..ca55efb 100644
          const previousImages = this.imageComponents;
          const previousSources = this.imageSources;
          for (const img of this.imageComponents) {
-@@ -291,7 +302,7 @@ export class ToolExecutionComponent extends Container {
+@@ -293,7 +304,7 @@ export class ToolExecutionComponent extends Container {
              for (const img of imageBlocks) {
                  if (caps.images && this.showImages && img.data && img.mimeType) {
                      const spacer = new Spacer(1);
@@ -1850,7 +1862,7 @@ index 611416e..ca55efb 100644
                      this.imageSpacers.push(spacer);
                      const source = { data: img.data, mimeType: img.mimeType, widthCells: this.imageWidthCells };
                      const index = this.imageComponents.length;
-@@ -300,7 +311,7 @@ export class ToolExecutionComponent extends Container {
+@@ -302,7 +313,7 @@ export class ToolExecutionComponent extends Container {
                          previous.mimeType === source.mimeType &&
                          previous.widthCells === source.widthCells
                          ? previousImages[index]
@@ -1859,7 +1871,7 @@ index 611416e..ca55efb 100644
                      if (source.mimeType !== "image/png") {
                          ensurePngTranscoder(() => {
                              this.invalidate();
-@@ -309,7 +320,8 @@ export class ToolExecutionComponent extends Container {
+@@ -311,7 +322,8 @@ export class ToolExecutionComponent extends Container {
                      }
                      this.imageComponents.push(imageComponent);
                      this.imageSources.push(source);
@@ -1869,7 +1881,7 @@ index 611416e..ca55efb 100644
                  }
              }
          }
-@@ -320,17 +332,5 @@ export class ToolExecutionComponent extends Container {
+@@ -322,17 +334,5 @@ export class ToolExecutionComponent extends Container {
      getTextOutput() {
          return getRenderedTextOutput(this.result, this.showImages);
      }
@@ -1889,19 +1901,22 @@ index 611416e..ca55efb 100644
  //# sourceMappingURL=tool-execution.js.map
 \ No newline at end of file
 diff --git a/dist/modes/interactive/components/user-message.d.ts b/dist/modes/interactive/components/user-message.d.ts
-index c7617ed..f0c1d54 100644
+index b91386c..a5c4bf7 100644
 --- a/dist/modes/interactive/components/user-message.d.ts
 +++ b/dist/modes/interactive/components/user-message.d.ts
-@@ -12,6 +12,7 @@ export declare class UserMessageComponent extends Container {
+@@ -10,9 +10,9 @@ export declare class UserMessageComponent extends Container {
+     private markdownTransformers;
+     private messageId?;
      private timestamp?;
+-    private zoneLines?;
      constructor(text: string, markdownTheme?: MarkdownTheme, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[], messageId?: string, timestamp?: string);
      setOutputPad(padding: number): void;
 +    invalidate(): void;
      private rebuild;
-     render(width: number): string[];
+     render(width: number): readonly string[];
  }
 diff --git a/dist/modes/interactive/components/user-message.js b/dist/modes/interactive/components/user-message.js
-index 4f57224..0fab542 100644
+index 0831174..ee9cca2 100644
 --- a/dist/modes/interactive/components/user-message.js
 +++ b/dist/modes/interactive/components/user-message.js
 @@ -1,4 +1,4 @@
@@ -1910,7 +1925,15 @@ index 4f57224..0fab542 100644
  import { getMarkdownTheme, theme } from "../theme/theme.js";
  import { createMarkdownTransform } from "./markdown-transform.js";
  const OSC133_ZONE_START = "\x1b]133;A\x07";
-@@ -30,19 +30,27 @@ export class UserMessageComponent extends Container {
+@@ -14,7 +14,6 @@ export class UserMessageComponent extends Container {
+     markdownTransformers;
+     messageId;
+     timestamp;
+-    zoneLines;
+     constructor(text, markdownTheme = getMarkdownTheme(), outputPad = 1, markdownTransformers = [], messageId, timestamp) {
+         super();
+         this.text = text;
+@@ -31,30 +30,34 @@ export class UserMessageComponent extends Container {
      }
      rebuild() {
          this.clear();
@@ -1943,15 +1966,25 @@ index 4f57224..0fab542 100644
          if (lines.length === 0) {
              return lines;
          }
-@@ -51,4 +59,4 @@ export class UserMessageComponent extends Container {
-         return lines;
+-        // Container output is shared across frames; copy it once per change instead of mutating it.
+-        if (this.zoneLines?.source !== lines) {
+-            const zoned = [...lines];
+-            zoned[0] = OSC133_ZONE_START + zoned[0];
+-            zoned[zoned.length - 1] = OSC133_ZONE_END + OSC133_ZONE_FINAL + zoned[zoned.length - 1];
+-            this.zoneLines = { source: lines, lines: zoned };
+-        }
+-        return this.zoneLines.lines;
++        // map() returns a fresh array, so zone markers can be added in place.
++        lines[0] = OSC133_ZONE_START + lines[0];
++        lines[lines.length - 1] = OSC133_ZONE_END + OSC133_ZONE_FINAL + lines[lines.length - 1];
++        return lines;
      }
  }
 -//# sourceMappingURL=user-message.js.map
 \ No newline at end of file
 +//# sourceMappingURL=user-message.js.map
 diff --git a/dist/modes/interactive/components/visual-truncate.d.ts b/dist/modes/interactive/components/visual-truncate.d.ts
-index 2cba1fe..0cc8eff 100644
+index 21137d3..b1bfc83 100644
 --- a/dist/modes/interactive/components/visual-truncate.d.ts
 +++ b/dist/modes/interactive/components/visual-truncate.d.ts
 @@ -19,16 +19,16 @@ export interface VisualTruncateResult {
@@ -2030,14 +2063,15 @@ index c5212e7..7324270 100644
              else {
                  this.cachedLines = lines;
 diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive/interactive-mode.js
-index d4e4b09..868cf83 100644
+index cbd9365..7992e10 100644
 --- a/dist/modes/interactive/interactive-mode.js
 +++ b/dist/modes/interactive/interactive-mode.js
-@@ -3644,7 +3644,16 @@ export class InteractiveMode {
+@@ -3677,8 +3677,16 @@ export class InteractiveMode {
          await this.runtimeHost.dispose();
          const resumeCommand = formatResumeCommand(this.sessionManager);
          if (resumeCommand) {
--            process.stdout.write(`${chalk.dim("To resume this session:")} ${resumeCommand}\n`);
+-            // Own line so the command can be selected with a triple-click (#12237).
+-            process.stdout.write(`${chalk.dim("To resume this session:")}\n${resumeCommand}\n`);
 +            const cwd = this.sessionManager.getCwd();
 +            const home = os.homedir();
 +            const directory = cwd === home ? "~" : cwd.startsWith(`${home}${path.sep}`) ? `~${cwd.slice(home.length)}` : cwd;
@@ -2049,10 +2083,10 @@ index d4e4b09..868cf83 100644
 +            // Keep the executable resume command separate from display-only metadata.
 +            process.stdout.write(`\n${banner}\n\n${resumeCommand}\n`);
          }
+         await flushStdout();
          process.exit(0);
-     }
 diff --git a/package.json b/package.json
-index eb98197..01aead0 100644
+index e1a43e9..b6473ff 100644
 --- a/package.json
 +++ b/package.json
 @@ -7,7 +7,7 @@

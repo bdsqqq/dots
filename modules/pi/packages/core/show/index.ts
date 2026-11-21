@@ -33,7 +33,7 @@ export interface WindowResult<T> {
  * if excerpts is empty, returns all items unchanged.
  */
 export function windowItems<T>(
-  items: T[],
+  items: readonly T[],
   excerpts: Excerpt[],
   makeElision: (count: number) => T,
 ): WindowResult<T> {
@@ -96,7 +96,7 @@ export function windowItems<T>(
 
 export interface ShowResult {
   /** visual lines to render, with "... (N lines) ..." elision markers for gaps */
-  visualLines: string[];
+  visualLines: readonly string[];
   /** ranges of visual lines omitted, as [startInclusive, endExclusive] pairs */
   skippedRanges: Array<[number, number]>;
 }

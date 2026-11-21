@@ -337,6 +337,14 @@ if (import.meta.vitest) {
             .render(80)
             .map((line: string) => stripTerminalSequences(line));
         expect(rows().some((line: string) => line.startsWith(" ●"))).toBe(true);
+        if (name === "user" || name === "assistant") {
+          // Cached frames must keep the OSC 133 prompt zones that fullscreen navigation uses.
+          for (let frame = 0; frame < 2; frame++) {
+            const lines = component.render(80);
+            expect(lines[0]).toContain("\x1b]133;A\x07");
+            expect(lines.at(-1)).toContain("\x1b]133;C\x07");
+          }
+        }
         expect(rows().some((line: string) => line.includes("╰────"))).toBe(
           name !== "user",
         );
@@ -862,7 +870,7 @@ if (import.meta.vitest) {
           cwd: temporary,
           input: await readFile(
             new URL(
-              "../../../patches/pi-coding-agent-1.5.2.patch",
+              "../../../patches/pi-coding-agent-1.6.0.patch",
               import.meta.url,
             ),
             "utf8",
@@ -1166,7 +1174,7 @@ if (import.meta.vitest) {
         );
         const currentPatch = await readFile(
           new URL(
-            "../../../patches/pi-coding-agent-1.5.2.patch",
+            "../../../patches/pi-coding-agent-1.6.0.patch",
             import.meta.url,
           ),
           "utf8",
