@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { lstatSync, mkdirSync, readFileSync, readlinkSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
+import { accessSync, constants, lstatSync, mkdirSync, readFileSync, readlinkSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -81,6 +81,9 @@ export const managedToolsRoot = (home: string) => join(home, ".local/share/cli-p
 function info(path: string) {
   try { return lstatSync(path); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; return undefined; }
 }
+function executable(path: string): boolean {
+  try { accessSync(path, constants.X_OK); return true; } catch { return false; }
+}
 function launcher(target: string, codex?: string, marked = true): string {
   return `#!/bin/sh\n${marked ? "# managed by cli-proxy-api fleet\n" : ""}${codex ? `export CODEX_BIN="\${CODEX_BIN:-${codex}}"\n` : ""}exec ${shellQuote(target)} "$@"\n`;
 }
@@ -130,7 +133,9 @@ export function refreshTools(home: string, store: string, codex?: string, eventS
         if (!stat.isFile()) throw new Error("unrecognized launcher; preserve and inspect");
         const owned = ownedLauncher(home, program, readFileSync(path, "utf8"));
         if (!owned) throw new Error("launcher differs; preserve and inspect");
-        pin = owned.codex || pin;
+        // a pin to a codex that is gone (e.g. an uninstalled package) would break the
+        // launcher for good; fall back to the codex found now.
+        pin = (owned.codex && executable(owned.codex) ? owned.codex : undefined) || pin;
       }
     }
     files.push({ path, content: launcher(`${root}/bin/${program}-broker`, pin) });

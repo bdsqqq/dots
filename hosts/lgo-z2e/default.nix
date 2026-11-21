@@ -123,6 +123,7 @@ in
     ../../modules/weather
     ../../modules/remindctl
     ../../modules/node-pnpm
+    ../../modules/app-pins
     ../../modules/mise
     ../../modules/syncthing/automerge
     ../../modules/wikiman
@@ -505,4 +506,5 @@ in
 
   system.stateVersion = "25.05";
 
+  my.appPins.apps = [ "claude" "codex" ];
 }

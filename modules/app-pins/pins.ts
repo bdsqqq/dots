@@ -1,16 +1,22 @@
 /**
  * record and install. both go through a `Store` so publish.ts can run them against an
- * overlay of origin/main instead of the user's checkout.
+ * overlay of origin/main instead of the user's checkout. app bundles live here; vendor
+ * CLIs live in vendor.ts, behind the same four operations.
  */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { fromUpstream, newer, parseRelease } from "../rex/release.ts";
+import { AppPinError, compare, json, sha, type Artifact, type Deps, type InstallResult, type Installed,
+  type RecordResult, type Store } from "./core.ts";
+import { dueVendor, installedVendor, installVendor, recordVendor, type VendorApp } from "./vendor.ts";
 
-export type Artifact = { url: string; sha256: string };
+export { AppPinError, compare, type AppPinErrorCode, type Artifact, type Deps, type InstallResult, type Installed,
+  type RecordResult, type Store } from "./core.ts";
+export type { VendorApp } from "./vendor.ts";
 export type Pin = {
   schemaVersion: 1;
   app: string;
@@ -27,34 +33,20 @@ type Feed =
   | { kind: "sparkle"; url: string }
   | { kind: "github"; repo: string; tag: string; asset: string;
       linux?: { repo: string; assets: { x64: string; arm64: string } } };
-export type App = {
-  name: string; bundle: string; bundleId: string; pin: string;
+export type BundleApp = {
+  name: string; kind?: "bundle"; bundle: string; bundleId: string; pin: string;
   /** "build" for Sparkle apps, whose builds advance under an unchanged marketing version. */
   compare: "build" | "short";
   feed: Feed;
   linuxRelease?: string;
 };
-export type Installed = { version: string; build: string; bundleId: string };
-export type Deps = {
-  text: (url: string) => Promise<string>;
-  download: (url: string, dest: string) => Promise<void>;
-  run: (command: string, args: string[]) => string;
-};
-export type Store = { read(path: string): string | null; write(path: string, text: string): void };
+export type App = BundleApp | VendorApp;
+type BundleInstalled = Installed & { bundleId: string };
+const isVendor = (app: App): app is VendorApp => app.kind === "vendor";
 
-/** expected failures carry a stable code; callers map it, never the message, into events. */
-export type AppPinErrorCode =
-  | "bundle_identity_mismatch" | "invalid_pin" | "feed_missing_build" | "artifact_hash_mismatch"
-  | "artifact_not_pinned_build" | "rex_commit_mismatch";
-export class AppPinError extends Error {
-  readonly code: AppPinErrorCode;
-  constructor(code: AppPinErrorCode, message: string) { super(message); this.code = code; }
-}
-
-const sha = /^[a-f0-9]{64}$/;
 const here = dirname(fileURLToPath(import.meta.url));
 export function loadApps(): Record<string, App> {
-  const specs: Record<string, Omit<App, "name">> = JSON.parse(readFileSync(join(here, "apps.json"), "utf8"));
+  const specs: Record<string, Omit<BundleApp, "name"> | Omit<VendorApp, "name">> = JSON.parse(readFileSync(join(here, "apps.json"), "utf8"));
   return Object.fromEntries(Object.entries(specs).map(([name, spec]) => [name, { name, ...spec }]));
 }
 
@@ -62,32 +54,26 @@ export const worktree = (repo: string): Store => ({
   read: path => existsSync(join(repo, path)) ? readFileSync(join(repo, path), "utf8") : null,
   write: (path, text) => {
     const target = join(repo, path), temporary = `${target}.tmp-${process.pid}`;
+    mkdirSync(dirname(target), { recursive: true });
     writeFileSync(temporary, text);
     renameSync(temporary, target);
   },
 });
-const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
-
-/** numeric runs only: "0.1.11-nightly.20261118.4877" -> [0,1,11,20261118,4877]. */
-export function compare(a: string, b: string): number {
-  const x = a.match(/\d+/g)?.map(Number) ?? [], y = b.match(/\d+/g)?.map(Number) ?? [];
-  for (let i = 0; i < Math.max(x.length, y.length); i++) {
-    const d = (x[i] ?? -1) - (y[i] ?? -1);
-    if (d) return Math.sign(d);
-  }
-  return 0;
-}
-const key = (app: App, v: { version: string; build: string }) => app.compare === "build" ? v.build : v.version;
+const key = (app: BundleApp, v: { version: string; build: string }) => app.compare === "build" ? v.build : v.version;
 /** what a person reads: Sparkle builds share a marketing version, so show both. */
-const label = (app: App, v: { version: string; build: string }) => app.compare === "build" ? `${v.version} (${v.build})` : v.version;
+const label = (app: BundleApp, v: { version: string; build: string }) => app.compare === "build" ? `${v.version} (${v.build})` : v.version;
 
-export function readInstalled(bundle: string, run: Deps["run"]): Installed | null {
+export function readInstalled(bundle: string, run: Deps["run"]): BundleInstalled | null {
   const plist = join(bundle, "Contents/Info.plist");
   if (!existsSync(plist)) return null;
   const read = (k: string) => run("plutil", ["-extract", k, "raw", "-o", "-", plist]).trim();
   return { version: read("CFBundleShortVersionString"), build: read("CFBundleVersion"), bundleId: read("CFBundleIdentifier") };
 }
+/** what this host runs now; throws when something else sits where the app should be. */
 export function installedApp(app: App, deps: Deps): Installed | null {
+  return isVendor(app) ? installedVendor(app) : installedBundle(app, deps);
+}
+function installedBundle(app: BundleApp, deps: Deps): BundleInstalled | null {
   const installed = readInstalled(app.bundle, deps.run);
   if (installed && installed.bundleId !== app.bundleId) {
     throw new AppPinError("bundle_identity_mismatch", `${app.bundle} is ${installed.bundleId}, not ${app.bundleId}`);
@@ -105,7 +91,7 @@ export function parsePin(value: unknown, app: string): Pin {
   }
   return p;
 }
-function readPin(app: App, store: Store): Pin | null {
+function readPin(app: BundleApp, store: Store): Pin | null {
   const text = store.read(app.pin);
   return text === null ? null : parsePin(JSON.parse(text), app.name);
 }
@@ -127,7 +113,7 @@ async function hashUrl(deps: Deps, url: string): Promise<string> {
 }
 
 /** the feed entry for exactly the installed build; a moving channel head is never used. */
-async function resolve(app: App, installed: Installed, deps: Deps, previous: Pin | null): Promise<Pin> {
+async function resolve(app: BundleApp, installed: Installed, deps: Deps, previous: Pin | null): Promise<Pin> {
   const base = { schemaVersion: 1 as const, app: app.name, version: installed.version, build: installed.build };
   if (app.feed.kind === "sparkle") {
     const xml = await deps.text(app.feed.url);
@@ -148,9 +134,9 @@ async function resolve(app: App, installed: Installed, deps: Deps, previous: Pin
 }
 
 /** linux builds publish separately; retried until they match the mac pin. */
-const githubLinuxSettled = (app: App, pin: Pin) =>
+const githubLinuxSettled = (app: BundleApp, pin: Pin) =>
   app.feed.kind !== "github" || !app.feed.linux || pin.linux?.version === pin.version;
-async function advanceGithubLinux(app: App, pin: Pin, deps: Deps): Promise<boolean> {
+async function advanceGithubLinux(app: BundleApp, pin: Pin, deps: Deps): Promise<boolean> {
   const f = app.feed;
   if (f.kind !== "github" || !f.linux || githubLinuxSettled(app, pin)) return false;
   const tag = expand(f.tag, pin.version);
@@ -165,13 +151,13 @@ async function advanceGithubLinux(app: App, pin: Pin, deps: Deps): Promise<boole
 }
 
 /** settled once the linux CLI pin is at, or past, the CLI bundled in the pinned app. */
-function rexLinuxSettled(app: App, pin: Pin, store: Store): boolean {
+function rexLinuxSettled(app: BundleApp, pin: Pin, store: Store): boolean {
   if (!app.linuxRelease || !pin.rexCommit) return true;
   const current = parseRelease(JSON.parse(store.read(app.linuxRelease) ?? "null"));
   return current.commit === pin.rexCommit || (!!pin.rexCliVersion && !newer(pin.rexCliVersion, current.version));
 }
 /** the linux CLI follows the build bundled in the accepted mac app, never the channel head. */
-async function advanceRexLinux(app: App, pin: Pin, store: Store, deps: Deps): Promise<boolean> {
+async function advanceRexLinux(app: BundleApp, pin: Pin, store: Store, deps: Deps): Promise<boolean> {
   if (!app.linuxRelease || !pin.rexCommit || rexLinuxSettled(app, pin, store)) return false;
   const current = parseRelease(JSON.parse(store.read(app.linuxRelease) ?? "null"));
   const candidate = fromUpstream(JSON.parse(await deps.text(
@@ -190,6 +176,7 @@ async function advanceRexLinux(app: App, pin: Pin, store: Store, deps: Deps): Pr
  * stale a store they trust (see publish.ts).
  */
 export function due(app: App, store: Store, installed: Installed): { due: boolean; from?: string; to: string } {
+  if (isVendor(app)) return dueVendor(app, store, installed);
   const pin = readPin(app, store);
   const to = label(app, installed);
   if (!pin) return { due: true, to };
@@ -198,11 +185,9 @@ export function due(app: App, store: Store, installed: Installed): { due: boolea
   return { due: !githubLinuxSettled(app, pin) || !rexLinuxSettled(app, pin, store), from, to: from };
 }
 
-export type RecordResult =
-  | { status: "absent" }
-  | { status: "recorded" | "unchanged"; from?: string; to: string; linuxAdvanced: boolean; changed: boolean };
 export async function record(app: App, store: Store, deps: Deps): Promise<RecordResult> {
-  const installed = installedApp(app, deps);
+  if (isVendor(app)) return recordVendor(app, store, deps);
+  const installed = installedBundle(app, deps);
   if (!installed) return { status: "absent" };
   const previous = readPin(app, store);
   const advance = !previous || compare(key(app, installed), key(app, previous)) > 0;
@@ -215,7 +200,7 @@ export async function record(app: App, store: Store, deps: Deps): Promise<Record
 }
 
 const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-function running(app: App, deps: Deps): boolean {
+function running(app: BundleApp, deps: Deps): boolean {
   try { deps.run("pgrep", ["-f", `${escapeRegex(app.bundle)}/Contents/MacOS/`]); return true; }
   catch (error) {
     // pgrep exits 1 for "no match"; anything else must not be read as "not running".
@@ -224,11 +209,11 @@ function running(app: App, deps: Deps): boolean {
   }
 }
 
-export type InstallResult = { status: "installed" | "current" | "newer" | "running" | "unpinned"; version?: string };
 export async function install(app: App, store: Store, deps: Deps): Promise<InstallResult> {
+  if (isVendor(app)) return installVendor(app, store, deps);
   const pin = readPin(app, store);
   if (!pin) return { status: "unpinned" };
-  const installed = installedApp(app, deps);
+  const installed = installedBundle(app, deps);
   if (installed) {
     const order = compare(key(app, installed), key(app, pin));
     if (order > 0) return { status: "newer", version: label(app, installed) };
@@ -257,7 +242,7 @@ export async function install(app: App, store: Store, deps: Deps): Promise<Insta
       try {
         // the download takes a while: recheck right before publishing, so an update or
         // launch that happened meanwhile wins over the pin.
-        const now = installedApp(app, deps);
+        const now = installedBundle(app, deps);
         if (now && compare(key(app, now), key(app, pin)) >= 0) {
           return { status: compare(key(app, now), key(app, pin)) > 0 ? "newer" : "current", version: label(app, now) };
         }

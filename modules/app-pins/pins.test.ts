@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { compare, install, record, worktree, type App, type Deps } from "./pins.ts";
+import { compare, install, record, worktree, type BundleApp as App, type Deps } from "./pins.ts";
 
 const plist = (id: string, version: string, build: string) => `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict>

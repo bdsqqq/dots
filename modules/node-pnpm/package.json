@@ -4,10 +4,8 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "@anthropic-ai/claude-code": "^2.1.325",
     "@aredotna/cli": "^0.12.0",
     "@bdsqqq/pi-cli": "workspace:*",
-    "@openai/codex": "^0.169.0",
     "@tobilu/qmd": "^2.8.3",
     "agent-browser": "^0.43.0",
     "biome": "^0.3.3",

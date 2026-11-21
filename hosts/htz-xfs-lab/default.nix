@@ -9,6 +9,8 @@
 
 let
   operatorKey = lib.removeSuffix "\n" (builtins.readFile ../../modules/ssh/keys/mbp-m2.pub);
+  checkout = "${config.my.paths.commonplace}/01_files/nix";
+  gitAsUser = "${pkgs.util-linux}/bin/runuser -u bdsqqq -- ${pkgs.git}/bin/git -C ${checkout}";
   initializeVdo = pkgs.writeShellApplication {
     name = "initialize-xfs-vdo";
     runtimeInputs = [
@@ -86,6 +88,7 @@ in
     ../../modules/weather
     ../../modules/remindctl
     ../../modules/node-pnpm
+    ../../modules/app-pins
     ../../modules/mise
     ../../modules/rust
     ../../modules/go
@@ -226,5 +229,13 @@ in
     initializeVdo
   ];
 
+  # like htz-lab: no syncthing here, so the upgrade moves the checkout that the
+  # live-source modules (app-pins, node-pnpm) read. --ff-only keeps local commits.
+  systemd.services.nixos-upgrade.serviceConfig.ExecStartPre = [
+    "${gitAsUser} fetch origin main"
+    "${gitAsUser} -c merge.autoStash=false merge --ff-only origin/main"
+  ];
   system.stateVersion = "26.11";
+
+  my.appPins.apps = [ "claude" "codex" ];
 }

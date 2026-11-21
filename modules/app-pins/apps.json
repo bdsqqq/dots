@@ -4,7 +4,10 @@
     "bundleId": "com.superlogical.rex",
     "pin": "modules/rex/app-pin.json",
     "compare": "build",
-    "feed": { "kind": "sparkle", "url": "https://blob.superlogical.com/public/rex-app/snapshot-arm64/appcast.xml" },
+    "feed": {
+      "kind": "sparkle",
+      "url": "https://blob.superlogical.com/public/rex-app/snapshot-arm64/appcast.xml"
+    },
     "linuxRelease": "modules/rex/release.json"
   },
   "helium": {
@@ -19,7 +22,10 @@
       "asset": "helium_{version}_arm64-macos.dmg",
       "linux": {
         "repo": "imputnet/helium-linux",
-        "assets": { "x64": "helium-{version}-x86_64.AppImage", "arm64": "helium-{version}-arm64.AppImage" }
+        "assets": {
+          "x64": "helium-{version}-x86_64.AppImage",
+          "arm64": "helium-{version}-arm64.AppImage"
+        }
       }
     }
   },
@@ -34,5 +40,22 @@
       "tag": "v{version}",
       "asset": "T3-Code-{version}-arm64.zip"
     }
+  },
+  "claude": {
+    "kind": "vendor",
+    "layout": "claude",
+    "pin": "modules/app-pins/pins/claude.json",
+    "watch": [
+      ".local/bin",
+      ".local/share/claude/versions"
+    ]
+  },
+  "codex": {
+    "kind": "vendor",
+    "layout": "codex",
+    "pin": "modules/app-pins/pins/codex.json",
+    "watch": [
+      ".codex/packages/standalone"
+    ]
   }
 }
