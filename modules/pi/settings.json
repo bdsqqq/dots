@@ -1,5 +1,5 @@
 {
-  "defaultProvider": "openai-codex",
+  "defaultProvider": "claude-code",
   "extensions": [
     "!**/agent-memory/**"
   ],
@@ -17,7 +17,7 @@
     "enabled": true
   },
   "lastChangelogVersion": "1.5.2",
-  "defaultModel": "gpt-6.1-sol",
+  "defaultModel": "default",
   "defaultThinkingLevel": "medium",
   "hideThinkingBlock": true,
   "steeringMode": "all",
@@ -35,7 +35,7 @@
   "theme": "unboxed-dark",
   "outputPad": 0,
   "showCacheMissNotices": true,
-  "tuiMode": "fullscreen",
+  "tuiMode": "regular",
   "fullscreenExitOutput": "resume-hint",
   "packages": [
     "https://github.com/earendil-works/pi-claude-code"
