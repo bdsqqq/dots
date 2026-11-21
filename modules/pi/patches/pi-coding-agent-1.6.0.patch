@@ -1019,7 +1019,7 @@ index 67aa2b8..791ae75 100644
                  }));
                  const fullOutputPath = result.details?.fullOutputPath;
 diff --git a/dist/modes/interactive/components/assistant-message.d.ts b/dist/modes/interactive/components/assistant-message.d.ts
-index a5211b8..928cd0a 100644
+index a5211b8..c41b67b 100644
 --- a/dist/modes/interactive/components/assistant-message.d.ts
 +++ b/dist/modes/interactive/components/assistant-message.d.ts
 @@ -6,6 +6,7 @@ import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
@@ -1030,21 +1030,21 @@ index a5211b8..928cd0a 100644
      private hideThinkingBlock;
      private markdownTheme;
      private hiddenThinkingLabel;
-@@ -17,9 +18,12 @@ export declare class AssistantMessageComponent extends Container {
+@@ -17,9 +18,11 @@ export declare class AssistantMessageComponent extends Container {
      private messageId?;
      private timestamp?;
      private thinkingVisibilityOverrides;
 +    private cachedWidth;
 +    private cachedLines;
      private markdownSlots;
-     private zoneLines?;
+-    private zoneLines?;
      constructor(message?: AssistantMessage, hideThinkingBlock?: boolean, markdownTheme?: MarkdownTheme, hiddenThinkingLabel?: string, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[], messageId?: string, timestamp?: string);
 +    private updateMarker;
      invalidate(): void;
      setHideThinkingBlock(hide: boolean): void;
      setHiddenThinkingLabel(label: string): void;
 diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes/interactive/components/assistant-message.js
-index 4789d61..bd11558 100644
+index 4789d61..178ccd2 100644
 --- a/dist/modes/interactive/components/assistant-message.js
 +++ b/dist/modes/interactive/components/assistant-message.js
 @@ -1,4 +1,4 @@
@@ -1061,16 +1061,18 @@ index 4789d61..bd11558 100644
      hideThinkingBlock;
      markdownTheme;
      hiddenThinkingLabel;
-@@ -20,6 +21,8 @@ export class AssistantMessageComponent extends Container {
+@@ -20,8 +21,9 @@ export class AssistantMessageComponent extends Container {
      messageId;
      timestamp;
      thinkingVisibilityOverrides = new Map();
 +    cachedWidth;
 +    cachedLines;
      markdownSlots = [];
-     zoneLines;
+-    zoneLines;
      constructor(message, hideThinkingBlock = false, markdownTheme = getMarkdownTheme(), hiddenThinkingLabel = "Thinking...", outputPad = 1, markdownTransformers = [], messageId, timestamp) {
-@@ -33,12 +36,31 @@ export class AssistantMessageComponent extends Container {
+         super();
+         this.hideThinkingBlock = hideThinkingBlock;
+@@ -33,12 +35,31 @@ export class AssistantMessageComponent extends Container {
          this.timestamp = timestamp;
          // Container for text/thinking content
          this.contentContainer = new Container();
@@ -1103,24 +1105,35 @@ index 4789d61..bd11558 100644
          super.invalidate();
          if (this.lastMessage) {
              this.updateContent(this.lastMessage);
-@@ -66,7 +88,14 @@ export class AssistantMessageComponent extends Container {
+@@ -66,23 +87,28 @@ export class AssistantMessageComponent extends Container {
          }
      }
      render(width) {
 -        const lines = super.render(width);
+-        if (this.hasToolCalls || lines.length === 0) {
+-            return lines;
+-        }
+-        // Container output is shared across frames; copy it once per change instead of mutating it.
+-        if (this.zoneLines?.source !== lines) {
+-            const zoned = [...lines];
+-            zoned[0] = OSC133_ZONE_START + zoned[0];
+-            zoned[zoned.length - 1] = OSC133_ZONE_END + OSC133_ZONE_FINAL + zoned[zoned.length - 1];
+-            this.zoneLines = { source: lines, lines: zoned };
 +        if (width <= 0)
 +            return [];
 +        const safeWidth = Math.floor(width);
 +        if (this.cachedWidth === safeWidth && this.cachedLines)
 +            return this.cachedLines;
++        // map() returns a fresh array, so zone markers can be added before caching it.
 +        const lines = super.render(safeWidth).map((line) => truncateToWidth(line, safeWidth, ""));
++        if (!this.hasToolCalls && lines.length > 0) {
++            lines[0] = OSC133_ZONE_START + lines[0];
++            lines[lines.length - 1] = OSC133_ZONE_END + OSC133_ZONE_FINAL + lines[lines.length - 1];
+         }
+-        return this.zoneLines.lines;
 +        this.cachedWidth = safeWidth;
 +        this.cachedLines = lines;
-         if (this.hasToolCalls || lines.length === 0) {
-             return lines;
-         }
-@@ -80,9 +109,12 @@ export class AssistantMessageComponent extends Container {
-         return this.zoneLines.lines;
++        return lines;
      }
      updateContent(message, isStreaming = this.isStreaming) {
 +        this.cachedWidth = undefined;
@@ -1133,7 +1146,7 @@ index 4789d61..bd11558 100644
          this.contentContainer.clear();
          const previousSlots = this.markdownSlots;
          this.markdownSlots = [];
-@@ -96,7 +128,7 @@ export class AssistantMessageComponent extends Container {
+@@ -96,7 +122,7 @@ export class AssistantMessageComponent extends Container {
          // Spacers are added lazily, right before the next visible content block. This puts a blank
          // line before the first visible block and after each visible thinking run that is followed
          // by more visible content, while hidden thinking runs without a label contribute nothing.
@@ -1142,7 +1155,7 @@ index 4789d61..bd11558 100644
          const addVisibleChild = (child) => {
              if (needsSpacer) {
                  this.contentContainer.addChild(new Spacer(1));
-@@ -112,7 +144,7 @@ export class AssistantMessageComponent extends Container {
+@@ -112,7 +138,7 @@ export class AssistantMessageComponent extends Container {
                  // Assistant text messages with no background - trim the text
                  // Set paddingY=0 to avoid extra spacing before tool executions
                  const text = content.text.trim();
@@ -1151,7 +1164,7 @@ index 4789d61..bd11558 100644
                      transform: createMarkdownTransform("assistant", () => this.isStreaming, this.markdownTransformers, this.messageId, this.timestamp),
                  })));
              }
-@@ -140,8 +172,8 @@ export class AssistantMessageComponent extends Container {
+@@ -140,8 +166,8 @@ export class AssistantMessageComponent extends Container {
                  }
                  const thinking = thinkingBlocks.join("\n\n");
                  const thinkingComponent = hidden
@@ -1162,7 +1175,7 @@ index 4789d61..bd11558 100644
                          color: (text) => theme.fg("thinkingText", text),
                          italic: true,
                      }, {
-@@ -166,23 +198,33 @@ export class AssistantMessageComponent extends Container {
+@@ -166,23 +192,33 @@ export class AssistantMessageComponent extends Container {
          const hasToolCalls = message.content.some((c) => c.type === "toolCall");
          this.hasToolCalls = hasToolCalls;
          if (message.stopReason === "length") {
@@ -1888,11 +1901,14 @@ index ec6a2f6..19ff269 100644
  //# sourceMappingURL=tool-execution.js.map
 \ No newline at end of file
 diff --git a/dist/modes/interactive/components/user-message.d.ts b/dist/modes/interactive/components/user-message.d.ts
-index b91386c..92994d9 100644
+index b91386c..a5c4bf7 100644
 --- a/dist/modes/interactive/components/user-message.d.ts
 +++ b/dist/modes/interactive/components/user-message.d.ts
-@@ -13,6 +13,7 @@ export declare class UserMessageComponent extends Container {
-     private zoneLines?;
+@@ -10,9 +10,9 @@ export declare class UserMessageComponent extends Container {
+     private markdownTransformers;
+     private messageId?;
+     private timestamp?;
+-    private zoneLines?;
      constructor(text: string, markdownTheme?: MarkdownTheme, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[], messageId?: string, timestamp?: string);
      setOutputPad(padding: number): void;
 +    invalidate(): void;
@@ -1900,7 +1916,7 @@ index b91386c..92994d9 100644
      render(width: number): readonly string[];
  }
 diff --git a/dist/modes/interactive/components/user-message.js b/dist/modes/interactive/components/user-message.js
-index 0831174..ebf17c2 100644
+index 0831174..ee9cca2 100644
 --- a/dist/modes/interactive/components/user-message.js
 +++ b/dist/modes/interactive/components/user-message.js
 @@ -1,4 +1,4 @@
@@ -1909,7 +1925,15 @@ index 0831174..ebf17c2 100644
  import { getMarkdownTheme, theme } from "../theme/theme.js";
  import { createMarkdownTransform } from "./markdown-transform.js";
  const OSC133_ZONE_START = "\x1b]133;A\x07";
-@@ -31,19 +31,27 @@ export class UserMessageComponent extends Container {
+@@ -14,7 +14,6 @@ export class UserMessageComponent extends Container {
+     markdownTransformers;
+     messageId;
+     timestamp;
+-    zoneLines;
+     constructor(text, markdownTheme = getMarkdownTheme(), outputPad = 1, markdownTransformers = [], messageId, timestamp) {
+         super();
+         this.text = text;
+@@ -31,30 +30,34 @@ export class UserMessageComponent extends Container {
      }
      rebuild() {
          this.clear();
@@ -1942,8 +1966,18 @@ index 0831174..ebf17c2 100644
          if (lines.length === 0) {
              return lines;
          }
-@@ -57,4 +65,4 @@ export class UserMessageComponent extends Container {
-         return this.zoneLines.lines;
+-        // Container output is shared across frames; copy it once per change instead of mutating it.
+-        if (this.zoneLines?.source !== lines) {
+-            const zoned = [...lines];
+-            zoned[0] = OSC133_ZONE_START + zoned[0];
+-            zoned[zoned.length - 1] = OSC133_ZONE_END + OSC133_ZONE_FINAL + zoned[zoned.length - 1];
+-            this.zoneLines = { source: lines, lines: zoned };
+-        }
+-        return this.zoneLines.lines;
++        // map() returns a fresh array, so zone markers can be added in place.
++        lines[0] = OSC133_ZONE_START + lines[0];
++        lines[lines.length - 1] = OSC133_ZONE_END + OSC133_ZONE_FINAL + lines[lines.length - 1];
++        return lines;
      }
  }
 -//# sourceMappingURL=user-message.js.map

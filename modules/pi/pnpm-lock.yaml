@@ -204,7 +204,7 @@ catalogs:
 
 patchedDependencies:
   '@earendil-works/pi-ai@1.6.0': 0adda743e05cdf6dad245c681bbcd65b9aaab8fd812b0f4938149c897b1c2b59
-  '@earendil-works/pi-coding-agent@1.6.0': 30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885
+  '@earendil-works/pi-coding-agent@1.6.0': 77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85
   '@earendil-works/pi-tui@1.6.0': 28cd14dd04c8ab44634a151ace11d052acb342693ea8226db8ac4c593da5d963
 
 importers:
@@ -232,7 +232,7 @@ importers:
         version: 1.6.0(patch_hash=0adda743e05cdf6dad245c681bbcd65b9aaab8fd812b0f4938149c897b1c2b59)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(undici@8.12.4)(ws@8.23.0)
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.6.0(patch_hash=28cd14dd04c8ab44634a151ace11d052acb342693ea8226db8ac4c593da5d963)
@@ -272,7 +272,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
 
   packages/core/box-chrome:
     devDependencies:
@@ -294,7 +294,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
       vitest:
         specifier: ^5.1.0
         version: 5.1.0(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.0))
@@ -379,7 +379,7 @@ importers:
         version: link:../interpolate
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
     devDependencies:
       '@earendil-works/pi-ai':
         specifier: 'catalog:'
@@ -396,7 +396,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
 
   packages/core/sessions: {}
 
@@ -458,7 +458,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
       vitest:
         specifier: ^5.1.0
         version: 5.1.0(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.0))
@@ -495,7 +495,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
       vitest:
         specifier: ^5.1.0
         version: 5.1.0(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.0))
@@ -520,7 +520,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.6.0(patch_hash=28cd14dd04c8ab44634a151ace11d052acb342693ea8226db8ac4c593da5d963)
@@ -551,7 +551,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.6.0(patch_hash=28cd14dd04c8ab44634a151ace11d052acb342693ea8226db8ac4c593da5d963)
@@ -566,7 +566,7 @@ importers:
         version: 1.6.0(patch_hash=0adda743e05cdf6dad245c681bbcd65b9aaab8fd812b0f4938149c897b1c2b59)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(undici@8.12.4)(ws@8.23.0)
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.6.0(patch_hash=28cd14dd04c8ab44634a151ace11d052acb342693ea8226db8ac4c593da5d963)
@@ -591,7 +591,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.6.0(patch_hash=28cd14dd04c8ab44634a151ace11d052acb342693ea8226db8ac4c593da5d963)
@@ -607,7 +607,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
 
   packages/extensions/github:
     dependencies:
@@ -626,7 +626,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.6.0(patch_hash=28cd14dd04c8ab44634a151ace11d052acb342693ea8226db8ac4c593da5d963)
@@ -651,7 +651,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.6.0(patch_hash=28cd14dd04c8ab44634a151ace11d052acb342693ea8226db8ac4c593da5d963)
@@ -679,7 +679,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.6.0(patch_hash=28cd14dd04c8ab44634a151ace11d052acb342693ea8226db8ac4c593da5d963)
@@ -707,7 +707,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.6.0(patch_hash=28cd14dd04c8ab44634a151ace11d052acb342693ea8226db8ac4c593da5d963)
@@ -738,7 +738,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.6.0(patch_hash=28cd14dd04c8ab44634a151ace11d052acb342693ea8226db8ac4c593da5d963)
@@ -769,7 +769,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.6.0(patch_hash=28cd14dd04c8ab44634a151ace11d052acb342693ea8226db8ac4c593da5d963)
@@ -806,7 +806,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
 
   packages/extensions/session-recap:
     dependencies:
@@ -825,13 +825,13 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
 
   packages/extensions/session-settlement:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
 
   packages/extensions/skill:
     dependencies:
@@ -847,7 +847,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.6.0(patch_hash=28cd14dd04c8ab44634a151ace11d052acb342693ea8226db8ac4c593da5d963)
@@ -869,7 +869,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
 
   packages/extensions/web-search:
     dependencies:
@@ -891,7 +891,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.6.0(patch_hash=28cd14dd04c8ab44634a151ace11d052acb342693ea8226db8ac4c593da5d963)
@@ -903,7 +903,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 'catalog:'
-        version: 1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
+        version: 1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
       '@earendil-works/pi-tui':
         specifier: 'catalog:'
         version: 1.6.0(patch_hash=28cd14dd04c8ab44634a151ace11d052acb342693ea8226db8ac4c593da5d963)
@@ -2948,7 +2948,7 @@ snapshots:
     dependencies:
       quickjs-wasi: 3.6.2
 
-  '@earendil-works/pi-coding-agent@1.6.0(patch_hash=30d9073e7dadd06c9007003627efe904a09ada382b792d0ac1f892f573476885)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)':
+  '@earendil-works/pi-coding-agent@1.6.0(patch_hash=77e432de90e58a835c16ec9496a62e06e6a20668a5989e87e8e3f11216fe9d85)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)':
     dependencies:
       '@earendil-works/pi-agent-core': 1.6.0(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(undici@8.12.4)(ws@8.23.0)
       '@earendil-works/pi-ai': 1.6.0(patch_hash=0adda743e05cdf6dad245c681bbcd65b9aaab8fd812b0f4938149c897b1c2b59)(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(undici@8.12.4)(ws@8.23.0)

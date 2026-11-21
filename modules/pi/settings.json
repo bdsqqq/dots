@@ -16,7 +16,7 @@
   "compaction": {
     "enabled": true
   },
-  "lastChangelogVersion": "1.6.0",
+  "lastChangelogVersion": "1.5.2",
   "defaultModel": "default",
   "defaultThinkingLevel": "medium",
   "hideThinkingBlock": true,
