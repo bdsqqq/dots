@@ -20,7 +20,7 @@
 import { show, type Excerpt } from "@bds_pi/show";
 
 export interface ShowRenderer {
-  render: (width: number) => string[];
+  render: (width: number) => readonly string[];
   invalidate: () => void;
 }
 
@@ -29,9 +29,9 @@ export function makeShowRenderer(
   excerpts: Excerpt[],
 ): ShowRenderer {
   let cachedWidth: number | undefined;
-  let cachedLines: string[] | undefined;
+  let cachedLines: readonly string[] | undefined;
   return {
-    render(width: number): string[] {
+    render(width: number): readonly string[] {
       if (cachedLines === undefined || cachedWidth !== width) {
         cachedLines = show(text, excerpts, width).visualLines;
         cachedWidth = width;

@@ -1,14 +1,14 @@
 diff --git a/dist/components/box.js b/dist/components/box.js
-index 1146b95..dd4f255 100644
+index 20e84a1..fb6a1d8 100644
 --- a/dist/components/box.js
 +++ b/dist/components/box.js
 @@ -1,4 +1,5 @@
- import { dispatchMouseEvent } from "../tui.js";
+ import { dispatchMouseToChildLines, renderChildLines, } from "../tui.js";
 +import { isImageLine } from "../terminal-image.js";
  import { flattenLines, visibleWidth } from "../utils.js";
  /**
   * Box component - a container that applies padding and background to all children
-@@ -116,7 +117,9 @@ export class Box {
+@@ -88,7 +89,9 @@ export class Box {
          }
          // Content
          for (const line of childLines) {
@@ -189,7 +189,7 @@ index 59f005c..c568d08 100644
  export { MouseRegion } from "./components/mouse-region.js";
  export { ScrollView, } from "./components/scroll-view.js";
 diff --git a/dist/layout.js b/dist/layout.js
-index 0a50deb..0b56a69 100644
+index 8b8ffcf..2d294cd 100644
 --- a/dist/layout.js
 +++ b/dist/layout.js
 @@ -2,7 +2,7 @@ import { allocateStackSizes, visibleStackEntries } from "./components/stack.js";
@@ -272,10 +272,10 @@ index e00273a..efc35f1 100644
                  output.append(`\x1b[${imageReservedRows - 1}B`);
                  i += imageReservedRows - 1;
 diff --git a/dist/utils.js b/dist/utils.js
-index fe72182..f6b015e 100644
+index 20a0ec9..eb3d12c 100644
 --- a/dist/utils.js
 +++ b/dist/utils.js
-@@ -455,12 +455,11 @@ function ansiCodeLength(str, pos) {
+@@ -537,12 +537,11 @@ function ansiCodeLength(str, pos) {
      if (pos >= str.length || str.charCodeAt(pos) !== 0x1b)
          return 0;
      const next = str[pos + 1];

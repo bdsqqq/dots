@@ -3,15 +3,15 @@ packages:
   - packages/extensions/*
 
 patchedDependencies:
-  "@earendil-works/pi-ai@1.5.2": patches/pi-ai-1.5.2.patch
+  "@earendil-works/pi-ai@1.6.0": patches/pi-ai-1.6.0.patch
   # The unbundled CLI must consume our SDK/provider patches, like the global bridge.
-  "@earendil-works/pi-coding-agent@1.5.2": patches/pi-coding-agent-1.5.2.patch
-  "@earendil-works/pi-tui@1.5.2": patches/pi-tui-1.5.2.patch
+  "@earendil-works/pi-coding-agent@1.6.0": patches/pi-coding-agent-1.6.0.patch
+  "@earendil-works/pi-tui@1.6.0": patches/pi-tui-1.6.0.patch
 
 catalog:
-  "@earendil-works/pi-ai": 1.5.2
-  "@earendil-works/pi-coding-agent": 1.5.2
-  "@earendil-works/pi-tui": 1.5.2
+  "@earendil-works/pi-ai": 1.6.0
+  "@earendil-works/pi-coding-agent": 1.6.0
+  "@earendil-works/pi-tui": 1.6.0
   typebox: ^1.4.7
 
 allowBuilds:
@@ -21,10 +21,11 @@ allowBuilds:
   protobufjs: true
 
 minimumReleaseAgeExclude:
-  - "@earendil-works/pi-agent-core@1.5.2"
-  - "@earendil-works/pi-ai@1.5.2"
-  - "@earendil-works/pi-codemode@1.5.2"
-  - "@earendil-works/pi-coding-agent@1.5.2"
-  - "@earendil-works/pi-mcp@1.5.2"
-  - "@earendil-works/pi-telemetry@1.5.2"
-  - "@earendil-works/pi-tui@1.5.2"
+  - "@earendil-works/pi-agent-core@1.6.0"
+  - "@earendil-works/pi-ai@1.6.0"
+  - "@earendil-works/pi-codemode@1.6.0"
+  - "@earendil-works/pi-coding-agent@1.6.0"
+  - "@earendil-works/pi-mcp@1.6.0"
+  - "@earendil-works/pi-schema@1.6.0"
+  - "@earendil-works/pi-telemetry@1.6.0"
+  - "@earendil-works/pi-tui@1.6.0"
