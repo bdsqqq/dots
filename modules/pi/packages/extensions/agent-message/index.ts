@@ -288,6 +288,8 @@ export function createAgentMessageExtension(
     let poll: NodeJS.Timeout | undefined;
     let grace: NodeJS.Timeout | undefined;
     let started = false;
+    /** pi reports idle before settle handlers run; wait for ours. */
+    let running = false;
     /**
      * run starters not yet persisted: pi defers runs started during
      * settlement, and the watcher must not send those again meanwhile. a
@@ -342,7 +344,8 @@ export function createAgentMessageExtension(
       try {
         // during the startup grace, hold mail for the first prompt's
         // boundary or the grace's end rather than show it unanswered.
-        if (!sessionId || !isIdle() || (startTurn && !started)) return;
+        if (!sessionId || running || !isIdle() || (startTurn && !started))
+          return;
         const mail = pending();
         // one run per batch: only the last message starts it.
         const starter = startTurn ? mail.pop() : undefined;
@@ -389,6 +392,7 @@ export function createAgentMessageExtension(
       transcript = () => [];
       isIdle = () => false;
       started = false;
+      running = false;
       starting.clear();
     };
 
@@ -417,12 +421,16 @@ export function createAgentMessageExtension(
       deliverIdle(false);
     });
 
+    pi.on("agent_start", () => {
+      running = true;
+    });
     pi.on("turn_end", atBoundary);
 
     pi.on("agent_settled", (event) => {
       // a run already happened, so there's no startup prompt left to protect.
       clearTimeout(grace);
       started = true;
+      running = false;
       deliverIdle(!event.aborted);
     });
 
@@ -839,7 +847,7 @@ if (import.meta.vitest) {
       },
     );
 
-    it("runs mail arriving while idle as one turn, even with slow settle handlers", async () => {
+    it("runs mail arriving while idle as one turn", async () => {
       const root = tempRoot();
       const cwd = path.join(root, "work");
       const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
@@ -848,10 +856,6 @@ if (import.meta.vitest) {
         root,
         target,
         config,
-        [
-          (pi) =>
-            pi.on("agent_settled", () => new Promise((r) => setTimeout(r, 50))),
-        ],
       );
       faux.setResponses([
         () => fauxAssistantMessage("done"),
@@ -948,6 +952,46 @@ if (import.meta.vitest) {
         }
       },
     );
+
+    it("doesn't undo an abort for mail arriving in an earlier settle handler", async () => {
+      const root = tempRoot();
+      const cwd = path.join(root, "work");
+      const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
+      const target = SessionManager.inMemory(cwd);
+      let settles = 0;
+      const { session, faux, close, agentEntries } = await receiver(
+        root,
+        target,
+        config,
+        [],
+        0,
+        [
+          (pi) =>
+            pi.on("agent_settled", async () => {
+              if (settles++ > 0) return;
+              post(config, target.getSessionId(), "while stopping");
+              await new Promise((resolve) => setTimeout(resolve, 300));
+            }),
+        ],
+      );
+      faux.setResponses([
+        () => {
+          void session.abort();
+          return fauxAssistantMessage("interrupted");
+        },
+        () => fauxAssistantMessage("should not run"),
+      ]);
+      try {
+        await session.prompt("start");
+        await session.waitForIdle();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        await session.waitForIdle();
+        expect(agentEntries()).toEqual(["while stopping"]);
+        expect(faux.state.callCount).toBe(1);
+      } finally {
+        await close();
+      }
+    });
 
     it("hands startup mail to the startup prompt instead of racing it", async () => {
       const root = tempRoot();
