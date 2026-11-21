@@ -26,7 +26,7 @@ type SessionNameExtConfig = {
 };
 
 const CONFIG_DEFAULTS: SessionNameExtConfig = {
-  model: { provider: "openai-codex", id: "gpt-5.6-luna" },
+  model: { provider: "claude-code", id: "claude-haiku-5-5" },
   renameInterval: 10,
 };
 
@@ -212,7 +212,8 @@ function sessionNameExtension(
       model,
       ctx.modelRegistry,
       `Return only a 3-5 word lowercase coding-session title.\n\n${input}`,
-      20,
+      // the budget covers adaptive thinking too; parseTitle bounds the title.
+      256,
       controller.signal,
     )
       .then((output) => {
@@ -250,7 +251,7 @@ function sessionNameExtension(
         model,
         ctx.modelRegistry,
         `Write only a concise plain-markdown durable session summary. Preserve goals, constraints, decisions, completed work, verification, failures, and next steps. Do not infer facts.\n\n${buildSummaryInput(branch)}`,
-        1200,
+        4096,
         ctx.signal,
       );
     } catch {

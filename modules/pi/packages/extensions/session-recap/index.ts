@@ -52,7 +52,7 @@ type RecapEntryData = {
 const CONFIG_DEFAULTS: SessionRecapConfig = {
   idleMs: 120_000,
   maxWords: 55,
-  model: { provider: "openai-codex", id: "gpt-5.6-luna" },
+  model: { provider: "claude-code", id: "claude-haiku-5-5" },
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -226,7 +226,8 @@ export function createSessionRecapExtension(
           model,
           ctx.modelRegistry,
           `${RECAP_PROMPT.replace("{{maxWords}}", String(config.maxWords))}\n\nTranscript:\n${transcript}`,
-          180,
+          // the budget covers adaptive thinking too; parseRecap bounds the words.
+          4096,
           activeController.signal,
         );
       } catch {
