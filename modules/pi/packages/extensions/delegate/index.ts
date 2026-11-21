@@ -5,7 +5,7 @@
  * with a dedicated tool. the model calls
  * delegate(prompt: "...", description: "...") directly.
  *
- * the delegate sub-agent defaults to gpt-6.1-sol medium.
+ * the delegate sub-agent defaults to claude-opus-5-5 medium.
  * it gets read, native edit/write, bash, finder,
  * skill, web_search, read_web_page. the description is shown
  * to the user in the TUI; the prompt is the full instruction for the sub-agent.
@@ -63,7 +63,7 @@ type DelegateExtensionDeps = {
 };
 
 const CONFIG_DEFAULTS: DelegateExtConfig = {
-  model: "openai-codex/gpt-6.1-sol:medium",
+  model: "claude-code/claude-opus-5-5:medium",
   excludeTools: [],
   tools: [
     "read",

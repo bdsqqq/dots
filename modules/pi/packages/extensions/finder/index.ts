@@ -1,11 +1,11 @@
 /**
- * finder tool — fast parallel code search via gemini flash sub-agent.
+ * finder tool — fast parallel code search via claude-haiku-5-5 sub-agent.
  *
  * replaces the generic subagent(agent: "finder", task: ...) pattern
  * with a dedicated tool. the model calls
  * finder(query: "...") instead of routing through the dispatcher.
  *
- * spawns `pi --mode json` with gemini flash, constrained to
+ * spawns `pi --mode json` with claude-haiku-5-5, constrained to
  * read-only tools (read, grep, find, ls, glob). the finder agent
  * maximizes parallelism (8+ tool calls per turn) and completes
  * within ~3 turns.
@@ -48,7 +48,7 @@ import {
   subAgentResult,
   type SingleResult,
 } from "@bds_pi/sub-agent-render";
-const FINDER_DEFAULT_MODEL = "openai-codex/gpt-5.6-luna:low";
+const FINDER_DEFAULT_MODEL = "claude-code/claude-haiku-5-5:low";
 
 type FinderExtConfig = {
   model: PiSpawnModel;
