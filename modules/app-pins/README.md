@@ -1,13 +1,19 @@
 # app-pins
 
-some mac apps update themselves, which normally makes them invisible to nix.
+some apps update themselves, which normally makes them invisible to nix.
 nix either fights the updater or loses track of the version. here the app
 stays in charge of updating, and the repo records what it actually installed.
 same contract as pnpm globals: nix kickstarts, updates happen outside the
 store, and git carries the result to every other host.
 
-apps and their feeds are listed in [`apps.json`](apps.json); each app's pin
-lives beside the module that consumes it.
+two kinds are pinned, both listed in [`apps.json`](apps.json):
+
+- **mac app bundles** (rex, helium, t3 code). their pins live beside the
+  module that consumes them.
+- **vendor CLIs** (claude, codex), installed in each vendor's own native
+  layout, the one their install scripts and `claude update` / `codex update`
+  maintain. T3 runs those updates; every host, mac or linux, records what it
+  accepted and installs the pin. their pins live in [`pins/`](pins).
 
 ## the contract
 
@@ -24,7 +30,13 @@ lives beside the module that consumes it.
   mid-rebase. a bump is an ordinary commit, `bump <app> (auto-committed from
   <host>)`, signed if your git signs commits, so every published version shows
   which mac accepted it.
-- **linux follows the mac.** for apps with a linux side (rex's CLI, helium's
+- **vendor CLIs are the same everywhere.** any host can bump a CLI pin, and
+  every host installs it, so updating codex on a server moves the macs too.
+  each pin names all three platforms' builds, resolved together, so a pin
+  never exists for one platform only. nix turns off the CLIs' own update
+  checks (`DISABLE_AUTOUPDATER`, `check_for_update_on_startup`) through
+  machine policy files, so a version only moves when someone asks for it.
+- **linux follows the mac** for app bundles with a linux side (rex's CLI, helium's
   AppImage), the linux pin tracks what a mac accepted instead of chasing
   upstream. it replaces a CI job that published every rex snapshot whether or
   not anyone had run it.
@@ -45,22 +57,39 @@ lives beside the module that consumes it.
   agents and activations built before the change working. drop the shims once
   every mac has switched past it.
 
+- **vendor layouts, not ours.** the installer writes exactly what the
+  vendor's script would (`~/.local/share/claude/versions/<v>`,
+  `~/.codex/packages/standalone/releases/<v>-<target>` plus `current`), so
+  `claude update`, `codex update` and T3's provider detection keep working.
+  an install that isn't the vendor's native one (a different link target, a
+  regular file) is refused, never overwritten. a pinned codex is not on the
+  latest channel, as with `install.sh --release`.
+- **linux hosts push over https.** they have no trusted github host key, but
+  git's credential helper already reads the host's `gh_token`. installs run
+  from systemd user units, not activation, so a 200MB download never holds up
+  a switch.
+
 ## adding an app
 
 an app fits if its updater replaces the whole bundle on each update, which is
 what makes watching `Info.plist` reliable. its feed must also let you look up
 an exact build by version. Sparkle appcasts and GitHub releases both qualify.
 an app that patches files in place, or whose vendor deletes old builds,
-doesn't fit.
+doesn't fit. a CLI fits if its vendor publishes per-version builds with
+hashes for every pinned platform, and selects the running build with a link.
 
 ## limits
 
 - rex's linux pin depends on its appcast notes naming the bundled CLI commit.
   if that line disappears, the mac pin keeps advancing but the linux pin
   silently stops.
-- the tests use real bundles, zips and git repositories in temporary
-  directories. they don't cover a live Sparkle swap firing the watcher, a dmg
-  mounting on another machine, or pushing from inside launchd itself.
+- the tests use real bundles, zips, tarballs and git repositories in
+  temporary directories. they don't cover a live Sparkle swap firing the
+  watcher, a dmg mounting on another machine, or pushing from inside launchd
+  or a systemd user unit.
+- codex on linux prunes releases nothing runs from, because pinned hosts may
+  never run the vendor installer, which normally prunes. on macs the vendor
+  installer still prunes.
 
 usage: `node modules/app-pins/cli.ts` prints it. checks:
 `node --test modules/app-pins/*.test.ts` and

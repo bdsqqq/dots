@@ -101,7 +101,7 @@ in
   };
   my.kanata.tcpPort = 5829;
   # self-updating apps record their own updates into tracked pins.
-  my.appPins.apps = [ "rex" "helium" "t3-code" ];
+  my.appPins.apps = [ "rex" "helium" "t3-code" "claude" "codex" ];
   # Helium ships with Sparkle checks off; update it like the other pinned apps.
   system.defaults.CustomUserPreferences."net.imput.helium" = {
     SUEnableAutomaticChecks = true;

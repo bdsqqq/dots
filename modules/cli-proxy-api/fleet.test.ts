@@ -51,23 +51,30 @@ test("managed tools refresh migrates exact owned legacy wrappers and upgrades th
   try {
     const bin = join(home, ".local/bin");
     mkdirSync(bin, { recursive: true });
+    const pinned = join(home, "native/pinned-codex");
+    mkdirSync(join(home, "native"));
+    writeFileSync(pinned, "#!/bin/sh\n", { mode: 0o755 });
     const legacy = `${home}/.local/share/cli-proxy-api/client-bootstrap/0123456789abcdef/tools/bin/codex-broker`;
-    const wrapper = `#!/bin/sh\nexport CODEX_BIN="${"${CODEX_BIN:-/native/pinned-codex}"}"\nexec '${legacy}' "$@"\n`;
+    const wrapper = `#!/bin/sh\nexport CODEX_BIN="${"${CODEX_BIN:-"}${pinned}}"\nexec '${legacy}' "$@"\n`;
     writeFileSync(join(bin, "codex-broker"), wrapper, { mode: 0o700 });
-    assert.deepEqual(ownedLauncher(home, "codex", wrapper), { codex: "/native/pinned-codex" });
+    assert.deepEqual(ownedLauncher(home, "codex", wrapper), { codex: pinned });
     assert.equal(ownedLauncher(home, "codex", wrapper + "# user edit\n"), undefined);
     const root = refreshTools(home, store1, "/native/new-codex");
     assert.equal(root, managedToolsRoot(home));
     assert.equal(readlinkSync(root), store1);
     const first = readFileSync(join(bin, "codex-broker"), "utf8");
-    assert.match(first, /\/native\/pinned-codex/);
+    assert.ok(first.includes(pinned), "an existing codex pin is retained");
     assert.ok(first.includes(root));
     assert.ok(!first.includes("client-bootstrap"));
     refreshTools(home, store2);
     assert.equal(readlinkSync(root), store2);
     assert.equal(readFileSync(join(bin, "codex-broker"), "utf8"), first);
     assert.equal(statSync(join(bin, "codex-broker")).mode & 0o777, 0o700);
-    assert.deepEqual(ownedLauncher(home, "codex", first), { codex: "/native/pinned-codex" });
+    assert.deepEqual(ownedLauncher(home, "codex", first), { codex: pinned });
+    rmSync(pinned);
+    refreshTools(home, store2, "/native/new-codex");
+    assert.match(readFileSync(join(bin, "codex-broker"), "utf8"), /CODEX_BIN:-\/native\/new-codex\}/,
+      "a pin to a codex that is gone falls back to the codex found now");
   } finally { rmSync(home, { recursive: true, force: true }); }
 });
 

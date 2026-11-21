@@ -52,6 +52,7 @@ in
     ../../modules/remindctl
     ../../modules/agent-desktop
     ../../modules/node-pnpm
+    ../../modules/app-pins
     ../../modules/1password
     ../../modules/orbstack
     ../../modules/ghostty
@@ -258,4 +259,6 @@ in
     hostPlatform = "aarch64-darwin";
     config.allowUnfree = true;
   };
+
+  my.appPins.apps = [ "claude" "codex" ];
 }

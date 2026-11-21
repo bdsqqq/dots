@@ -45,6 +45,7 @@ in
     ../../modules/weather
     ../../modules/remindctl
     ../../modules/node-pnpm
+    ../../modules/app-pins
     ../../modules/mise
     ../../modules/rust
     ../../modules/go
@@ -196,4 +197,6 @@ in
     ExecStartPost = [ "${pkgs.systemd}/bin/systemctl restart home-manager-bdsqqq.service" ];
   };
   system.stateVersion = "26.11";
+
+  my.appPins.apps = [ "claude" "codex" ];
 }

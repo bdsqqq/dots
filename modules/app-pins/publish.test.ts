@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { message, publish } from "./publish.ts";
-import { AppPinError, loadApps, type App, type Deps } from "./pins.ts";
+import { AppPinError, loadApps, type BundleApp as App, type Deps } from "./pins.ts";
 
 // isolated git: no user config, hooks, signing, or credentials leak in or out.
 const env = { ...process.env, HOME: "/nonexistent", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1",
