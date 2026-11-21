@@ -7,10 +7,13 @@
  * sessions live in unrelated processes or aren't running at all, so the
  * transport is a mailbox directory per target session. a message file stays
  * there until pi emits it into the target conversation (`message_end`), which
- * makes a closed session receive it on resume. escape clears pi's steering
- * queue, ours included, so anything undelivered when a run settles is sent
- * again; after an abort it is appended without starting a turn the user just
- * stopped.
+ * makes a closed session receive it on resume.
+ *
+ * pi's queue can drop a steer: escape in the TUI clears it, while an RPC abort
+ * keeps it for the next run. either way the next run that settles normally has
+ * drained every queued steer, so anything still unacknowledged then was dropped
+ * and is sent again. an aborted settle re-sends nothing, which avoids both
+ * duplicating a kept steer and restarting a run the user just stopped.
  *
  * there is no cross-process claim: the same session open in two processes may
  * receive a message twice.
@@ -118,9 +121,9 @@ export function postAgentMessage(
 }
 
 /**
- * native session files are named `<timestamp>_<sessionId>.jsonl`, in a flat
- * root or one directory per workspace. matching names avoids parsing
- * gigabytes of history to resolve one id.
+ * matches the header ids history_list reports. filenames usually embed the id
+ * but imported and forked sessions keep other names. reading only the first
+ * line avoids parsing gigabytes of history to resolve one id.
  */
 export function findSessionId(
   roots: readonly string[],
@@ -130,9 +133,9 @@ export function findSessionId(
   if (!query) throw new Error("sessionId is required");
   const ids = new Set<string>();
   for (const root of roots)
-    for (const name of sessionFileNames(root)) {
-      const id = name.slice(name.indexOf("_") + 1, -".jsonl".length);
-      if (id.toLowerCase().startsWith(query)) ids.add(id);
+    for (const file of sessionFiles(root)) {
+      const id = headerSessionId(file);
+      if (id?.toLowerCase().startsWith(query)) ids.add(id);
     }
   const matches = [...ids].sort();
   const exact = matches.find((id) => id.toLowerCase() === query);
@@ -145,9 +148,8 @@ export function findSessionId(
   );
 }
 
-function sessionFileNames(root: string): string[] {
-  const isSessionFile = (name: string) =>
-    name.includes("_") && name.endsWith(".jsonl");
+/** native roots are flat or hold one directory per workspace. */
+function sessionFiles(root: string): string[] {
   const list = (dir: string) => {
     try {
       return fs.readdirSync(dir, { withFileTypes: true });
@@ -156,12 +158,32 @@ function sessionFileNames(root: string): string[] {
     }
   };
   return list(root).flatMap((entry) => {
-    if (entry.isFile()) return isSessionFile(entry.name) ? [entry.name] : [];
+    const file = path.join(root, entry.name);
+    if (entry.isFile()) return entry.name.endsWith(".jsonl") ? [file] : [];
     if (!entry.isDirectory() && !entry.isSymbolicLink()) return [];
-    return list(path.join(root, entry.name))
-      .filter((child) => child.isFile() && isSessionFile(child.name))
-      .map((child) => child.name);
+    return list(file)
+      .filter((child) => child.isFile() && child.name.endsWith(".jsonl"))
+      .map((child) => path.join(file, child.name));
   });
+}
+
+function headerSessionId(file: string): string | undefined {
+  try {
+    const fd = fs.openSync(file, "r");
+    const buffer = Buffer.alloc(16 * 1024);
+    const length = fs.readSync(fd, buffer, 0, buffer.length, 0);
+    fs.closeSync(fd);
+    const firstLine = buffer
+      .subarray(0, length)
+      .toString("utf8")
+      .split("\n", 1)[0]!;
+    const header = JSON.parse(firstLine) as { type?: unknown; id?: unknown };
+    return header.type === "session" && typeof header.id === "string"
+      ? header.id
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 const AGENT_MESSAGE_PARAMETERS: TObject<{
@@ -247,11 +269,12 @@ export function createAgentMessageExtension(
 
     let sessionId: string | undefined;
     let watcher: fs.FSWatcher | undefined;
+    let startup: NodeJS.Timeout | undefined;
     let poll: NodeJS.Timeout | undefined;
-    /** ids handed to pi that have not reached the conversation yet. */
+    /** ids handed to pi since the last normal settle, so polls don't resend them. */
     const inFlight = new Set<string>();
 
-    const deliver = (triggerTurn = true) => {
+    const deliver = () => {
       if (!sessionId) return;
       const dir = mailboxDir(queueDir, sessionId);
       try {
@@ -288,7 +311,7 @@ export function createAgentMessageExtension(
               display: true,
               details: message,
             },
-            { deliverAs: "steer", triggerTurn },
+            { deliverAs: "steer", triggerTurn: true },
           );
         }
       } catch (error) {
@@ -299,6 +322,7 @@ export function createAgentMessageExtension(
     const stop = () => {
       watcher?.close();
       watcher = undefined;
+      clearTimeout(startup);
       clearInterval(poll);
       poll = undefined;
       sessionId = undefined;
@@ -320,7 +344,8 @@ export function createAgentMessageExtension(
       }
       poll = setInterval(() => deliver(), POLL_MS);
       poll.unref();
-      deliver();
+      // after binding, so a prompt passed at startup isn't rejected as busy.
+      startup = setTimeout(deliver, 0);
     });
 
     pi.on("message_end", (event) => {
@@ -329,7 +354,6 @@ export function createAgentMessageExtension(
         return;
       const delivered = parseAgentMessage(message.details);
       if (!delivered) return;
-      inFlight.delete(delivered.id);
       fs.rmSync(
         path.join(
           mailboxDir(queueDir, delivered.to),
@@ -340,8 +364,9 @@ export function createAgentMessageExtension(
     });
 
     pi.on("agent_settled", (event) => {
+      if (event.aborted) return;
       inFlight.clear();
-      deliver(!event.aborted);
+      deliver();
     });
 
     pi.on("session_shutdown", stop);
@@ -445,6 +470,16 @@ if (import.meta.vitest) {
     return { session, faux };
   }
 
+  function post(config: AgentMessageConfig, to: string, text: string) {
+    return postAgentMessage(config.queueDir, {
+      id: randomUUID(),
+      from: { sessionId: "sender", workspace: "/sender" },
+      to,
+      sentAt: new Date().toISOString(),
+      text,
+    });
+  }
+
   const lastUserText = (context: { messages: readonly any[] }) => {
     const content = context.messages.filter((m) => m.role === "user").at(-1)
       ?.content as string | { type: string; text?: string }[];
@@ -461,13 +496,13 @@ if (import.meta.vitest) {
       const cwd = path.join(root, "work");
       const a = persistedSession(cwd, flat);
       const b = persistedSession(cwd, path.join(grouped, "--work--"));
-      // names only matter for resolution; prove exact ids beat shared prefixes.
+      // ids come from headers, whatever the filename; exact ids beat prefixes.
       for (const id of ["abcd", "abcdef", "abcxyz"])
         fs.writeFileSync(
-          path.join(flat, `2026-11-21T00-00-00-000Z_${id}.jsonl`),
-          "",
+          path.join(flat, `imported-${id}.jsonl`),
+          `${JSON.stringify({ type: "session", id, cwd })}\n`,
         );
-      fs.writeFileSync(path.join(flat, "notes.jsonl"), "");
+      fs.writeFileSync(path.join(flat, "2026_notes.jsonl"), "not json\n");
       const roots = [flat, grouped];
       const config = {
         queueDir: path.join(root, "queue"),
@@ -543,13 +578,7 @@ if (import.meta.vitest) {
       let queuedMidRun = false;
       faux.setResponses([
         async () => {
-          postAgentMessage(config.queueDir, {
-            id: randomUUID(),
-            from: { sessionId: "sender", workspace: cwd },
-            to: target.getSessionId(),
-            sentAt: new Date().toISOString(),
-            text: "also check the tests",
-          });
+          post(config, target.getSessionId(), "also check the tests");
           // the watcher, not settlement, must deliver it mid-run.
           await vi
             .waitFor(() => expect(session.agent.hasQueuedMessages()).toBe(true))
@@ -576,53 +605,93 @@ if (import.meta.vitest) {
       }
     });
 
-    it("re-sends messages a run dropped, without restarting an aborted run", async () => {
+    it.each([
+      ["escape clears pi's queue", true],
+      ["an rpc abort keeps it queued", false],
+    ])(
+      "delivers once after an aborted run when %s",
+      async (_case, clearQueue) => {
+        const root = tempRoot();
+        const cwd = path.join(root, "work");
+        const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
+        const target = SessionManager.inMemory(cwd);
+        const { session, faux } = await receiver(root, target, config);
+        const seen: string[] = [];
+        faux.setResponses([
+          async () => {
+            post(config, target.getSessionId(), "ping");
+            await vi.waitFor(() =>
+              expect(session.agent.hasQueuedMessages()).toBe(true),
+            );
+            if (clearQueue) session.clearQueue();
+            void session.abort();
+            return fauxAssistantMessage("interrupted");
+          },
+          (context) => {
+            seen.push(lastUserText(context));
+            return fauxAssistantMessage("next");
+          },
+          (context) => {
+            seen.push(lastUserText(context));
+            return fauxAssistantMessage("pong");
+          },
+        ]);
+        try {
+          await session.bindExtensions({});
+          await session.prompt("start");
+          await session.waitForIdle();
+          // the aborted run must not restart itself.
+          expect(seen).toEqual([]);
+          await session.prompt("carry on");
+          await vi.waitFor(() =>
+            expect(
+              target.getEntries().filter((e) => e.type === "custom_message"),
+            ).toHaveLength(1),
+          );
+          await session.waitForIdle();
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          expect(
+            target.getEntries().filter((e) => e.type === "custom_message"),
+          ).toHaveLength(1);
+          expect(
+            fs.readdirSync(mailboxDir(config.queueDir, target.getSessionId())),
+          ).toEqual([]);
+        } finally {
+          session.dispose();
+        }
+      },
+    );
+
+    it("delivers pending mail without rejecting a startup prompt", async () => {
       const root = tempRoot();
-      const queueDir = path.join(root, "queue");
-      const target = "target-session";
-      const message: AgentMessage = {
-        id: randomUUID(),
-        from: { sessionId: "sender", workspace: root },
-        to: target,
-        sentAt: "2026-11-21T00:00:00.000Z",
-        text: "hello",
-      };
-      const file = postAgentMessage(queueDir, message);
-      fs.writeFileSync(
-        path.join(mailboxDir(queueDir, target), "2026_bad.json"),
-        "{",
-      );
-      const handlers = new Map<string, (...args: any[]) => void>();
-      const sent: { options: unknown }[] = [];
+      const cwd = path.join(root, "work");
+      const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
+      const target = SessionManager.inMemory(cwd);
+      post(config, target.getSessionId(), "while you were away");
+      const dir = mailboxDir(config.queueDir, target.getSessionId());
+      fs.writeFileSync(path.join(dir, "2026_bad.json"), "{");
       vi.spyOn(console, "error").mockImplementation(() => {});
-      createAgentMessageExtension({ queueDir, sessionsDirs: [] })({
-        registerTool() {},
-        on: (event: string, handler: (...args: any[]) => void) =>
-          handlers.set(event, handler),
-        sendMessage: (_message: unknown, options: unknown) =>
-          sent.push({ options }),
-      } as unknown as ExtensionAPI);
-
-      handlers.get("session_start")!(
-        {},
-        {
-          sessionManager: { getSessionId: () => target },
-        },
+      const { session, faux } = await receiver(root, target, config);
+      const seen: string[] = [];
+      faux.setResponses(
+        [1, 2].map(() => (context: any) => {
+          seen.push(lastUserText(context));
+          return fauxAssistantMessage("ok");
+        }),
       );
-      handlers.get("agent_settled")!({ aborted: true });
-      handlers.get("message_end")!({
-        message: { role: "custom", customType: CUSTOM_TYPE, details: message },
-      });
-      handlers.get("session_shutdown")!();
-
-      expect(sent.map((entry) => entry.options)).toEqual([
-        { deliverAs: "steer", triggerTurn: true },
-        { deliverAs: "steer", triggerTurn: false },
-      ]);
-      expect(fs.existsSync(file)).toBe(false);
-      expect(fs.readdirSync(mailboxDir(queueDir, target))).toEqual([
-        "2026_bad.json.rejected",
-      ]);
+      try {
+        await session.bindExtensions({});
+        await session.prompt("startup prompt");
+        await vi.waitFor(() => expect(seen).toHaveLength(2));
+        await session.waitForIdle();
+        expect(seen).toEqual([
+          "startup prompt",
+          "message from pi session sender:\n\nwhile you were away",
+        ]);
+        expect(fs.readdirSync(dir)).toEqual(["2026_bad.json.rejected"]);
+      } finally {
+        session.dispose();
+      }
     });
   });
 }
