@@ -2,25 +2,22 @@
  * lets pi agents message each other's sessions. like T3's thread send, the
  * message joins the target conversation as an ordinary message, attributed to
  * the sending session instead of the user: an idle target starts a turn, a
- * busy one receives it at its next step, the same as a steered user message.
+ * busy one reads it at its next step, a closed one receives it when resumed.
  *
  * sessions live in unrelated processes or aren't running at all, so the
  * transport is a mailbox directory per target session. a message file stays
- * there until its id is in the target's transcript, so a closed session
- * receives it on resume, and a crash between persisting and deleting can't
- * deliver it twice. mail found during startup is appended without starting a
- * turn: the person resuming is present, and a run started before startup
- * finishes (`resources_discover`, after every `session_start` handler) would
- * make pi reject their first prompt as busy.
+ * there until its id is in the target's transcript.
  *
- * escape in the TUI clears pi's queue, dropping our steers with it; an RPC
- * abort keeps them for the next run, even across a reload. so an aborted run
- * re-sends nothing, and the next run that completes, which has drained any
- * kept steers into its transcript, re-sends whatever is still missing as
- * transcript entries plus one continuation. sending from that boundary,
- * rather than after settling, keeps the batch in one turn instead of a run
- * per message. a reload right after an abort treats its mail the same way,
- * since pi's queue may still hold it.
+ * mail never enters pi's steering queue: escape, "edit queued messages", RPC
+ * aborts, and reloads each treat that queue differently, and an extension
+ * can't see what they kept. a busy session gets mail written into its
+ * transcript at the next turn end instead, with one continuation.
+ *
+ * mail already waiting when the session starts, or when the user stops a run,
+ * is shown without starting a turn: they're present, and starting one would
+ * undo their escape. mail arriving during a short startup grace waits for the
+ * first prompt's next turn boundary or the grace's end, since pi rejects a
+ * host's startup prompt while a run is active.
  *
  * there is no cross-process claim: the same session open in two processes may
  * receive a message twice.
@@ -33,8 +30,8 @@ import { randomUUID } from "node:crypto";
 import {
   getAgentDir,
   type ExtensionAPI,
-  type ExtensionContext,
   type ToolDefinition,
+  type TurnEndEvent,
 } from "@earendil-works/pi-coding-agent";
 import { type TObject, type TString, Type } from "typebox";
 import { Check } from "typebox/value";
@@ -49,6 +46,8 @@ const CUSTOM_TYPE = "agent-message";
 const MAX_TEXT_CHARS = 64 * 1024;
 /** fs.watch can miss events or be unavailable; polling bounds the delay. */
 const POLL_MS = 30_000;
+/** pi exposes no "host submitted its startup prompt" signal; this outlasts it. */
+const STARTUP_GRACE_MS = 5_000;
 
 export interface AgentMessage {
   id: string;
@@ -274,6 +273,7 @@ function loadConfig(): AgentMessageConfig | undefined {
  */
 export function createAgentMessageExtension(
   config?: AgentMessageConfig,
+  startupGraceMs: number = STARTUP_GRACE_MS,
 ): (pi: ExtensionAPI) => void {
   return (pi) => {
     const resolved = config ?? loadConfig();
@@ -283,13 +283,18 @@ export function createAgentMessageExtension(
 
     let sessionId: string | undefined;
     let transcript: () => readonly unknown[] = () => [];
+    let isIdle = () => false;
     let watcher: fs.FSWatcher | undefined;
     let poll: NodeJS.Timeout | undefined;
+    let grace: NodeJS.Timeout | undefined;
     let started = false;
-    /** ids handed to pi and not yet in the transcript. */
-    const sent = new Set<string>();
-    /** what `sent` held when a run was aborted: possibly dropped with the queue. */
-    const maybeDropped = new Set<string>();
+    /**
+     * run starters not yet persisted: pi defers runs started during
+     * settlement, and the watcher must not send those again meanwhile. a
+     * starter whose run fails before persisting it stays until the session
+     * restarts, rather than risk the double send.
+     */
+    const starting = new Set<string>();
 
     /** unacknowledged mail, oldest first; removes acknowledged and malformed files. */
     const pending = (): AgentMessage[] => {
@@ -297,53 +302,80 @@ export function createAgentMessageExtension(
       const dir = mailboxDir(queueDir, sessionId);
       const persisted = deliveredIds(transcript());
       const messages: AgentMessage[] = [];
-      try {
-        const names = fs
-          .readdirSync(dir)
-          .filter((name) => !name.startsWith(".") && name.endsWith(".json"))
-          .sort();
-        for (const name of names) {
-          const file = path.join(dir, name);
-          const id = name.slice(name.indexOf("_") + 1, -".json".length);
-          if (persisted.has(id)) {
-            fs.rmSync(file, { force: true });
-            sent.delete(id);
-            continue;
-          }
-          let message: AgentMessage | undefined;
-          try {
-            message = parseAgentMessage(
-              JSON.parse(fs.readFileSync(file, "utf8")),
-            );
-          } catch (error) {
-            if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
-          }
-          if (
-            !message ||
-            message.to !== sessionId ||
-            messageFileName(message) !== name
-          ) {
-            console.error(`[@bds_pi/agent-message] rejected ${file}`);
-            fs.renameSync(file, `${file}.rejected`);
-            continue;
-          }
-          messages.push(message);
+      const names = fs
+        .readdirSync(dir)
+        .filter((name) => !name.startsWith(".") && name.endsWith(".json"))
+        .sort();
+      for (const name of names) {
+        const file = path.join(dir, name);
+        const id = name.slice(name.indexOf("_") + 1, -".json".length);
+        if (persisted.has(id)) {
+          fs.rmSync(file, { force: true });
+          starting.delete(id);
+          continue;
         }
-      } catch (error) {
-        console.error("[@bds_pi/agent-message] mailbox read failed:", error);
+        if (starting.has(id)) continue;
+        let message: AgentMessage | undefined;
+        try {
+          message = parseAgentMessage(
+            JSON.parse(fs.readFileSync(file, "utf8")),
+          );
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        }
+        if (
+          !message ||
+          message.to !== sessionId ||
+          messageFileName(message) !== name
+        ) {
+          console.error(`[@bds_pi/agent-message] rejected ${file}`);
+          fs.renameSync(file, `${file}.rejected`);
+          continue;
+        }
+        messages.push(message);
       }
       return messages;
     };
 
-    const deliver = () => {
-      const triggerTurn = started;
-      for (const message of pending()) {
-        if (sent.has(message.id)) continue;
-        sent.add(message.id);
-        pi.sendMessage(asCustomMessage(message), {
-          deliverAs: "steer",
-          triggerTurn,
-        });
+    /** busy sessions take mail at their next boundary instead. */
+    const deliverIdle = (startTurn = true) => {
+      try {
+        // during the startup grace, hold mail for the first prompt's
+        // boundary or the grace's end rather than show it unanswered.
+        if (!sessionId || !isIdle() || (startTurn && !started)) return;
+        const mail = pending();
+        // one run per batch: only the last message starts it.
+        const starter = startTurn ? mail.pop() : undefined;
+        // appending while idle persists immediately; only starters need tracking.
+        for (const message of mail)
+          pi.sendMessage(asCustomMessage(message), { triggerTurn: false });
+        if (!starter) return;
+        starting.add(starter.id);
+        pi.sendMessage(asCustomMessage(starter), { triggerTurn: true });
+      } catch (error) {
+        console.error("[@bds_pi/agent-message] delivery failed:", error);
+      }
+    };
+
+    const atBoundary = (event: TurnEndEvent) => {
+      // pi won't continue past an error or abort; leave mail for the idle path.
+      if (event.outcome !== "completed") return;
+      try {
+        const mail = pending();
+        if (mail.length === 0) return;
+        return {
+          entries: [
+            ...event.entries,
+            ...mail.map((message) => ({
+              type: "custom_message" as const,
+              ...asCustomMessage(message),
+            })),
+          ],
+          continue: true,
+        };
+      } catch (error) {
+        console.error("[@bds_pi/agent-message] delivery failed:", error);
+        return undefined;
       }
     };
 
@@ -352,83 +384,50 @@ export function createAgentMessageExtension(
       watcher = undefined;
       clearInterval(poll);
       poll = undefined;
+      clearTimeout(grace);
       sessionId = undefined;
-      started = false;
       transcript = () => [];
-      sent.clear();
-      maybeDropped.clear();
+      isIdle = () => false;
+      started = false;
+      starting.clear();
     };
 
-    pi.on("session_start", (event, ctx) => {
+    pi.on("session_start", (_event, ctx) => {
       stop();
       sessionId = ctx.sessionManager.getSessionId();
       transcript = () => ctx.sessionManager.getEntries();
+      isIdle = () => ctx.isIdle();
       const dir = mailboxDir(queueDir, sessionId);
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
       try {
-        watcher = fs.watch(dir, () => deliver());
+        watcher = fs.watch(dir, () => deliverIdle());
         watcher.on("error", (error) =>
           console.error("[@bds_pi/agent-message] watcher failed:", error),
         );
       } catch (error) {
         console.error("[@bds_pi/agent-message] watcher unavailable:", error);
       }
-      poll = setInterval(() => deliver(), POLL_MS);
+      poll = setInterval(() => deliverIdle(), POLL_MS);
       poll.unref();
-      if (event.reason === "reload" && lastRunAborted(ctx.sessionManager))
-        for (const message of pending()) {
-          sent.add(message.id);
-          maybeDropped.add(message.id);
-        }
-      else deliver();
+      grace = setTimeout(() => {
+        started = true;
+        deliverIdle();
+      }, startupGraceMs);
+      grace.unref();
+      deliverIdle(false);
     });
 
-    pi.on("resources_discover", () => {
-      started = true;
-    });
-
-    pi.on("agent_before_settle", (event) => {
-      if (event.outcome !== "completed" || maybeDropped.size === 0) return;
-      const dropped = pending().filter((message) =>
-        maybeDropped.has(message.id),
-      );
-      maybeDropped.clear();
-      if (dropped.length === 0) return;
-      return {
-        entries: [
-          ...event.entries,
-          ...dropped.map((message) => ({
-            type: "custom_message" as const,
-            ...asCustomMessage(message),
-          })),
-        ],
-        continue: true,
-      };
-    });
+    pi.on("turn_end", atBoundary);
 
     pi.on("agent_settled", (event) => {
-      if (event.aborted) for (const id of sent) maybeDropped.add(id);
-      pending(); // removes mail this run acknowledged
+      // a run already happened, so there's no startup prompt left to protect.
+      clearTimeout(grace);
+      started = true;
+      deliverIdle(!event.aborted);
     });
 
     pi.on("session_shutdown", stop);
   };
-}
-
-function lastRunAborted(
-  sessionManager: ExtensionContext["sessionManager"],
-): boolean {
-  const last = sessionManager
-    .getBranch()
-    .filter(
-      (entry) => entry.type === "message" && entry.message.role === "assistant",
-    )
-    .at(-1);
-  return (
-    last?.type === "message" &&
-    last.message.role === "assistant" &&
-    last.message.stopReason === "aborted"
-  );
 }
 
 function asCustomMessage(message: AgentMessage) {
@@ -470,8 +469,12 @@ if (import.meta.vitest) {
     SessionManager,
     SettingsManager,
   } = await import("@earendil-works/pi-coding-agent");
-  const { fauxProvider, fauxAssistantMessage, InMemoryCredentialStore } =
-    await import("@earendil-works/pi-ai");
+  const {
+    fauxProvider,
+    fauxAssistantMessage,
+    fauxToolCall,
+    InMemoryCredentialStore,
+  } = await import("@earendil-works/pi-ai");
 
   /** fs events can lag under load; the fallback poll would take 30s. */
   const WATCH_WAIT = { timeout: 5_000 };
@@ -523,6 +526,8 @@ if (import.meta.vitest) {
     manager: ReturnType<typeof SessionManager.create>,
     config: AgentMessageConfig,
     extensions: ((pi: ExtensionAPI) => void)[] = [],
+    startupGraceMs = 0,
+    before: ((pi: ExtensionAPI) => void)[] = [],
   ) {
     const runtime = await ModelRuntime.create({
       credentials: new InMemoryCredentialStore(),
@@ -544,7 +549,11 @@ if (import.meta.vitest) {
       noPromptTemplates: true,
       noThemes: true,
       noContextFiles: true,
-      extensionFactories: [createAgentMessageExtension(config), ...extensions],
+      extensionFactories: [
+        ...before,
+        createAgentMessageExtension(config, startupGraceMs),
+        ...extensions,
+      ],
     });
     await resourceLoader.reload();
     const { session } = await createAgentSession({
@@ -556,7 +565,26 @@ if (import.meta.vitest) {
       model: faux.getModel(),
       sessionManager: manager,
     });
-    return { session, faux };
+    await session.bindExtensions({});
+    // let a zero grace elapse; longer ones are what the test is about.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    /** the runtime emits shutdown before disposing; watchers must not outlive it. */
+    const close = async () => {
+      await session.extensionRunner.emit({
+        type: "session_shutdown",
+        reason: "quit",
+      });
+      session.dispose();
+    };
+    const agentEntries = () =>
+      manager
+        .getEntries()
+        .flatMap((e) =>
+          e.type === "custom_message" && e.customType === CUSTOM_TYPE
+            ? [(e.details as AgentMessage).text]
+            : [],
+        );
+    return { session, faux, close, agentEntries };
   }
 
   function post(
@@ -640,7 +668,7 @@ if (import.meta.vitest) {
       const sender = persistedSession(cwd, sessions);
       sender.appendSessionInfo("planner");
       const target = persistedSession(cwd, sessions);
-      const { session, faux } = await receiver(root, target, config);
+      const { session, faux, close } = await receiver(root, target, config);
       const seen: string[] = [];
       faux.setResponses([
         (context) => {
@@ -649,7 +677,6 @@ if (import.meta.vitest) {
         },
       ]);
       try {
-        await session.bindExtensions({});
         const sent = await sendTool(
           config,
           sender,
@@ -670,199 +697,259 @@ if (import.meta.vitest) {
           ).toEqual([]),
         );
       } finally {
-        session.dispose();
+        await close();
       }
     });
 
-    it("reaches a busy session at its next step without waiting for the run", async () => {
+    it("reaches a busy session at its next step, without pi's queue", async () => {
       const root = tempRoot();
       const cwd = path.join(root, "work");
       const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
       const target = SessionManager.inMemory(cwd);
-      const { session, faux } = await receiver(root, target, config);
+      const { session, faux, close, agentEntries } = await receiver(
+        root,
+        target,
+        config,
+      );
       const seen: string[] = [];
-      let queuedMidRun = false;
       faux.setResponses([
         async () => {
           post(config, target.getSessionId(), "also check the tests");
-          // the watcher, not settlement, must deliver it mid-run.
-          await vi
-            .waitFor(
-              () => expect(session.agent.hasQueuedMessages()).toBe(true),
-              WATCH_WAIT,
-            )
-            .then(
-              () => (queuedMidRun = true),
-              () => {},
-            );
-          return fauxAssistantMessage("working");
+          // the watcher fires while busy; mail must wait for the boundary.
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          expect(session.agent.hasQueuedMessages()).toBe(false);
+          return fauxAssistantMessage(fauxToolCall("missing_tool", {}), {
+            stopReason: "toolUse",
+          });
         },
         (context) => {
+          // the tool turn ended mid-run: mail is already in context.
           seen.push(lastUserText(context));
           return fauxAssistantMessage("checked");
         },
+        () => fauxAssistantMessage("extra"),
       ]);
       try {
-        await session.bindExtensions({});
         await session.prompt("start");
-        expect(queuedMidRun).toBe(true);
+        await session.waitForIdle();
         expect(seen).toEqual([
           "message from pi session sender:\n\nalso check the tests",
         ]);
+        expect(agentEntries()).toEqual(["also check the tests"]);
+        expect(faux.state.callCount).toBe(2);
       } finally {
-        session.dispose();
+        await close();
+      }
+    });
+
+    it("answers mail that arrived during a failed turn", async () => {
+      const root = tempRoot();
+      const cwd = path.join(root, "work");
+      const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
+      const target = SessionManager.inMemory(cwd);
+      const { session, faux, close } = await receiver(root, target, config);
+      const seen: string[] = [];
+      faux.setResponses([
+        async () => {
+          post(config, target.getSessionId(), "are you there?");
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          return fauxAssistantMessage("", {
+            stopReason: "error",
+            errorMessage: "provider down",
+          });
+        },
+        (context) => {
+          seen.push(lastUserText(context));
+          return fauxAssistantMessage("yes");
+        },
+      ]);
+      try {
+        await session.prompt("start");
+        await eventually(() => expect(seen).toHaveLength(1));
+        await session.waitForIdle();
+        expect(seen).toEqual([
+          "message from pi session sender:\n\nare you there?",
+        ]);
+      } finally {
+        await close();
       }
     });
 
     it.each([
-      ["escape clears pi's queue", true],
-      ["an rpc abort keeps it queued", false],
-    ])(
-      "delivers once after an aborted run when %s",
-      async (_case, clearQueue) => {
+      ["escape clears pi's queue", "escape"],
+      ["an rpc abort", "rpc"],
+      ["an rpc abort and a reload", "reload"],
+      ["edit-queued clears pi's queue without aborting", "edit"],
+    ] as const)(
+      "delivers each message exactly once after %s",
+      async (_case, action) => {
         const root = tempRoot();
         const cwd = path.join(root, "work");
         const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
         const target = SessionManager.inMemory(cwd);
-        const { session, faux } = await receiver(root, target, config);
-        const seen: string[] = [];
+        const { session, faux, close, agentEntries } = await receiver(
+          root,
+          target,
+          config,
+          [
+            // a slow settle handler, like session-name's summary request.
+            (pi) =>
+              pi.on(
+                "agent_settled",
+                () => new Promise((r) => setTimeout(r, 50)),
+              ),
+          ],
+        );
         faux.setResponses([
           async () => {
-            post(config, target.getSessionId(), "ping");
-            await eventually(() =>
-              expect(session.agent.hasQueuedMessages()).toBe(true),
-            );
-            if (clearQueue) session.clearQueue();
-            void session.abort();
-            return fauxAssistantMessage("interrupted");
+            const now = Date.now();
+            post(config, target.getSessionId(), "first", new Date(now));
+            post(config, target.getSessionId(), "second", new Date(now + 1));
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            await session.prompt("queued by the user", {
+              streamingBehavior: "steer",
+            });
+            if (action !== "rpc" && action !== "reload") session.clearQueue();
+            if (action !== "edit") void session.abort();
+            return fauxAssistantMessage("first turn");
           },
-          (context) => {
-            seen.push(lastUserText(context));
-            return fauxAssistantMessage("next");
-          },
-          (context) => {
-            seen.push(lastUserText(context));
-            return fauxAssistantMessage("pong");
-          },
+          ...[1, 2, 3, 4].map(() => () => fauxAssistantMessage("ok")),
         ]);
         try {
-          await session.bindExtensions({});
           await session.prompt("start");
           await session.waitForIdle();
-          await new Promise((resolve) => setTimeout(resolve, 50));
-          // the aborted run must not restart itself.
-          expect(seen).toEqual([]);
-          await session.prompt("carry on");
-          await eventually(() =>
-            expect(
-              target.getEntries().filter((e) => e.type === "custom_message"),
-            ).toHaveLength(1),
-          );
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          if (action === "reload") await session.reload();
+          if (action !== "edit") {
+            // the user stopped the run: show the mail, don't act on it.
+            expect(agentEntries()).toEqual(["first", "second"]);
+            expect(faux.state.callCount).toBe(1);
+            await session.prompt("carry on");
+          }
           await session.waitForIdle();
-          await new Promise((resolve) => setTimeout(resolve, 50));
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          await session.waitForIdle();
+          expect(agentEntries()).toEqual(["first", "second"]);
           expect(
-            target.getEntries().filter((e) => e.type === "custom_message"),
-          ).toHaveLength(1);
-          await eventually(() =>
-            expect(
-              fs.readdirSync(
-                mailboxDir(config.queueDir, target.getSessionId()),
-              ),
-            ).toEqual([]),
-          );
+            fs.readdirSync(mailboxDir(config.queueDir, target.getSessionId())),
+          ).toEqual([]);
         } finally {
-          session.dispose();
+          await close();
         }
       },
     );
 
-    it("re-sends a batch escape dropped as one turn, once each", async () => {
+    it("runs mail arriving while idle as one turn, even with slow settle handlers", async () => {
       const root = tempRoot();
       const cwd = path.join(root, "work");
       const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
       const target = SessionManager.inMemory(cwd);
-      const { session, faux } = await receiver(root, target, config, [
-        // a slow settle handler, like session-name's summary request.
-        (pi) =>
-          pi.on("agent_settled", () => new Promise((r) => setTimeout(r, 50))),
-      ]);
-      // peekQueuedMessages() shows only the head in one-at-a-time mode.
-      const queuedTexts = () =>
-        (session.agent as any).steeringQueue.messages.map(
-          (m: any) => (m.details as AgentMessage | undefined)?.text,
-        );
+      const { session, faux, close, agentEntries } = await receiver(
+        root,
+        target,
+        config,
+        [
+          (pi) =>
+            pi.on("agent_settled", () => new Promise((r) => setTimeout(r, 50))),
+        ],
+      );
       faux.setResponses([
-        async () => {
-          const now = Date.now();
-          post(config, target.getSessionId(), "first", new Date(now));
-          post(config, target.getSessionId(), "second", new Date(now + 1));
-          await eventually(() =>
-            expect(queuedTexts()).toEqual(["first", "second"]),
-          );
-          session.clearQueue();
-          void session.abort();
-          return fauxAssistantMessage("interrupted");
-        },
-        ...[1, 2, 3].map(() => () => fauxAssistantMessage("ok")),
+        () => fauxAssistantMessage("done"),
+        () => fauxAssistantMessage("read both"),
+        () => fauxAssistantMessage("extra"),
       ]);
-      const delivered = () =>
-        target
-          .getEntries()
-          .flatMap((e) =>
-            e.type === "custom_message"
-              ? [(e.details as AgentMessage).text]
-              : [],
-          );
       try {
-        await session.bindExtensions({});
         await session.prompt("start");
         await session.waitForIdle();
-        await session.prompt("carry on");
+        const now = Date.now();
+        post(config, target.getSessionId(), "first", new Date(now));
+        post(config, target.getSessionId(), "second", new Date(now + 1));
+        await eventually(() => expect(agentEntries()).toHaveLength(2));
         await session.waitForIdle();
         await new Promise((resolve) => setTimeout(resolve, 150));
         await session.waitForIdle();
-        expect(delivered()).toEqual(["first", "second"]);
-        // interrupted, "carry on", then one continuation for both messages.
-        expect(faux.state.callCount).toBe(3);
+        expect(agentEntries()).toEqual(["first", "second"]);
+        expect(faux.state.callCount).toBe(2);
       } finally {
-        session.dispose();
+        await close();
       }
     });
 
-    it("keeps a steer an rpc abort left queued across reload", async () => {
+    it("starts a turn for mail held by the startup grace once it ends", async () => {
       const root = tempRoot();
       const cwd = path.join(root, "work");
       const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
       const target = SessionManager.inMemory(cwd);
-      const { session, faux } = await receiver(root, target, config);
-      faux.setResponses([
-        async () => {
-          post(config, target.getSessionId(), "ping");
-          await eventually(() =>
-            expect(session.agent.hasQueuedMessages()).toBe(true),
-          );
-          void session.abort();
-          return fauxAssistantMessage("interrupted");
-        },
-        () => fauxAssistantMessage("pong"),
-      ]);
-      const delivered = () =>
-        target.getEntries().filter((e) => e.type === "custom_message");
+      const { session, faux, close, agentEntries } = await receiver(
+        root,
+        target,
+        config,
+        [
+          (pi) =>
+            pi.on("session_start", () => {
+              post(config, target.getSessionId(), "during startup");
+            }),
+        ],
+        300,
+      );
+      faux.setResponses([() => fauxAssistantMessage("on it")]);
       try {
-        await session.bindExtensions({});
-        await session.prompt("start");
+        await eventually(() => expect(faux.state.callCount).toBe(1));
         await session.waitForIdle();
-        await session.reload();
-        await session.prompt("carry on");
-        await session.waitForIdle();
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        expect(delivered()).toHaveLength(1);
+        expect(agentEntries()).toEqual(["during startup"]);
       } finally {
-        session.dispose();
+        await close();
       }
     });
 
-    it("hands resumed mail to the startup prompt instead of racing it", async () => {
+    it.each([
+      ["after", false],
+      ["before", true],
+    ])(
+      "starts one run for mail arriving in a settle handler %s ours",
+      async (_order, first) => {
+        const root = tempRoot();
+        const cwd = path.join(root, "work");
+        const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
+        const target = SessionManager.inMemory(cwd);
+        let releaseSettle: (() => void) | undefined;
+        let settles = 0;
+        // pi defers runs started from settle handlers; mail landing then is
+        // sent once from settle and again by the watcher unless tracked.
+        const slowSettle = (pi: ExtensionAPI) =>
+          pi.on("agent_settled", async () => {
+            if (settles++ > 0) return;
+            post(config, target.getSessionId(), "mid-settle");
+            await new Promise<void>((resolve) => (releaseSettle = resolve));
+          });
+        const { session, faux, close, agentEntries } = await receiver(
+          root,
+          target,
+          config,
+          first ? [] : [slowSettle],
+          0,
+          first ? [slowSettle] : [],
+        );
+        faux.setResponses(
+          [1, 2, 3, 4].map(() => () => fauxAssistantMessage("ok")),
+        );
+        try {
+          const run = session.prompt("start");
+          await eventually(() => expect(releaseSettle).toBeDefined());
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          releaseSettle!();
+          await run;
+          await session.waitForIdle();
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          await session.waitForIdle();
+          expect(agentEntries()).toEqual(["mid-settle"]);
+        } finally {
+          await close();
+        }
+      },
+    );
+
+    it("hands startup mail to the startup prompt instead of racing it", async () => {
       const root = tempRoot();
       const cwd = path.join(root, "work");
       const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
@@ -871,42 +958,59 @@ if (import.meta.vitest) {
       const dir = mailboxDir(config.queueDir, target.getSessionId());
       fs.writeFileSync(path.join(dir, "2026_bad.json"), "{");
       vi.spyOn(console, "error").mockImplementation(() => {});
-      const { session, faux } = await receiver(root, target, config, [
-        // a slower startup handler, like the editor's git status, during
-        // which more mail arrives.
-        (pi) =>
-          pi.on("session_start", async () => {
-            post(config, target.getSessionId(), "during startup");
-            await new Promise((resolve) => setTimeout(resolve, 200));
-          }),
-      ]);
       const seen: string[][] = [];
-      faux.setResponses([
-        (context) => {
-          seen.push(
-            context.messages
-              .filter((m: any) => m.role === "user")
-              .map((m: any) => textOf(m)),
-          );
+      const { session, faux, close } = await receiver(
+        root,
+        target,
+        config,
+        [
+          // slow startup handlers, like the editor's git status, during and
+          // after which more mail arrives.
+          (pi) => {
+            pi.on("session_start", async () => {
+              post(config, target.getSessionId(), "during startup");
+              await new Promise((resolve) => setTimeout(resolve, 100));
+            });
+            pi.on("resources_discover", async () => {
+              await new Promise((resolve) => setTimeout(resolve, 100));
+              post(config, target.getSessionId(), "during discovery");
+              await new Promise((resolve) => setTimeout(resolve, 100));
+            });
+          },
+        ],
+        1_000,
+      );
+      const userTexts = (context: any) =>
+        context.messages
+          .filter((m: any) => m.role === "user")
+          .map((m: any) => textOf(m));
+      faux.setResponses(
+        [1, 2].map(() => (context: any) => {
+          seen.push(userTexts(context));
           return fauxAssistantMessage("ok");
-        },
-      ]);
+        }),
+      );
+      const mail = (text: string) =>
+        `message from pi session sender:\n\n${text}`;
       try {
-        await session.bindExtensions({});
         await session.prompt("startup prompt");
         await session.waitForIdle();
+        // backlog is context for the prompt; mid-startup mail waits for the
+        // run's next boundary instead of starting a run of its own.
         expect(seen).toEqual([
+          [mail("while you were away"), "startup prompt"],
           [
-            "message from pi session sender:\n\nwhile you were away",
-            "message from pi session sender:\n\nduring startup",
+            mail("while you were away"),
             "startup prompt",
+            mail("during startup"),
+            mail("during discovery"),
           ],
         ]);
         await eventually(() =>
           expect(fs.readdirSync(dir)).toEqual(["2026_bad.json.rejected"]),
         );
       } finally {
-        session.dispose();
+        await close();
       }
     });
   });
