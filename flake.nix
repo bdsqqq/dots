@@ -402,6 +402,31 @@
 
         checks.wikiman-logging = import ./modules/wikiman/logging-check.nix { inherit pkgs; };
 
+        # evaluation-only suites: test.nix or *.test.nix files under modules/,
+        # found by name so a new one runs without wiring. each is a function of
+        # { lib } and optionally { pkgs }, and fails evaluation on a broken
+        # assert. a suite taking { flake } evaluates whole hosts and can't run
+        # inside the flake's own checks; it needs a caller of its own (rex's is
+        # hosts/lgo-z2e/activation.test.ts).
+        checks.nix-tests =
+          let
+            lib = pkgs.lib;
+            files = lib.filter
+              (path:
+                let name = baseNameOf path; in
+                (name == "test.nix" || lib.hasSuffix ".test.nix" name)
+                && !(builtins.functionArgs (import path)) ? flake)
+              (lib.filesystem.listFilesRecursive ./modules);
+            run = file:
+              let suite = import file; in
+              # seq, not deepSeq: the asserts guard the result, and some suites
+              # return a derivation whose deep closure is all of nixpkgs.
+              builtins.seq (suite (builtins.intersectAttrs (builtins.functionArgs suite) {
+                inherit lib pkgs;
+              })) (lib.removePrefix "${toString ./.}/" (toString file));
+          in
+          pkgs.writeText "nix-tests" (lib.concatMapStringsSep "\n" run files);
+
         # torch is imported lazily, so the unit tests need only these.
         checks.photo-semantic-benchmark = pkgs.runCommand "photo-semantic-benchmark-tests"
           {
