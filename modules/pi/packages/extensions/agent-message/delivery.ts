@@ -24,7 +24,8 @@ export type ReadMailbox<T extends Mail> = () => Mailbox<T>;
  * - `stopped`: the user aborted. wakes show mail without a run, since
  *   starting one would undo their stop. pi gives extensions no signal for
  *   when its other settle handlers finish, so this lasts until the next run
- *   or a window that outlasts them.
+ *   or a window meant to outlast them; a handler slower than the window
+ *   gets main's earlier behavior, where mail could start a run.
  * - `open`: wakes start a run.
  */
 export type Phase = "closed" | "grace" | "stopped" | "open";
@@ -130,7 +131,8 @@ export function woke<T extends Mail>(
 /**
  * pi runs a deferred starter after anything queued ahead of it, so the user
  * may have stopped a run in between. false: abort the run before its first
- * request; the mail is still shown.
+ * request; the mail is still shown. before_agent_start is the earliest hook,
+ * and pi may compact first.
  */
 export function starterMayRun(state: DeliveryState): boolean {
   return state.phase === "open";
