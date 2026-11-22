@@ -1,8 +1,7 @@
 name: repo checks
 
-# credential-host-closures pins each host's sops secret set; it only fails when
-# something builds it, so run it on every change instead of relying on local
-# `nix flake check`.
+# flake checks only fail when something builds them, so build every one on
+# every change instead of relying on local `nix flake check`.
 on:
   pull_request:
   push:
@@ -33,7 +32,12 @@ jobs:
 
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
 
-      - run: >-
-          nix build --no-link
-          .#checks.x86_64-linux.credential-host-closures
-          .#checks.x86_64-linux.credential-ownership
+      # every check, enumerated: a new check runs here without editing this file.
+      - name: build every x86_64-linux flake check
+        run: |
+          set -euo pipefail
+          names=$(nix eval --json .#checks.x86_64-linux --apply builtins.attrNames | jq -r '.[]')
+          [ -n "$names" ] || { echo 'no flake checks found' >&2; exit 1; }
+          mapfile -t checks <<<"$names"
+          echo "checks: ${checks[*]}"
+          nix build --no-link --keep-going "${checks[@]/#/.#checks.x86_64-linux.}"
