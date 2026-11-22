@@ -60,4 +60,4 @@ jobs:
           [ -n "$names" ] || { echo 'no darwin-only flake checks found' >&2; exit 1; }
           echo "checks: $names"
           # macOS's bash 3.2 has no mapfile.
-          printf '.#checks.aarch64-darwin.%s\n' $names | xargs nix build --no-link --keep-going
+          xargs -I{} echo '.#checks.aarch64-darwin.{}' <<<"$names" | xargs nix build --no-link --keep-going
