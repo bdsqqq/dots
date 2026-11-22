@@ -43,6 +43,10 @@ export const PLATFORM_ONLY: Record<string, { platform: NodeJS.Platform; reason: 
   "modules/app-pins/pins.test.ts": { platform: "darwin", reason: "builds app bundles with ditto" },
   "modules/app-pins/publish.test.ts": { platform: "darwin", reason: "reads bundle versions with plutil" },
   "modules/t3-code/sync-credentials.test.ts": { platform: "darwin", reason: "locks with /usr/bin/lockf" },
+  "hosts/htz-relay/role.test.ts": {
+    platform: "linux",
+    reason: "evaluates the linux relay; on macOS runners it exceeds its 120s eval budget",
+  },
 };
 
 const excluded = (file: string, platform: NodeJS.Platform): boolean =>
