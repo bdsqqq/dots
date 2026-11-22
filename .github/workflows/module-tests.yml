@@ -58,6 +58,6 @@ jobs:
           set -euo pipefail
           names=$(nix eval --json .#checks.aarch64-darwin --apply 'cs: builtins.attrNames (removeAttrs cs (builtins.attrNames (builtins.getFlake (toString ./.)).checks.x86_64-linux))' --impure | jq -r '.[]')
           [ -n "$names" ] || { echo 'no darwin-only flake checks found' >&2; exit 1; }
-          mapfile -t checks <<<"$names"
-          echo "checks: ${checks[*]}"
-          nix build --no-link --keep-going "${checks[@]/#/.#checks.aarch64-darwin.}"
+          echo "checks: $names"
+          # macOS's bash 3.2 has no mapfile.
+          printf '.#checks.aarch64-darwin.%s\n' $names | xargs nix build --no-link --keep-going
