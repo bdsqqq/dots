@@ -79,6 +79,9 @@
         inherit (inputs.nixpkgs) lib;
         root = ./.;
       };
+      # every host imports ./modules/o11y, which uses this collector; flake checks
+      # use it too, so they exercise the collector hosts run.
+      otelcolOverlay = import ./overlays/otelcol-contrib.nix;
       nixosObservabilityModules = [
         inputs.sops-nix.nixosModules.sops
         inputs.axiom-deploy-annotation.nixosModules.default
@@ -140,7 +143,22 @@
       systems =
         [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" "aarch64-linux" ];
 
+      # optionalAttrs, not mkIf: an mkIf'd check still appears in attrNames on
+      # linux, and CI builds every name it lists.
+      imports = [{
+        perSystem = { pkgs, ... }: {
+          checks = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
+            hue-control = import ./modules/hue-control/check.nix { inherit pkgs; };
+          };
+        };
+      }];
+
       perSystem = { config, self', inputs', pkgs, system, ... }: {
+        _module.args.pkgs = import inputs.nixpkgs {
+          inherit system;
+          overlays = [ otelcolOverlay ];
+        };
+
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs;
             [
@@ -384,8 +402,6 @@
 
         checks.service-events = import ./modules/service-events/check.nix { inherit pkgs; };
 
-        checks.hue-control = pkgs.lib.mkIf pkgs.stdenv.hostPlatform.isDarwin
-          (import ./modules/hue-control/check.nix { inherit pkgs; });
 
         checks.tailnet-artifacts = pkgs.runCommand "tailnet-artifacts-check" { } ''
           ${config.packages.tailnet-artifact-generator}/bin/generate-tailnet-artifacts \

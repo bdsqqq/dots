@@ -47,7 +47,10 @@ pkgs.runCommand "wikiman-logging-check"
     export AXIOM_URL=https://example.invalid
     export AXIOM_TOKEN_LOGS=test
     export AXIOM_TOKEN_METRICS=test
-    otelcol-contrib validate --config ${collectorConfig}
+    # validate stats file_storage's directory, which the sandbox can't reach.
+    sed 's|directory: ${homeDir}/Library/Application Support/otelcol|directory: '"$TMPDIR"'/otelcol|' \
+      ${collectorConfig} > collector.yaml
+    otelcol-contrib validate --config collector.yaml
 
     python - <<'PY'
     import re
