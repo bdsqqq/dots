@@ -36,6 +36,8 @@ jobs:
       - name: build every x86_64-linux flake check
         run: |
           set -euo pipefail
-          mapfile -t checks < <(nix eval --json .#checks.x86_64-linux --apply builtins.attrNames | jq -r '.[]')
+          names=$(nix eval --json .#checks.x86_64-linux --apply builtins.attrNames | jq -r '.[]')
+          [ -n "$names" ] || { echo 'no flake checks found' >&2; exit 1; }
+          mapfile -t checks <<<"$names"
           echo "checks: ${checks[*]}"
           nix build --no-link --keep-going "${checks[@]/#/.#checks.x86_64-linux.}"
