@@ -90,7 +90,10 @@ test("cookie names stay file-only even when their contents are small dotenv-comp
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("waits for the current writer and recovers after SIGKILL without reclaiming lock files", { timeout: 15_000 }, async () => {
+test("waits for the current writer and recovers after SIGKILL without reclaiming lock files", {
+  timeout: 15_000,
+  skip: process.platform !== "darwin" && "locks with /usr/bin/lockf",
+}, async () => {
   const root = await mkdtemp(join(tmpdir(), "t3-lock-recovery-"));
   const home = join(root, "t3");
   await mkdir(home);

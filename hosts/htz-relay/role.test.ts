@@ -3,6 +3,8 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+const onLinux = { skip: process.platform !== "linux" && "evaluates the linux relay; macOS runners exceed its 120s eval budget" };
+
 type Role = {
   drvPath: string;
   packages: string[];
@@ -97,18 +99,18 @@ function assertInfrastructureOnly(role: Role): void {
 
 const current = evaluate();
 
-test("the full relay derivation evaluates without agent or developer bootstrap", () => {
+test("the full relay derivation evaluates without agent or developer bootstrap", onLinux, () => {
   assert.match(current.drvPath, /-nixos-system-htz-relay-.*\.drv$/);
   assertInfrastructureOnly(current);
 });
 
-test("relay services and all existing application/ingress containers remain enabled", () => {
+test("relay services and all existing application/ingress containers remain enabled", onLinux, () => {
   for (const [name, enabled] of Object.entries(current.services)) assert.equal(enabled, true, name);
   assert.deepEqual(current.containers.sort(), ["apps", "cloudflare-ingress", "cloudflare-ingress-files", "cloudflare-ingress-t3"]);
   assert.match(current.automerge, /\/bin\/syncthing-automerge$/);
 });
 
-test("unused personal-agent credentials are not provisioned by the relay role", () => {
+test("unused personal-agent credentials are not provisioned by the relay role", onLinux, () => {
   for (const name of ["gh_token", "hf_token", "artificial_analysis_api_key", "sentry_auth_token"])
     assert.ok(!current.secrets.includes(name), name);
   assert.ok(current.secrets.includes("tailscale_auth_key"));
@@ -116,7 +118,7 @@ test("unused personal-agent credentials are not provisioned by the relay role", 
   assert.ok(current.secrets.includes("axiom/host_metrics_token"));
 });
 
-test("native Nix collects old generations after upgrades with pressure GC enabled", () => {
+test("native Nix collects old generations after upgrades with pressure GC enabled", onLinux, () => {
   const expected = {
     keepOutputs: false, keepDerivations: false,
     gcAutomatic: true, gcOptions: "--delete-old", gcAfterUpgrade: true,
@@ -126,7 +128,7 @@ test("native Nix collects old generations after upgrades with pressure GC enable
   assert.throws(() => assert.deepEqual({ ...current.maintenance, gcAfterUpgrade: false }, expected));
 });
 
-test("incident evaluation is unprivileged, persistent, and wired to both query and ingest credentials", () => {
+test("incident evaluation is unprivileged, persistent, and wired to both query and ingest credentials", onLinux, () => {
   assert.equal(current.incidents.enabled, true);
   assert.equal(current.incidents.timer, true);
   assert.match(current.incidents.execStart, /\/bin\/axiom-incidents poll$/);
@@ -141,7 +143,7 @@ test("incident evaluation is unprivileged, persistent, and wired to both query a
   assert.throws(() => assert.deepEqual(current.incidents.credentials.slice(0, 2), expected));
 });
 
-test("the verifier detects an isolated reintroduction of a global developer runtime", () => {
+test("the verifier detects an isolated reintroduction of a global developer runtime", onLinux, () => {
   const broken = evaluate(true);
   assert.throws(() => assertInfrastructureOnly(broken), /relay must not install agent\/developer tools/);
 });

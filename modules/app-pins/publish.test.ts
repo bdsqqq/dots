@@ -8,6 +8,8 @@ import test from "node:test";
 import { message, publish } from "./publish.ts";
 import { AppPinError, loadApps, type BundleApp as App, type Deps } from "./pins.ts";
 
+const onMac = { skip: process.platform !== "darwin" && "reads bundle versions with plutil" };
+
 // isolated git: no user config, hooks, signing, or credentials leak in or out.
 const env = { ...process.env, HOME: "/nonexistent", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1",
   GIT_AUTHOR_NAME: "fixture", GIT_AUTHOR_EMAIL: "fixture@example.test", GIT_COMMITTER_NAME: "fixture",
@@ -48,7 +50,7 @@ function fixture(t: { after: (f: () => void) => void }) {
   return { root, remote, user, spec, deps, options: { remote, cacheDir: join(root, "caches"), host: "mbp-test", env } };
 }
 
-test("publishes a bump commit to main with host provenance", async t => {
+test("publishes a bump commit to main with host provenance", onMac, async t => {
   const f = fixture(t);
   plist(f.spec.bundle, "1.2.0");
   const r = await publish(f.spec, f.deps(), f.options);
@@ -60,7 +62,7 @@ test("publishes a bump commit to main with host provenance", async t => {
   assert.equal((await publish(f.spec, f.deps(), f.options)).status, "unchanged", "no empty commits");
 });
 
-test("the user's checkout is untouched, whatever state it is in", async t => {
+test("the user's checkout is untouched, whatever state it is in", onMac, async t => {
   const f = fixture(t);
   // dirty tracked file, untracked file, staged change, and a conflicting local pin edit.
   writeFileSync(join(f.user, "notes.md"), "uncommitted edit\n");
@@ -78,7 +80,7 @@ test("the user's checkout is untouched, whatever state it is in", async t => {
   assert.equal(readFileSync(join(f.user, "notes.md"), "utf8"), "uncommitted edit\n");
 });
 
-test("a concurrent push to main is preserved: the bump retries on top of it", async t => {
+test("a concurrent push to main is preserved: the bump retries on top of it", onMac, async t => {
   const f = fixture(t);
   plist(f.spec.bundle, "1.2.0");
   let raced = false;
@@ -98,7 +100,7 @@ test("a concurrent push to main is preserved: the bump retries on top of it", as
   assert.equal(git(f.remote, "show", "main:notes.md"), "from another host");
 });
 
-test("losing a race to a newer pin from another host is a no-op, not a downgrade", async t => {
+test("losing a race to a newer pin from another host is a no-op, not a downgrade", onMac, async t => {
   const f = fixture(t);
   plist(f.spec.bundle, "1.2.0");
   let raced = false;
@@ -115,7 +117,7 @@ test("losing a race to a newer pin from another host is a no-op, not a downgrade
   assert.match(git(f.remote, "show", "main:modules/demo/app-pin.json"), /1\.3\.0/);
 });
 
-test("agents for different apps publish concurrently without sharing git state", async t => {
+test("agents for different apps publish concurrently without sharing git state", onMac, async t => {
   const f = fixture(t);
   plist(f.spec.bundle, "1.2.0");
   const other: App = { ...f.spec, name: "demo2", pin: "modules/demo2/app-pin.json" };
@@ -125,14 +127,14 @@ test("agents for different apps publish concurrently without sharing git state",
     ["bump demo (auto-committed from mbp-test)", "bump demo2 (auto-committed from mbp-test)"]);
 });
 
-test("a cache left half-built by a crash is rebuilt, not trusted", async t => {
+test("a cache left half-built by a crash is rebuilt, not trusted", onMac, async t => {
   const f = fixture(t);
   plist(f.spec.bundle, "1.2.0");
   mkdirSync(join(f.options.cacheDir, "demo.git"), { recursive: true }); // crash before HEAD existed
   assert.equal((await publish(f.spec, f.deps(), f.options)).status, "published");
 });
 
-test("an unchanged app is decided from the local clone, with no network at all", async t => {
+test("an unchanged app is decided from the local clone, with no network at all", onMac, async t => {
   const f = fixture(t);
   plist(f.spec.bundle, "1.2.0");
   assert.equal((await publish(f.spec, f.deps(), f.options)).status, "published");
@@ -142,7 +144,7 @@ test("an unchanged app is decided from the local clone, with no network at all",
   assert.deepEqual([r.status, r.networkSkipped, r.attempts], ["unchanged", true, 0]);
 });
 
-test("a clone that lags main still publishes a newer install, and never downgrades", async t => {
+test("a clone that lags main still publishes a newer install, and never downgrades", onMac, async t => {
   const f = fixture(t);
   plist(f.spec.bundle, "1.2.0");
   await publish(f.spec, f.deps(), f.options);                 // clone now knows 1.2.0
@@ -156,7 +158,7 @@ test("a clone that lags main still publishes a newer install, and never downgrad
   assert.match(git(f.remote, "show", "main:modules/demo/app-pin.json"), /1\.5\.0/);
 });
 
-test("every bump commit says what changed, including metadata-only bumps", () => {
+test("every bump commit says what changed, including metadata-only bumps", onMac, () => {
   const app = loadApps().rex;
   assert.equal(message(app, "mbp-m2", { status: "recorded", from: "0.1.0 (1)", to: "0.1.0 (2)", linuxAdvanced: false, changed: true }),
     "bump rex (auto-committed from mbp-m2)\n\n0.1.0 (1) -> 0.1.0 (2)\n");
@@ -164,7 +166,7 @@ test("every bump commit says what changed, including metadata-only bumps", () =>
     "bump rex (auto-committed from mbp-m2)\n\n0.1.0 (2): pin metadata updated, version unchanged.\n");
 });
 
-test("an old fetch is not trusted: linux follow-ups settled elsewhere are picked up", async t => {
+test("an old fetch is not trusted: linux follow-ups settled elsewhere are picked up", onMac, async t => {
   const f = fixture(t);
   plist(f.spec.bundle, "1.2.0");
   await publish(f.spec, f.deps(), f.options);                       // local clone: 1.2.0, fetched now
@@ -179,7 +181,7 @@ test("an old fetch is not trusted: linux follow-ups settled elsewhere are picked
   assert.equal(stale.status === "unchanged" && "record" in stale && stale.record.from, "1.3.0", "and its newer pin is seen");
 });
 
-test("the offline path still rejects a foreign bundle", async t => {
+test("the offline path still rejects a foreign bundle", onMac, async t => {
   const f = fixture(t);
   plist(f.spec.bundle, "1.2.0");
   await publish(f.spec, f.deps(), f.options);
@@ -187,7 +189,7 @@ test("the offline path still rejects a foreign bundle", async t => {
   await assert.rejects(publish(impostor, f.deps(), f.options), (e: unknown) => e instanceof AppPinError && e.code === "bundle_identity_mismatch");
 });
 
-test("offline no-op results still name the build they checked", async t => {
+test("offline no-op results still name the build they checked", onMac, async t => {
   const f = fixture(t);
   plist(f.spec.bundle, "1.2.0");
   await publish(f.spec, f.deps(), f.options);

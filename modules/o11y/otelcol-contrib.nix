@@ -1,5 +1,5 @@
-# opentelemetry-collector-contrib, used by modules/o11y. hosts and flake checks
-# share this overlay so a check never builds a different collector than hosts run.
+# the collector o11y runs. hosts get it through ./default.nix and flake checks
+# through flake.nix, so a check never builds a different collector than hosts run.
 final: prev: {
   # the upstream release build, not nixpkgs': hydra hasn't cached a working
   # 0.155.0 on Go 1.27, and compiling it ran small hosts out of memory and disk.

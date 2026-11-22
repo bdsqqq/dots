@@ -7,6 +7,8 @@ import { createEventLogger, type ServiceEvent } from "../service-events/events.t
 import { main, parse, UsageError } from "./cli.ts";
 import { loadApps, nativeDeps } from "./pins.ts";
 
+const onMac = { skip: process.platform !== "darwin" && "installs app bundles with ditto and plutil" };
+
 const catalog = loadApps();
 
 test("parse dispatches each operation with exactly its inputs", () => {
@@ -28,7 +30,7 @@ test("invalid invocations fail before any work, naming the problem", () => {
   ] as const) assert.throws(() => parse([...argv], catalog), (e: unknown) => e instanceof UsageError && expected.test(e.message));
 });
 
-test("main emits one context-rich event per app and maps failure to a nonzero exit", async t => {
+test("main emits one context-rich event per app and maps failure to a nonzero exit", onMac, async t => {
   const root = mkdtempSync(join(tmpdir(), "app-pins-cli-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   // rex: a bundle with a foreign identity (fails). helium: not installed (absent, succeeds).

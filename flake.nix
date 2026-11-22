@@ -81,7 +81,7 @@
       };
       # every host imports ./modules/o11y, which uses this collector; flake checks
       # use it too, so they exercise the collector hosts run.
-      otelcolOverlay = import ./overlays/otelcol-contrib.nix;
+      otelcolOverlay = import ./modules/o11y/otelcol-contrib.nix;
       nixosObservabilityModules = [
         inputs.sops-nix.nixosModules.sops
         inputs.axiom-deploy-annotation.nixosModules.default
@@ -150,15 +150,9 @@
         perSystem = { pkgs, system, ... }: {
           checks = inputs.nixpkgs.lib.optionalAttrs (inputs.nixpkgs.lib.hasSuffix "-darwin" system) {
             hue-control = import ./modules/hue-control/check.nix { inherit pkgs; };
-            # the audit shells out to /usr/bin/plutil.
-            household-intake-smb-audit = pkgs.runCommand "household-intake-smb-audit-tests" { } ''
-              ${pkgs.nodejs}/bin/node --test ${./modules/household-intake}/smb-audit.test.mjs
-              touch "$out"
-            '';
+            household-intake-smb-audit = import ./modules/household-intake/check.nix { inherit pkgs; };
           } // inputs.nixpkgs.lib.optionalAttrs (system == "aarch64-darwin") {
-            # building it runs backrest's go tests against the generated config
-            # (postCheck in modules/backup); the hosts that back up are arm64 macs.
-            backrest = self.darwinConfigurations.mmn-m4.config.my.backup.package;
+            backrest = import ./modules/backup/check.nix { inherit self; };
           };
         };
       }];
@@ -437,26 +431,8 @@
           in
           pkgs.writeText "nix-tests" (lib.concatMapStringsSep "\n" run files);
 
-        # torch is imported lazily, so the unit tests need only these.
-        checks.photo-semantic-benchmark = pkgs.runCommand "photo-semantic-benchmark-tests"
-          {
-            nativeBuildInputs = [
-              (pkgs.python3.withPackages (python: [ python.numpy python.huggingface-hub ]))
-            ];
-          } ''
-          cp ${./modules/photo-intelligence/benchmark}/benchmark.py ${./modules/photo-intelligence/benchmark}/benchmark.test.py .
-          python benchmark.test.py
-          touch "$out"
-        '';
-
-        checks.agents-research-acquire = pkgs.runCommand "agents-research-acquire-tests"
-          {
-            nativeBuildInputs = [ pkgs.python3 ];
-          } ''
-          cp ${./modules/agents/research/2026-09-28}/acquire.py ${./modules/agents/research/2026-09-28}/test_acquire.py .
-          python -m unittest -v test_acquire
-          touch "$out"
-        '';
+        checks.photo-semantic-benchmark = import ./modules/photo-intelligence/benchmark/check.nix { inherit pkgs; };
+        checks.agents-research-acquire = import ./modules/agents/research/2026-09-28/check.nix { inherit pkgs; };
 
         checks.service-events = import ./modules/service-events/check.nix { inherit pkgs; };
 
