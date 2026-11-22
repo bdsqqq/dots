@@ -44,8 +44,9 @@ test("cold home activation waits for networking; Rex ordering has no boot cycle"
   try {
     // Keep the real generated Rex dependencies. Only commands are substituted:
     // this checks systemd's implicit path/service edges without executing tools.
+    // verify checks that ExecStart exists; use the running node, present on any linux.
     for (const [name, text] of Object.entries(c.units) as [string, string][]) {
-      writeFileSync(join(dir, name), text.replace(/^ExecStart=.*$/gm, "ExecStart=/run/current-system/sw/bin/true"));
+      writeFileSync(join(dir, name), text.replace(/^ExecStart=.*$/gm, `ExecStart=${process.execPath} --version`));
     }
     for (const name of ["sysinit.target", "shutdown.target", "paths.target"]) {
       writeFileSync(join(dir, name), "[Unit]\nDefaultDependencies=no\n");

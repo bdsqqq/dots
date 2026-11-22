@@ -12,7 +12,7 @@ test("new tests are selected by default; packages run once; exclusions hold", ()
     "modules/html-stuff/server.test.ts",
     "modules/foo/README.md",
   ];
-  const suites = selectSuites(files, (dir) => dir === "modules/company-money");
+  const suites = selectSuites(files, (dir) => dir === "modules/company-money", "darwin");
   assert.deepEqual(suites, [
     {
       kind: "package",
@@ -24,4 +24,12 @@ test("new tests are selected by default; packages run once; exclusions hold", ()
     },
     { kind: "file", file: "modules/new-thing/brand-new.test.ts" },
   ]);
+});
+
+test("platform-only tests run only on their platform", () => {
+  const files = ["modules/app-pins/pins.test.ts", "modules/other/x.test.ts"];
+  const names = (platform: NodeJS.Platform) =>
+    selectSuites(files, () => false, platform).map((s) => (s.kind === "file" ? s.file : s.dir));
+  assert.deepEqual(names("darwin"), ["modules/app-pins/pins.test.ts", "modules/other/x.test.ts"]);
+  assert.deepEqual(names("linux"), ["modules/other/x.test.ts"]);
 });

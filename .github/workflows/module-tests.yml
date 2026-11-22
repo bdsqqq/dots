@@ -38,6 +38,10 @@ jobs:
       # some tests evaluate this flake's modules with nix.
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
 
+      # agents, gog and cli-proxy-api tests load the pi SDK from modules/pi.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+        working-directory: modules/pi
+
       - run: node --experimental-strip-types --test scripts/module-tests.test.ts
 
       - run: node --experimental-strip-types scripts/module-tests.ts

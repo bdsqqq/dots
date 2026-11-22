@@ -25,6 +25,7 @@ const fixture = JSON.parse(execFileSync("nix", [
     in {
       script = configured.home.activation.ensureGitSigningKey;
       sshKeygen = "\${pkgs.openssh}/bin/ssh-keygen";
+      bash = "\${pkgs.bash}/bin/bash";
     }
   `,
 ], { encoding: "utf8" }));
@@ -39,7 +40,8 @@ function activate(home: string, dryRun = false) {
   const env = { ...process.env, HOME: home, DRY_RUN_CMD: dryRun ? "echo" : "" };
   delete env.DRY_RUN;
   if (dryRun) env.DRY_RUN = "1";
-  execFileSync("bash", ["-eu", "-c", `
+  // home-manager activation runs nix's bash; the host's may be 3.2, without `[[ -v ]]`.
+  execFileSync(fixture.bash, ["-eu", "-c", `
     run() { if [[ -v DRY_RUN ]]; then :; else "$@"; fi; }
     ${fixture.script}
   `], { env, stdio: "pipe" });
