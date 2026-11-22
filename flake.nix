@@ -150,14 +150,15 @@
         perSystem = { pkgs, system, ... }: {
           checks = inputs.nixpkgs.lib.optionalAttrs (inputs.nixpkgs.lib.hasSuffix "-darwin" system) {
             hue-control = import ./modules/hue-control/check.nix { inherit pkgs; };
-            # building it runs backrest's go tests against the generated config
-            # (postCheck in modules/backup); only darwin hosts run backups.
-            backrest = self.darwinConfigurations.mmn-m4.config.my.backup.package;
             # the audit shells out to /usr/bin/plutil.
             household-intake-smb-audit = pkgs.runCommand "household-intake-smb-audit-tests" { } ''
               ${pkgs.nodejs}/bin/node --test ${./modules/household-intake}/smb-audit.test.mjs
               touch "$out"
             '';
+          } // inputs.nixpkgs.lib.optionalAttrs (system == "aarch64-darwin") {
+            # building it runs backrest's go tests against the generated config
+            # (postCheck in modules/backup); the hosts that back up are arm64 macs.
+            backrest = self.darwinConfigurations.mmn-m4.config.my.backup.package;
           };
         };
       }];
