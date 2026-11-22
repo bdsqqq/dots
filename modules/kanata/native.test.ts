@@ -57,8 +57,14 @@ test('evaluated activation command stages runnable signed files only into a temp
   const stage = ['/bin/bash', join(moduleDir, 'activate.sh'), ...binding.stage.slice(1)];
   assert.equal(stage[7], '/usr/local/bin/kanata');
   assert.equal(stage[8], '/usr/local/lib/kanata');
-  // eval names the fetched installer without downloading it; a fresh runner lacks it.
-  const fetched = spawnSync('nix', ['build', '--no-link', binding.package], { encoding: 'utf8', timeout: 300_000 });
+  // eval names the fetched installer without downloading it, and a bare store
+  // path can't be fetched; realise the derivation that produces it.
+  const toplevel = spawnSync('nix', ['eval', '--raw', '--no-write-lock-file', '.#darwinConfigurations.mbp-m2.config.system.build.toplevel.drvPath'], { cwd: root, encoding: 'utf8', timeout: 300_000 });
+  assert.equal(toplevel.status, 0, toplevel.stderr);
+  const producer = spawnSync('nix-store', ['-qR', toplevel.stdout], { encoding: 'utf8', maxBuffer: 1 << 28 })
+    .stdout.split('\n').find((drv) => drv.endsWith(`${binding.package.slice('/nix/store/'.length + 33)}.drv`));
+  assert.ok(producer, `no derivation produces ${binding.package}`);
+  const fetched = spawnSync('nix-store', ['--realise', producer], { encoding: 'utf8', timeout: 300_000 });
   assert.equal(fetched.status, 0, fetched.stderr);
   const signature = spawnSync('/usr/sbin/pkgutil', ['--check-signature', binding.package], { encoding: 'utf8' });
   assert.equal(signature.status, 0, signature.stderr);

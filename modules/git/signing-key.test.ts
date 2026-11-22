@@ -29,8 +29,12 @@ const fixture = JSON.parse(execFileSync("nix", [
     }
   `,
 ], { encoding: "utf8" }));
-// eval names store paths without building them; a fresh runner has neither.
-execFileSync("nix", ["build", "--no-link", fixture.bash, fixture.sshKeygen.replace(/\/bin\/ssh-keygen$/, "")], { stdio: "pipe" });
+// eval names store paths without building them, and a fresh runner has none
+// of what the snippet runs: realise every store path it and the test use.
+const storePaths = [...new Set(
+  `${fixture.script} ${fixture.bash} ${fixture.sshKeygen}`.match(/\/nix\/store\/[a-z0-9]{32}-[^/\s"']+/g) ?? [],
+)];
+execFileSync("nix", ["build", "--no-link", ...storePaths], { stdio: "pipe" });
 
 function setup(t: { after: (cleanup: () => void) => void }) {
   const home = mkdtempSync(join(tmpdir(), "git-signing-test-"));
