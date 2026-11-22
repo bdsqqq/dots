@@ -201,7 +201,7 @@ export async function record(app: App, store: Store, deps: Deps): Promise<Record
 
 const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 function running(app: BundleApp, deps: Deps): boolean {
-  try { deps.run("pgrep", ["-f", `${app.bundle}/Contents/MacOS/`]); return true; }
+  try { deps.run("pgrep", ["-f", `${escapeRegex(app.bundle)}/Contents/MacOS/`]); return true; }
   catch (error) {
     // pgrep exits 1 for "no match"; anything else must not be read as "not running".
     if ((error as { status?: number }).status === 1) return false;
