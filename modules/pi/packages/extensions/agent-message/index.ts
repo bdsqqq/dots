@@ -13,11 +13,8 @@
  * can't see what they kept. a busy session gets mail written into its
  * transcript at the next turn end instead, with one continuation.
  *
- * mail already waiting when the session starts, or when the user stops a run,
- * is shown without starting a turn: they're present, and starting one would
- * undo their escape. mail arriving during a short startup grace waits for the
- * first prompt's next turn boundary or the grace's end, since pi rejects a
- * host's startup prompt while a run is active.
+ * when mail is shown, starts a turn, or waits is decided in ./delivery.ts,
+ * whose inline model checker replays the races earlier versions shipped.
  *
  * there is no cross-process claim: the same session open in two processes may
  * receive a message twice.
@@ -41,6 +38,18 @@ import {
 } from "@bds_pi/config";
 import { resolveNativeSessionRoot } from "@bds_pi/sessions";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
+import {
+  agentSettled,
+  agentStarted,
+  closedDelivery,
+  sessionStarted,
+  turnEnded,
+  windowEnded,
+  woke,
+  type Delivery,
+  type DeliveryState,
+  type ReadMailbox,
+} from "./delivery";
 
 const CUSTOM_TYPE = "agent-message";
 const MAX_TEXT_CHARS = 64 * 1024;
@@ -48,6 +57,8 @@ const MAX_TEXT_CHARS = 64 * 1024;
 const POLL_MS = 30_000;
 /** pi exposes no "host submitted its startup prompt" signal; this outlasts it. */
 const STARTUP_GRACE_MS = 5_000;
+/** pi exposes no "settle handlers finished" signal; this outlasts them. */
+const STOP_WINDOW_MS = 60_000;
 
 export interface AgentMessage {
   id: string;
@@ -274,6 +285,7 @@ function loadConfig(): AgentMessageConfig | undefined {
 export function createAgentMessageExtension(
   config?: AgentMessageConfig,
   startupGraceMs: number = STARTUP_GRACE_MS,
+  stopWindowMs: number = STOP_WINDOW_MS,
 ): (pi: ExtensionAPI) => void {
   return (pi) => {
     const resolved = config ?? loadConfig();
@@ -286,24 +298,15 @@ export function createAgentMessageExtension(
     let isIdle = () => false;
     let watcher: fs.FSWatcher | undefined;
     let poll: NodeJS.Timeout | undefined;
-    let grace: NodeJS.Timeout | undefined;
-    let started = false;
-    /** pi reports idle before settle handlers run; wait for ours. */
-    let running = false;
-    /**
-     * run starters not yet persisted: pi defers runs started during
-     * settlement, and the watcher must not send those again meanwhile. a
-     * starter whose run fails before persisting it stays until the session
-     * restarts, rather than risk the double send.
-     */
-    const starting = new Set<string>();
+    let window: NodeJS.Timeout | undefined;
+    let state: DeliveryState = closedDelivery;
 
-    /** unacknowledged mail, oldest first; removes acknowledged and malformed files. */
-    const pending = (): AgentMessage[] => {
-      if (!sessionId) return [];
+    /** removes acknowledged and malformed files. */
+    const readMailbox: ReadMailbox<AgentMessage> = () => {
+      if (!sessionId) return { unacked: [], persisted: new Set() };
       const dir = mailboxDir(queueDir, sessionId);
       const persisted = deliveredIds(transcript());
-      const messages: AgentMessage[] = [];
+      const unacked: AgentMessage[] = [];
       const names = fs
         .readdirSync(dir)
         .filter((name) => !name.startsWith(".") && name.endsWith(".json"))
@@ -313,10 +316,8 @@ export function createAgentMessageExtension(
         const id = name.slice(name.indexOf("_") + 1, -".json".length);
         if (persisted.has(id)) {
           fs.rmSync(file, { force: true });
-          starting.delete(id);
           continue;
         }
-        if (starting.has(id)) continue;
         let message: AgentMessage | undefined;
         try {
           message = parseAgentMessage(
@@ -334,52 +335,40 @@ export function createAgentMessageExtension(
           fs.renameSync(file, `${file}.rejected`);
           continue;
         }
-        messages.push(message);
+        unacked.push(message);
       }
-      return messages;
+      return { unacked, persisted };
     };
 
-    /** busy sessions take mail at their next boundary instead. */
-    const deliverIdle = (startTurn = true) => {
+    const apply = (delivery: Delivery<AgentMessage>) => {
+      state = delivery.state;
+      if (delivery.error)
+        console.error(
+          "[@bds_pi/agent-message] delivery failed:",
+          delivery.error,
+        );
       try {
-        // during the startup grace, hold mail for the first prompt's
-        // boundary or the grace's end rather than show it unanswered.
-        if (!sessionId || running || !isIdle() || (startTurn && !started))
-          return;
-        const mail = pending();
-        // one run per batch: only the last message starts it.
-        const starter = startTurn ? mail.pop() : undefined;
-        // appending while idle persists immediately; only starters need tracking.
-        for (const message of mail)
+        // appending while idle persists immediately.
+        for (const message of delivery.append)
           pi.sendMessage(asCustomMessage(message), { triggerTurn: false });
-        if (!starter) return;
-        starting.add(starter.id);
-        pi.sendMessage(asCustomMessage(starter), { triggerTurn: true });
+        if (delivery.start)
+          pi.sendMessage(asCustomMessage(delivery.start), {
+            triggerTurn: true,
+          });
       } catch (error) {
         console.error("[@bds_pi/agent-message] delivery failed:", error);
       }
     };
 
-    const atBoundary = (event: TurnEndEvent) => {
-      // pi won't continue past an error or abort; leave mail for the idle path.
-      if (event.outcome !== "completed") return;
-      try {
-        const mail = pending();
-        if (mail.length === 0) return;
-        return {
-          entries: [
-            ...event.entries,
-            ...mail.map((message) => ({
-              type: "custom_message" as const,
-              ...asCustomMessage(message),
-            })),
-          ],
-          continue: true,
-        };
-      } catch (error) {
-        console.error("[@bds_pi/agent-message] delivery failed:", error);
-        return undefined;
-      }
+    const wake = () => apply(woke(state, isIdle(), readMailbox));
+
+    const openAfter = (ms: number) => {
+      clearTimeout(window);
+      window = setTimeout(
+        () => apply(windowEnded(state, isIdle(), readMailbox)),
+        ms,
+      );
+      window.unref();
     };
 
     const stop = () => {
@@ -387,13 +376,11 @@ export function createAgentMessageExtension(
       watcher = undefined;
       clearInterval(poll);
       poll = undefined;
-      clearTimeout(grace);
+      clearTimeout(window);
       sessionId = undefined;
       transcript = () => [];
       isIdle = () => false;
-      started = false;
-      running = false;
-      starting.clear();
+      state = closedDelivery;
     };
 
     pi.on("session_start", (_event, ctx) => {
@@ -404,34 +391,53 @@ export function createAgentMessageExtension(
       const dir = mailboxDir(queueDir, sessionId);
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
       try {
-        watcher = fs.watch(dir, () => deliverIdle());
+        watcher = fs.watch(dir, wake);
         watcher.on("error", (error) =>
           console.error("[@bds_pi/agent-message] watcher failed:", error),
         );
       } catch (error) {
         console.error("[@bds_pi/agent-message] watcher unavailable:", error);
       }
-      poll = setInterval(() => deliverIdle(), POLL_MS);
+      poll = setInterval(wake, POLL_MS);
       poll.unref();
-      grace = setTimeout(() => {
-        started = true;
-        deliverIdle();
-      }, startupGraceMs);
-      grace.unref();
-      deliverIdle(false);
+      apply(sessionStarted(isIdle(), readMailbox));
+      openAfter(startupGraceMs);
     });
 
     pi.on("agent_start", () => {
-      running = true;
+      clearTimeout(window);
+      state = agentStarted(state);
     });
-    pi.on("turn_end", atBoundary);
+
+    pi.on("turn_end", (event: TurnEndEvent) => {
+      const delivery = turnEnded(
+        state,
+        event.outcome === "completed",
+        readMailbox,
+      );
+      state = delivery.state;
+      if (delivery.error)
+        console.error(
+          "[@bds_pi/agent-message] delivery failed:",
+          delivery.error,
+        );
+      if (delivery.append.length === 0) return;
+      return {
+        entries: [
+          ...event.entries,
+          ...delivery.append.map((message) => ({
+            type: "custom_message" as const,
+            ...asCustomMessage(message),
+          })),
+        ],
+        continue: true,
+      };
+    });
 
     pi.on("agent_settled", (event) => {
-      // a run already happened, so there's no startup prompt left to protect.
-      clearTimeout(grace);
-      started = true;
-      running = false;
-      deliverIdle(!event.aborted);
+      clearTimeout(window);
+      apply(agentSettled(state, event.aborted, isIdle(), readMailbox));
+      if (state.phase === "stopped") openAfter(stopWindowMs);
     });
 
     pi.on("session_shutdown", stop);
@@ -953,45 +959,50 @@ if (import.meta.vitest) {
       },
     );
 
-    it("doesn't undo an abort for mail arriving in an earlier settle handler", async () => {
-      const root = tempRoot();
-      const cwd = path.join(root, "work");
-      const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
-      const target = SessionManager.inMemory(cwd);
-      let settles = 0;
-      const { session, faux, close, agentEntries } = await receiver(
-        root,
-        target,
-        config,
-        [],
-        0,
-        [
-          (pi) =>
-            pi.on("agent_settled", async () => {
-              if (settles++ > 0) return;
-              post(config, target.getSessionId(), "while stopping");
-              await new Promise((resolve) => setTimeout(resolve, 300));
-            }),
-        ],
-      );
-      faux.setResponses([
-        () => {
-          void session.abort();
-          return fauxAssistantMessage("interrupted");
-        },
-        () => fauxAssistantMessage("should not run"),
-      ]);
-      try {
-        await session.prompt("start");
-        await session.waitForIdle();
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        await session.waitForIdle();
-        expect(agentEntries()).toEqual(["while stopping"]);
-        expect(faux.state.callCount).toBe(1);
-      } finally {
-        await close();
-      }
-    });
+    it.each([
+      ["an earlier", true],
+      ["a later", false],
+    ])(
+      "doesn't undo an abort for mail arriving in %s settle handler",
+      async (_order, first) => {
+        const root = tempRoot();
+        const cwd = path.join(root, "work");
+        const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
+        const target = SessionManager.inMemory(cwd);
+        let settles = 0;
+        const slowSettle = (pi: ExtensionAPI) =>
+          pi.on("agent_settled", async () => {
+            if (settles++ > 0) return;
+            post(config, target.getSessionId(), "while stopping");
+            await new Promise((resolve) => setTimeout(resolve, 300));
+          });
+        const { session, faux, close, agentEntries } = await receiver(
+          root,
+          target,
+          config,
+          first ? [] : [slowSettle],
+          0,
+          first ? [slowSettle] : [],
+        );
+        faux.setResponses([
+          () => {
+            void session.abort();
+            return fauxAssistantMessage("interrupted");
+          },
+          () => fauxAssistantMessage("should not run"),
+        ]);
+        try {
+          await session.prompt("start");
+          await session.waitForIdle();
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          await session.waitForIdle();
+          expect(agentEntries()).toEqual(["while stopping"]);
+          expect(faux.state.callCount).toBe(1);
+        } finally {
+          await close();
+        }
+      },
+    );
 
     it("hands startup mail to the startup prompt instead of racing it", async () => {
       const root = tempRoot();
