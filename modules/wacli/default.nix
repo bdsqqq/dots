@@ -43,27 +43,31 @@ in
       { pkgs, ... }:
       let
         package = (
-          # v0.24.0 requires Go 1.27; keep this selection local to the fallback.
-          pkgs.wacli or (pkgs.buildGo127Module {
-            pname = "wacli";
+          # upstream's release build: compiling 0.24.0 needs Go 1.27, which hydra
+          # doesn't cache here, and the build ran small hosts out of memory.
+          # the release is built with sqlite_fts5, which message search needs.
+          pkgs.wacli or (let
             version = "0.24.0";
-            src = pkgs.fetchFromGitHub {
-              owner = "openclaw";
-              repo = "wacli";
-              tag = "v0.24.0";
-              hash = "sha256-7Apg6qK8ucfMYa5w/y8Q6NCr5qyZtYpgNknkZNJXzmk=";
+            platform = {
+              x86_64-linux = { name = "linux_amd64"; hash = "sha256-TKXGaNQfaLrRi/EueWarp8GzzGrjL9jhRd65h93RGS0="; };
+              aarch64-linux = { name = "linux_arm64"; hash = "sha256-bg+1RHPesPuHgjk88fIfDB47szAbNlHNnZp3tjePDgc="; };
+              aarch64-darwin = { name = "darwin_arm64"; hash = "sha256-1HQWsbZ/rHr5WT+aVvHMpvN36ksEhqh2bbuA8Qz9728="; };
+            }.${pkgs.stdenv.hostPlatform.system};
+          in pkgs.stdenv.mkDerivation {
+            pname = "wacli";
+            inherit version;
+            src = pkgs.fetchurl {
+              url = "https://github.com/openclaw/wacli/releases/download/v${version}/wacli_${version}_${platform.name}.tar.gz";
+              inherit (platform) hash;
             };
-            vendorHash = "sha256-Kcbd/If+63q4TRifEH3iZ+Doc5sF10MQLViBhsr0buE=";
-            subPackages = [ "cmd/wacli" ];
-            # Message search uses SQLite FTS5; upstream enables it in release builds.
-            tags = [ "sqlite_fts5" ];
-            ldflags = [
-              "-s"
-              "-w"
-              "-X main.version=0.24.0"
-            ];
+            sourceRoot = ".";
+            nativeBuildInputs = pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.autoPatchelfHook;
+            dontConfigure = true;
+            dontBuild = true;
+            installPhase = "install -Dm755 wacli $out/bin/wacli";
             meta.mainProgram = "wacli";
             meta.license = pkgs.lib.licenses.mit;
+            meta.sourceProvenance = [ pkgs.lib.sourceTypes.binaryNativeCode ];
           })
         );
       in
