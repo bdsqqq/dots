@@ -11,8 +11,8 @@ on:
       - "modules/pi/tsconfig.build.json"
       - "modules/pi/package.json"
       - "modules/pi/pnpm-lock.yaml"
-  # the same install, build and test run on PRs, so a failure blocks the
-  # merge instead of the publish that follows it.
+  # the same install, build and test run on PRs, so a failure shows on the
+  # PR instead of on the publish that follows its merge.
   pull_request:
     paths:
       - "modules/pi/**"
