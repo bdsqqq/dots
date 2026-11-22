@@ -402,6 +402,27 @@
 
         checks.wikiman-logging = import ./modules/wikiman/logging-check.nix { inherit pkgs; };
 
+        # torch is imported lazily, so the unit tests need only these.
+        checks.photo-semantic-benchmark = pkgs.runCommand "photo-semantic-benchmark-tests"
+          {
+            nativeBuildInputs = [
+              (pkgs.python3.withPackages (python: [ python.numpy python.huggingface-hub ]))
+            ];
+          } ''
+          cp ${./modules/photo-intelligence/benchmark}/benchmark.py ${./modules/photo-intelligence/benchmark}/benchmark.test.py .
+          python benchmark.test.py
+          touch "$out"
+        '';
+
+        checks.agents-research-acquire = pkgs.runCommand "agents-research-acquire-tests"
+          {
+            nativeBuildInputs = [ pkgs.python3 ];
+          } ''
+          cp ${./modules/agents/research/2026-09-28}/acquire.py ${./modules/agents/research/2026-09-28}/test_acquire.py .
+          python -m unittest -v test_acquire
+          touch "$out"
+        '';
+
         checks.service-events = import ./modules/service-events/check.nix { inherit pkgs; };
 
 
