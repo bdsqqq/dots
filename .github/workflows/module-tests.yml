@@ -50,3 +50,14 @@ jobs:
       - run: node --experimental-strip-types --test scripts/module-tests.test.ts
 
       - run: node --experimental-strip-types scripts/module-tests.ts
+
+      # repo-checks builds linux flake checks; darwin-only ones build here.
+      - name: build darwin-only flake checks
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          names=$(nix eval --json .#checks.aarch64-darwin --apply 'cs: builtins.attrNames (removeAttrs cs (builtins.attrNames (builtins.getFlake (toString ./.)).checks.x86_64-linux))' --impure | jq -r '.[]')
+          [ -n "$names" ] || { echo 'no darwin-only flake checks found' >&2; exit 1; }
+          mapfile -t checks <<<"$names"
+          echo "checks: ${checks[*]}"
+          nix build --no-link --keep-going "${checks[@]/#/.#checks.aarch64-darwin.}"

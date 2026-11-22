@@ -23,6 +23,7 @@ const TEST_FILE = /(\.test|(^|\/)test_[^/]*)\.[cm]?[jt]s$/u;
 
 /** these import `bun:` modules, so bun runs them instead of node. */
 const BUN_DIRS = ["modules/html-stuff/"];
+const isBun = (file: string) => BUN_DIRS.some((dir) => file.startsWith(dir));
 
 /** path prefix → why this harness can't run it. */
 export const EXCLUDED: Record<string, string> = {
@@ -30,6 +31,8 @@ export const EXCLUDED: Record<string, string> = {
   "modules/tailnet-registry/": "bun tests; built by checks.tailnet-registry",
   "modules/node-pnpm/runtime.test.ts":
     "fixture pkgs lacks stdenv.hostPlatform; fails on main since 632bf51d",
+  "modules/household-intake/smb-audit.test.mjs":
+    "built by checks.household-intake-smb-audit on the macOS job",
   "scripts/check-credential-ownership.test.ts":
     "built by checks.credential-ownership, which provides python",
 };
@@ -40,7 +43,6 @@ export const PLATFORM_ONLY: Record<string, { platform: NodeJS.Platform; reason: 
   "modules/app-pins/pins.test.ts": { platform: "darwin", reason: "builds app bundles with ditto" },
   "modules/app-pins/publish.test.ts": { platform: "darwin", reason: "reads bundle versions with plutil" },
   "modules/t3-code/sync-credentials.test.ts": { platform: "darwin", reason: "locks with /usr/bin/lockf" },
-  "modules/household-intake/smb-audit.test.mjs": { platform: "darwin", reason: "reads plists with /usr/bin/plutil" },
 };
 
 const excluded = (file: string, platform: NodeJS.Platform): boolean =>
@@ -72,7 +74,7 @@ export function selectSuites(
   const loose: string[] = [];
   for (const file of files) {
     if (!TEST_FILE.test(file) || excluded(file, platform)) continue;
-    const dir = owningPackage(file, isPackage);
+    const dir = isBun(file) ? undefined : owningPackage(file, isPackage);
     if (dir) packages.set(dir, [...(packages.get(dir) ?? []), file]);
     else loose.push(file);
   }
@@ -85,7 +87,7 @@ export function selectSuites(
         ({
           kind: "file",
           file,
-          runner: BUN_DIRS.some((dir) => file.startsWith(dir)) ? "bun" : "node",
+          runner: isBun(file) ? "bun" : "node",
         }) as const,
     ),
   ];

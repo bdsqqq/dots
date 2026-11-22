@@ -150,6 +150,9 @@
         perSystem = { pkgs, system, ... }: {
           checks = inputs.nixpkgs.lib.optionalAttrs (inputs.nixpkgs.lib.hasSuffix "-darwin" system) {
             hue-control = import ./modules/hue-control/check.nix { inherit pkgs; };
+            # building it runs backrest's go tests against the generated config
+            # (postCheck in modules/backup); only darwin hosts run backups.
+            backrest = self.darwinConfigurations.mmn-m4.config.my.backup.package;
             # the audit shells out to /usr/bin/plutil.
             household-intake-smb-audit = pkgs.runCommand "household-intake-smb-audit-tests" { } ''
               ${pkgs.nodejs}/bin/node --test ${./modules/household-intake}/smb-audit.test.mjs
@@ -405,20 +408,26 @@
         # evaluation-only suites: test.nix or *.test.nix files under modules/,
         # found by name so a new one runs without wiring. each is a function of
         # { lib } and optionally { pkgs }, and fails evaluation on a broken
-        # assert. a suite taking { flake } evaluates whole hosts and can't run
-        # inside the flake's own checks; it needs a caller of its own (rex's is
-        # hosts/lgo-z2e/activation.test.ts).
+        # assert. rex's suite takes the whole flake, which can't be evaluated
+        # inside the flake's own checks; hosts/lgo-z2e/activation.test.ts runs it.
         checks.nix-tests =
           let
             lib = pkgs.lib;
+            ownCaller = [ ./modules/rex/test.nix ];
             files = lib.filter
               (path:
                 let name = baseNameOf path; in
-                (name == "test.nix" || lib.hasSuffix ".test.nix" name)
-                && !(builtins.functionArgs (import path)) ? flake)
+                (name == "test.nix" || lib.hasSuffix ".test.nix" name) && !builtins.elem path ownCaller)
               (lib.filesystem.listFilesRecursive ./modules);
             run = file:
-              let suite = import file; in
+              let
+                suite = import file;
+                unsupported = lib.subtractLists [ "lib" "pkgs" ]
+                  (lib.attrNames (lib.filterAttrs (_: optional: !optional) (builtins.functionArgs suite)));
+              in
+              if unsupported != [ ] then
+                throw "${toString file} needs ${toString unsupported}; give it a caller and list it in ownCaller"
+              else
               # seq, not deepSeq: the asserts guard the result, and some suites
               # return a derivation whose deep closure is all of nixpkgs.
               builtins.seq (suite (builtins.intersectAttrs (builtins.functionArgs suite) {

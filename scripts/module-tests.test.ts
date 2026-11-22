@@ -47,3 +47,8 @@ test("every node test extension is discovered", () => {
   const files = ["a/x.test.ts", "a/x.test.mts", "a/x.test.cts", "a/x.test.js", "a/x.test.mjs", "a/x.test.cjs", "a/test_x.ts", "a/x.ts", "a/latest_x.ts"];
   assert.equal(selectSuites(files, () => false, "linux").length, 7);
 });
+
+test("bun suites stay on bun even inside a package", () => {
+  const suites = selectSuites(["modules/html-stuff/server.test.ts"], (dir) => dir === "modules/html-stuff", "linux");
+  assert.deepEqual(suites, [{ kind: "file", file: "modules/html-stuff/server.test.ts", runner: "bun" }]);
+});
