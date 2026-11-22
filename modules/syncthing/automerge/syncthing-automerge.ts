@@ -373,7 +373,6 @@ export function createConflictQueue(cwd: string) {
 async function main() {
   const cwd = process.cwd();
   console.log("Running Syncthing deconflicter");
-  console.log(`Watching: ${cwd}`);
   const enqueueConflict = createConflictQueue(cwd);
 
   const watcher = watch(
@@ -391,6 +390,8 @@ async function main() {
   watcher.on("error", (error) => {
     console.error("Watcher error:", error);
   });
+  // only once the watch exists: callers wait for this line before writing.
+  console.log(`Watching: ${cwd}`);
 
   // Keep process alive
   await new Promise(() => {});

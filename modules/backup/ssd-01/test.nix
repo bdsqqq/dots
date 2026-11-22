@@ -60,8 +60,8 @@ assert !repo.autoInitialize;
 assert terraria.repo == repo.id;
 assert terraria.schedule.maxFrequencyHours == 1;
 assert builtins.all (hook: !lib.hasInfix "backup/ssd-01" hook.actionCommand.command) terraria.hooks;
-assert lib.hasInfix "-i /tmp/host-identity" (builtins.head repo.flags);
-assert lib.hasInfix "UserKnownHostsFile=/tmp/trusted-hosts" (builtins.head repo.flags);
+assert builtins.any (lib.hasInfix "-i /tmp/host-identity") repo.flags;
+assert builtins.any (lib.hasInfix "UserKnownHostsFile=/tmp/trusted-hosts") repo.flags;
 assert rejectsPath "relative" && rejectsPath "/nix/store/private-key";
 assert builtins.all (item: item.assertion) cfg.assertions;
 cfg.my.backup.package

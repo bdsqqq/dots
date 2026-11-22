@@ -22,12 +22,18 @@ const fixture = JSON.parse(execFileSync("nix", [
         config.home.homeDirectory = "/fixture";
         osConfig.networking.hostName = "fixture-host";
       };
-    in {
       script = configured.home.activation.ensureGitSigningKey;
+    in {
+      inherit script;
+      # eval names store paths without building them; these are what the
+      # snippet and the test run, so a fresh runner can build them first.
+      drvs = builtins.attrNames (builtins.getContext "\${script}\${pkgs.bash}\${pkgs.openssh}");
       sshKeygen = "\${pkgs.openssh}/bin/ssh-keygen";
+      bash = "\${pkgs.bash}/bin/bash";
     }
   `,
 ], { encoding: "utf8" }));
+execFileSync("nix", ["build", "--no-link", ...fixture.drvs.map((drv: string) => `${drv}^*`)], { stdio: "pipe" });
 
 function setup(t: { after: (cleanup: () => void) => void }) {
   const home = mkdtempSync(join(tmpdir(), "git-signing-test-"));
@@ -39,7 +45,8 @@ function activate(home: string, dryRun = false) {
   const env = { ...process.env, HOME: home, DRY_RUN_CMD: dryRun ? "echo" : "" };
   delete env.DRY_RUN;
   if (dryRun) env.DRY_RUN = "1";
-  execFileSync("bash", ["-eu", "-c", `
+  // home-manager activation runs nix's bash; the host's may be 3.2, without `[[ -v ]]`.
+  execFileSync(fixture.bash, ["-eu", "-c", `
     run() { if [[ -v DRY_RUN ]]; then :; else "$@"; fi; }
     ${fixture.script}
   `], { env, stdio: "pipe" });

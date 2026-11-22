@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -221,9 +221,21 @@ test("the watcher merges a newly created conflict", async () => {
 
       const conflict = join(vault, "note.sync-conflict-20990101-203035-L2PJ4F3.md");
       await writeFile(conflict, "alpha\nbeta\ngamma remote\n");
-      await waitFor(() => !existsSync(conflict));
+      // the conflict is quarantined before the merge, so its absence alone
+      // doesn't mean the merge finished.
+      const merged = "alpha local\nbeta\ngamma remote\n";
+      // the merge replaces note.md by rename, so it can be briefly absent.
+      const noteIs = (text: string) => {
+        try {
+          return readFileSync(join(vault, "note.md"), "utf8") === text;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+          throw error;
+        }
+      };
+      await waitFor(() => !existsSync(conflict) && noteIs(merged));
 
-      assert.equal(await readFile(join(vault, "note.md"), "utf8"), "alpha local\nbeta\ngamma remote\n");
+      assert.equal(await readFile(join(vault, "note.md"), "utf8"), merged);
     } finally {
       child.kill();
       if (child.exitCode === null) await once(child, "exit");

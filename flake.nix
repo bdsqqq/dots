@@ -155,6 +155,10 @@
               ${pkgs.nodejs}/bin/node --test ${./modules/household-intake}/smb-audit.test.mjs
               touch "$out"
             '';
+          } // inputs.nixpkgs.lib.optionalAttrs (system == "aarch64-darwin") {
+            # building it runs backrest's go tests against the generated config
+            # (postCheck in modules/backup); the hosts that back up are arm64 macs.
+            backrest = self.darwinConfigurations.mmn-m4.config.my.backup.package;
           };
         };
       }];
@@ -401,6 +405,58 @@
         '';
 
         checks.wikiman-logging = import ./modules/wikiman/logging-check.nix { inherit pkgs; };
+
+        # evaluation-only suites: test.nix or *.test.nix files under modules/,
+        # found by name so a new one runs without wiring. each is a function of
+        # { lib } and optionally { pkgs }, and fails evaluation on a broken
+        # assert. rex's suite takes the whole flake, which can't be evaluated
+        # inside the flake's own checks; hosts/lgo-z2e/activation.test.ts runs it.
+        checks.nix-tests =
+          let
+            lib = pkgs.lib;
+            ownCaller = [ ./modules/rex/test.nix ];
+            files = lib.filter
+              (path:
+                let name = baseNameOf path; in
+                (name == "test.nix" || lib.hasSuffix ".test.nix" name) && !builtins.elem path ownCaller)
+              (lib.filesystem.listFilesRecursive ./modules);
+            run = file:
+              let
+                suite = import file;
+                unsupported = lib.subtractLists [ "lib" "pkgs" ]
+                  (lib.attrNames (lib.filterAttrs (_: optional: !optional) (builtins.functionArgs suite)));
+              in
+              if unsupported != [ ] then
+                throw "${toString file} needs ${toString unsupported}; give it a caller and list it in ownCaller"
+              else
+              # seq, not deepSeq: the asserts guard the result, and some suites
+              # return a derivation whose deep closure is all of nixpkgs.
+              builtins.seq (suite (builtins.intersectAttrs (builtins.functionArgs suite) {
+                inherit lib pkgs;
+              })) (lib.removePrefix "${toString ./.}/" (toString file));
+          in
+          pkgs.writeText "nix-tests" (lib.concatMapStringsSep "\n" run files);
+
+        # torch is imported lazily, so the unit tests need only these.
+        checks.photo-semantic-benchmark = pkgs.runCommand "photo-semantic-benchmark-tests"
+          {
+            nativeBuildInputs = [
+              (pkgs.python3.withPackages (python: [ python.numpy python.huggingface-hub ]))
+            ];
+          } ''
+          cp ${./modules/photo-intelligence/benchmark}/benchmark.py ${./modules/photo-intelligence/benchmark}/benchmark.test.py .
+          python benchmark.test.py
+          touch "$out"
+        '';
+
+        checks.agents-research-acquire = pkgs.runCommand "agents-research-acquire-tests"
+          {
+            nativeBuildInputs = [ pkgs.python3 ];
+          } ''
+          cp ${./modules/agents/research/2026-09-28}/acquire.py ${./modules/agents/research/2026-09-28}/test_acquire.py .
+          python -m unittest -v test_acquire
+          touch "$out"
+        '';
 
         checks.service-events = import ./modules/service-events/check.nix { inherit pkgs; };
 
