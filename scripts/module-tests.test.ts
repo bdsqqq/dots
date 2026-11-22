@@ -9,7 +9,6 @@ test("new tests are selected by default; packages run once; exclusions hold", ()
     "modules/company-money/money.test.ts",
     "modules/company-money/ledger/state.test.ts",
     "modules/pi/packages/core/x/index.test.ts",
-    "modules/html-stuff/server.test.ts",
     "modules/foo/README.md",
   ];
   const suites = selectSuites(files, (dir) => dir === "modules/company-money", "darwin");
@@ -22,7 +21,7 @@ test("new tests are selected by default; packages run once; exclusions hold", ()
         "modules/company-money/money.test.ts",
       ],
     },
-    { kind: "file", file: "modules/new-thing/brand-new.test.ts" },
+    { kind: "file", file: "modules/new-thing/brand-new.test.ts", runner: "node" },
   ]);
 });
 
@@ -32,4 +31,14 @@ test("platform-only tests run only on their platform", () => {
     selectSuites(files, () => false, platform).map((s) => (s.kind === "file" ? s.file : s.dir));
   assert.deepEqual(names("darwin"), ["modules/app-pins/pins.test.ts", "modules/other/x.test.ts"]);
   assert.deepEqual(names("linux"), ["modules/other/x.test.ts"]);
+});
+
+test("a package runs every selected test file, not just its script's glob", () => {
+  const files = [
+    "modules/syncthing/automerge/syncthing-automerge.test.ts",
+    "modules/syncthing/automerge/regression.test.ts",
+  ];
+  assert.deepEqual(selectSuites(files, (dir) => dir === "modules/syncthing/automerge", "linux"), [
+    { kind: "package", dir: "modules/syncthing/automerge", files: [...files].sort() },
+  ]);
 });

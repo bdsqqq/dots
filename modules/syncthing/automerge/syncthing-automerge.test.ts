@@ -224,7 +224,16 @@ test("the watcher merges a newly created conflict", async () => {
       // the conflict is quarantined before the merge, so its absence alone
       // doesn't mean the merge finished.
       const merged = "alpha local\nbeta\ngamma remote\n";
-      await waitFor(() => !existsSync(conflict) && readFileSync(join(vault, "note.md"), "utf8") === merged);
+      // the merge replaces note.md by rename, so it can be briefly absent.
+      const noteIs = (text: string) => {
+        try {
+          return readFileSync(join(vault, "note.md"), "utf8") === text;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+          throw error;
+        }
+      };
+      await waitFor(() => !existsSync(conflict) && noteIs(merged));
 
       assert.equal(await readFile(join(vault, "note.md"), "utf8"), merged);
     } finally {
