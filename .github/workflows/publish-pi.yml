@@ -19,8 +19,10 @@ on:
       - ".github/workflows/publish-pi.yml"
   workflow_dispatch:
 
+# pushes and dispatches share one group, so a newer run cancels an older one
+# before it can move `latest` back; PRs get their own group per ref.
 concurrency:
-  group: publish-pi-${{ github.ref }}
+  group: ${{ github.event_name == 'pull_request' && format('publish-pi-pr-{0}', github.ref) || 'publish-pi' }}
   cancel-in-progress: true
 
 jobs:
@@ -73,10 +75,6 @@ jobs:
   publish:
     needs: test
     if: github.event_name != 'pull_request'
-    # one publisher across refs, so an older build can't move `latest` back.
-    concurrency:
-      group: publish-pi-release
-      cancel-in-progress: true
     runs-on: ubuntu-latest
     defaults:
       run:
