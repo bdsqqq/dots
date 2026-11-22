@@ -11,21 +11,29 @@ on:
       - "modules/pi/tsconfig.build.json"
       - "modules/pi/package.json"
       - "modules/pi/pnpm-lock.yaml"
+  # PRs run only the test job, so failures show on the PR instead of after
+  # the merge.
+  pull_request:
+    paths:
+      - "modules/pi/**"
+      - ".github/workflows/publish-pi.yml"
   workflow_dispatch:
 
+# pushes and dispatches share one group, so a newer run cancels an older one
+# before it can move `latest` back; PRs get their own group per ref.
 concurrency:
-  group: publish-pi
+  group: ${{ github.event_name == 'pull_request' && format('publish-pi-pr-{0}', github.ref) || 'publish-pi' }}
   cancel-in-progress: true
 
 jobs:
-  publish:
+  test:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: modules/pi
+    # PR code runs here, so it gets no OIDC token.
     permissions:
       contents: read
-      id-token: write # provenance attestation
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -63,6 +71,36 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PI_TEST_BUILT_TOOLS: "1"
+
+  publish:
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: modules/pi
+    permissions:
+      contents: read
+      id-token: write # provenance attestation
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          version: 11.9.0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          cache: pnpm
+          cache-dependency-path: modules/pi/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm run build
 
       - name: set epoch version
         id: version
