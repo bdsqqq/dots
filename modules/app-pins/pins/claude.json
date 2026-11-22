@@ -1,19 +1,19 @@
 {
   "schemaVersion": 1,
   "app": "claude",
-  "version": "2.1.329",
+  "version": "2.1.330",
   "builds": {
     "darwin-arm64": {
-      "url": "https://downloads.claude.ai/claude-code-releases/2.1.329/darwin-arm64/claude",
-      "sha256": "8c1729568b19cdadedd0a978bf692f9f279ef554c8a333c4e132b94fd8725550"
+      "url": "https://downloads.claude.ai/claude-code-releases/2.1.330/darwin-arm64/claude",
+      "sha256": "f7c5093b9dd6560d08af28bc27b123fb55091deae3180ac39df199522da86815"
     },
     "linux-x64": {
-      "url": "https://downloads.claude.ai/claude-code-releases/2.1.329/linux-x64/claude",
-      "sha256": "30e2724e2aecb1bf5dc9f3130901afb71c5fa229051c190a6d7ad9aff6378d6d"
+      "url": "https://downloads.claude.ai/claude-code-releases/2.1.330/linux-x64/claude",
+      "sha256": "f390eaa0814e6a1bff74cbb47acb74cb9c89d30ced809fe0af5af00c7bfe8ebb"
     },
     "linux-arm64": {
-      "url": "https://downloads.claude.ai/claude-code-releases/2.1.329/linux-arm64/claude",
-      "sha256": "8489e2c7ba7846b4681b84e559fed4ed5bb265e129e21dc9de9e322157fb2bea"
+      "url": "https://downloads.claude.ai/claude-code-releases/2.1.330/linux-arm64/claude",
+      "sha256": "6016f90cac783e367fb1aa97c768a2efb94a0128a5b46b70fb3d8fcbbd9dd444"
     }
   }
 }
