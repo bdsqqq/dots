@@ -57,6 +57,9 @@ test('evaluated activation command stages runnable signed files only into a temp
   const stage = ['/bin/bash', join(moduleDir, 'activate.sh'), ...binding.stage.slice(1)];
   assert.equal(stage[7], '/usr/local/bin/kanata');
   assert.equal(stage[8], '/usr/local/lib/kanata');
+  // eval names the fetched installer without downloading it; a fresh runner lacks it.
+  const fetched = spawnSync('nix', ['build', '--no-link', binding.package], { encoding: 'utf8', timeout: 300_000 });
+  assert.equal(fetched.status, 0, fetched.stderr);
   const signature = spawnSync('/usr/sbin/pkgutil', ['--check-signature', binding.package], { encoding: 'utf8' });
   assert.equal(signature.status, 0, signature.stderr);
   assert.match(signature.stdout, /Developer ID Installer: Fumihiko Takayama \(G43BCU2T37\)/);

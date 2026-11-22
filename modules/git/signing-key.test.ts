@@ -29,6 +29,8 @@ const fixture = JSON.parse(execFileSync("nix", [
     }
   `,
 ], { encoding: "utf8" }));
+// eval names store paths without building them; a fresh runner has neither.
+execFileSync("nix", ["build", "--no-link", fixture.bash, fixture.sshKeygen.replace(/\/bin\/ssh-keygen$/, "")], { stdio: "pipe" });
 
 function setup(t: { after: (cleanup: () => void) => void }) {
   const home = mkdtempSync(join(tmpdir(), "git-signing-test-"));
