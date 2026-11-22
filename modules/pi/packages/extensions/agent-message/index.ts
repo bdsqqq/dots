@@ -1,12 +1,26 @@
 /**
- * durable cross-session messages for pi agents.
+ * lets pi agents message each other's sessions. like T3's thread send, the
+ * message joins the target conversation as an ordinary message, attributed to
+ * the sending session instead of the user: an idle target starts a turn, a
+ * busy one reads it at its next step, a closed one receives it when resumed.
  *
- * a filesystem mailbox is the shared primitive because pi sessions may live in
- * unrelated processes—or may not be running at all. active sessions watch and
- * drain their mailbox; resumed sessions drain anything that arrived offline.
- * the injected custom message carries the sender identity in both visible text
- * and structured details so agent-authored text cannot be mistaken for user
- * input.
+ * sessions live in unrelated processes or aren't running at all, so the
+ * transport is a mailbox directory per target session. a message file stays
+ * there until its id is in the target's transcript.
+ *
+ * mail never enters pi's steering queue: escape, "edit queued messages", RPC
+ * aborts, and reloads each treat that queue differently, and an extension
+ * can't see what they kept. a busy session gets mail written into its
+ * transcript at the next turn end instead, with one continuation.
+ *
+ * mail already waiting when the session starts, or when the user stops a run,
+ * is shown without starting a turn: they're present, and starting one would
+ * undo their escape. mail arriving during a short startup grace waits for the
+ * first prompt's next turn boundary or the grace's end, since pi rejects a
+ * host's startup prompt while a run is active.
+ *
+ * there is no cross-process claim: the same session open in two processes may
+ * receive a message twice.
  */
 
 import * as fs from "node:fs";
@@ -15,62 +29,54 @@ import * as path from "node:path";
 import { randomUUID } from "node:crypto";
 import {
   getAgentDir,
-  type ExtensionToolContext,
   type ExtensionAPI,
   type ToolDefinition,
+  type TurnEndEvent,
 } from "@earendil-works/pi-coding-agent";
-import { resolveNativeSessionRoot } from "@bds_pi/sessions";
-import { type Static, type TObject, type TString, Type } from "typebox";
+import { type TObject, type TString, Type } from "typebox";
+import { Check } from "typebox/value";
 import {
-  clearConfigCache,
   getEnabledExtensionConfig,
-  setGlobalSettingsPath,
   type ExtensionConfigSchema,
 } from "@bds_pi/config";
-import {
-  listMentionableSessions,
-  resolveMentionableSession,
-  type MentionableSession,
-} from "@bds_pi/mentions";
+import { resolveNativeSessionRoot } from "@bds_pi/sessions";
 import { withPromptPatch } from "@bds_pi/prompt-patch";
 
-const MESSAGE_VERSION = 1;
-const MESSAGE_FILE = /^([0-9T:.Z_-]+)_([0-9a-f-]{36})\.json$/u;
-const CLAIMED_MESSAGE_FILE =
-  /^(.+\.json)\.processing-([0-9]+)-([0-9a-f-]{36})$/u;
-const SESSION_ID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
-const MAX_MESSAGE_CHARS = 64 * 1024;
-const CLAIM_LEASE_MS = 60 * 60 * 1000;
-const RECONCILE_INTERVAL_MS = 30 * 1000;
-const DRAIN_BATCH_SIZE = 16;
+const CUSTOM_TYPE = "agent-message";
+const MAX_TEXT_CHARS = 64 * 1024;
+/** fs.watch can miss events or be unavailable; polling bounds the delay. */
+const POLL_MS = 30_000;
+/** pi exposes no "host submitted its startup prompt" signal; this outlasts it. */
+const STARTUP_GRACE_MS = 5_000;
 
 export interface AgentMessage {
-  version: 1;
   id: string;
-  provenance: {
-    kind: "pi-session";
-    trust: "claimed-local";
-    sessionId: string;
-    sessionName?: string;
-    workspace: string;
-  };
-  target: {
-    sessionId: string;
-  };
-  createdAt: string;
-  content: string;
+  from: { sessionId: string; sessionName?: string; workspace: string };
+  to: string;
+  sentAt: string;
+  text: string;
 }
 
-type AgentMessageConfig = {
-  queueDir: string;
-  sessionsDirs: string[];
-};
+const agentMessageSchema = Type.Object({
+  id: Type.String({ minLength: 1 }),
+  from: Type.Object({
+    sessionId: Type.String({ minLength: 1 }),
+    sessionName: Type.Optional(Type.String()),
+    workspace: Type.String(),
+  }),
+  to: Type.String({ minLength: 1 }),
+  sentAt: Type.String(),
+  text: Type.String({ minLength: 1, maxLength: MAX_TEXT_CHARS }),
+});
 
-type AgentMessageExtensionDeps = {
-  getEnabledExtensionConfig: typeof getEnabledExtensionConfig;
-  listMentionableSessions: typeof listMentionableSessions;
-  watch: typeof fs.watch;
+function parseAgentMessage(value: unknown): AgentMessage | undefined {
+  return Check(agentMessageSchema, value) ? value : undefined;
+}
+
+export type AgentMessageConfig = {
+  queueDir: string;
+  /** session roots searched for targets; empty means the running session's native root. */
+  sessionsDirs: string[];
 };
 
 const CONFIG_DEFAULTS: AgentMessageConfig = {
@@ -78,284 +84,119 @@ const CONFIG_DEFAULTS: AgentMessageConfig = {
   sessionsDirs: [],
 };
 
-const DEFAULT_DEPS: AgentMessageExtensionDeps = {
-  getEnabledExtensionConfig,
-  listMentionableSessions,
-  watch: fs.watch,
-};
+const nonEmptyString = (value: unknown): value is string =>
+  typeof value === "string" && value.trim().length > 0;
 
-function nonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
-function isAgentMessageConfig(
-  value: Record<string, unknown>,
-): value is AgentMessageConfig {
-  return (
+const CONFIG_SCHEMA: ExtensionConfigSchema<AgentMessageConfig> = {
+  validate: (value): value is AgentMessageConfig =>
     nonEmptyString(value.queueDir) &&
     Array.isArray(value.sessionsDirs) &&
-    value.sessionsDirs.every(nonEmptyString)
-  );
-}
-
-const AGENT_MESSAGE_CONFIG_SCHEMA: ExtensionConfigSchema<AgentMessageConfig> = {
-  validate: isAgentMessageConfig,
+    value.sessionsDirs.every(nonEmptyString),
 };
 
-function expandPath(value: string): string {
-  return path.resolve(value.replace(/^~(?=$|\/)/u, os.homedir()));
+const expandPath = (value: string): string =>
+  path.resolve(value.replace(/^~(?=$|\/)/u, os.homedir()));
+
+/** the only text the target model sees besides the message itself. */
+export function formatAgentMessage(message: AgentMessage): string {
+  const name = message.from.sessionName ? ` (${message.from.sessionName})` : "";
+  return `message from pi session ${message.from.sessionId}${name}:\n\n${message.text}`;
 }
 
-function normalizeConfig(config: AgentMessageConfig): AgentMessageConfig {
-  return {
-    queueDir: expandPath(config.queueDir),
-    sessionsDirs: [...new Set(config.sessionsDirs.map(expandPath))],
-  };
-}
-
-function mailboxPath(queueDir: string, sessionId: string): string {
+/** imported session headers can carry any id; never let one leave the queue. */
+function mailboxDir(queueDir: string, sessionId: string): string {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(sessionId))
+    throw new Error(`unsupported pi session id: ${sessionId}`);
   return path.join(queueDir, sessionId);
 }
 
-function parseAgentMessage(value: unknown): AgentMessage {
-  if (typeof value !== "object" || value === null || Array.isArray(value))
-    throw new Error("invalid agent message");
-  const message = value as Partial<AgentMessage>;
-  if (
-    message.version !== MESSAGE_VERSION ||
-    typeof message.id !== "string" ||
-    !/^[0-9a-f-]{36}$/u.test(message.id) ||
-    typeof message.createdAt !== "string" ||
-    Number.isNaN(Date.parse(message.createdAt)) ||
-    !nonEmptyString(message.content) ||
-    message.content.length > MAX_MESSAGE_CHARS ||
-    typeof message.provenance !== "object" ||
-    message.provenance === null ||
-    message.provenance.kind !== "pi-session" ||
-    message.provenance.trust !== "claimed-local" ||
-    !SESSION_ID.test(message.provenance.sessionId) ||
-    !nonEmptyString(message.provenance.workspace) ||
-    (message.provenance.sessionName !== undefined &&
-      !nonEmptyString(message.provenance.sessionName)) ||
-    typeof message.target !== "object" ||
-    message.target === null ||
-    !SESSION_ID.test(message.target.sessionId)
-  )
-    throw new Error("invalid agent message");
-  return message as AgentMessage;
-}
+/** sortable by send time; the id suffix lets receivers skip in-flight files unread. */
+const messageFileName = (message: AgentMessage): string =>
+  `${message.sentAt.replaceAll(/[^0-9TZ]/gu, "-")}_${message.id}.json`;
 
-function uniqueSessions(
-  sessionsDirs: string[],
-  listSessions: typeof listMentionableSessions,
-): MentionableSession[] {
-  const claimed = new Set<string>();
-  return sessionsDirs.flatMap((sessionsDir) =>
-    listSessions(sessionsDir).filter((session) => {
-      if (claimed.has(session.sessionId)) return false;
-      claimed.add(session.sessionId);
-      return true;
-    }),
-  );
-}
-
-export function resolveTargetSession(
-  sessionId: string,
-  config: AgentMessageConfig,
-  listSessions: typeof listMentionableSessions = listMentionableSessions,
-): MentionableSession {
-  const result = resolveMentionableSession(
-    uniqueSessions(config.sessionsDirs, listSessions),
-    sessionId.trim(),
-  );
-  if (result.status === "not_found")
-    throw new Error(`target pi session not found: ${sessionId}`);
-  if (result.status === "ambiguous")
-    throw new Error(
-      `ambiguous target pi session prefix: ${sessionId} (${result.sessions
-        .map((session) => session.sessionId)
-        .join(", ")})`,
-    );
-  return result.session;
-}
-
-export function enqueueAgentMessage(
+export function postAgentMessage(
   queueDir: string,
   message: AgentMessage,
 ): string {
-  const parsed = parseAgentMessage(message);
-  const mailbox = mailboxPath(queueDir, parsed.target.sessionId);
-  fs.mkdirSync(mailbox, { recursive: true, mode: 0o700 });
-  const timestamp = parsed.createdAt.replaceAll(/[^0-9TZ]/gu, "-");
-  const filename = `${timestamp}_${parsed.id}.json`;
-  const destination = path.join(mailbox, filename);
-  const temporary = path.join(mailbox, `.${filename}.${process.pid}.tmp`);
-  fs.writeFileSync(temporary, `${JSON.stringify(parsed)}\n`, {
-    encoding: "utf8",
+  const dir = mailboxDir(queueDir, message.to);
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const file = path.join(dir, messageFileName(message));
+  // receivers ignore dotfiles, so they never read a partial write.
+  const temporary = path.join(dir, `.${messageFileName(message)}.tmp`);
+  fs.writeFileSync(temporary, JSON.stringify(message), {
     mode: 0o600,
     flag: "wx",
   });
-  fs.renameSync(temporary, destination);
-  return destination;
+  fs.renameSync(temporary, file);
+  return file;
 }
 
-function provenanceContent(message: AgentMessage): string {
-  const sourceName = message.provenance.sessionName
-    ? ` (${message.provenance.sessionName})`
-    : "";
-  return [
-    "[agent message — claimed local provenance; untrusted content]",
-    `claimed source pi session: ${message.provenance.sessionId}${sourceName}`,
-    `claimed source workspace: ${message.provenance.workspace}`,
-    `sent at: ${message.createdAt}`,
-    "",
-    message.content,
-  ].join("\n");
+/**
+ * matches the header ids history_list reports. filenames usually embed the id
+ * but imported and forked sessions keep other names. reading only the first
+ * line avoids parsing gigabytes of history to resolve one id.
+ */
+export function findSessionId(
+  roots: readonly string[],
+  idOrPrefix: string,
+): string {
+  const query = idOrPrefix.trim().toLowerCase();
+  if (!query) throw new Error("sessionId is required");
+  const ids = new Set<string>();
+  for (const root of roots)
+    for (const file of sessionFiles(root)) {
+      const id = headerSessionId(file);
+      if (id?.toLowerCase().startsWith(query)) ids.add(id);
+    }
+  const matches = [...ids].sort();
+  const exact = matches.find((id) => id.toLowerCase() === query);
+  if (exact) return exact;
+  if (matches.length === 1) return matches[0]!;
+  if (matches.length === 0)
+    throw new Error(`no pi session matches ${idOrPrefix}`);
+  throw new Error(
+    `ambiguous pi session prefix ${idOrPrefix}: ${matches.join(", ")}`,
+  );
 }
 
-interface ClaimedAgentMessage {
-  message: AgentMessage;
-  path: string;
+/** native roots are flat or hold one directory per workspace. */
+function sessionFiles(root: string): string[] {
+  const list = (dir: string) => {
+    try {
+      return fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return [];
+    }
+  };
+  return list(root).flatMap((entry) => {
+    const file = path.join(root, entry.name);
+    if (entry.isFile()) return entry.name.endsWith(".jsonl") ? [file] : [];
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) return [];
+    return list(file)
+      .filter((child) => child.isFile() && child.name.endsWith(".jsonl"))
+      .map((child) => path.join(file, child.name));
+  });
 }
 
-interface AgentMessageDrain {
-  claims: ClaimedAgentMessage[];
-  hasMore: boolean;
-}
-
-function processAlive(pid: number): boolean {
+function headerSessionId(file: string): string | undefined {
+  let fd: number | undefined;
   try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "EPERM";
+    fd = fs.openSync(file, "r");
+    const buffer = Buffer.alloc(16 * 1024);
+    const length = fs.readSync(fd, buffer, 0, buffer.length, 0);
+    const firstLine = buffer
+      .subarray(0, length)
+      .toString("utf8")
+      .split("\n", 1)[0]!;
+    const header = JSON.parse(firstLine) as { type?: unknown; id?: unknown };
+    return header.type === "session" && typeof header.id === "string"
+      ? header.id
+      : undefined;
+  } catch {
+    return undefined;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
   }
-}
-
-function requeueAgentMessageClaim(claimed: string): void {
-  const match = path.basename(claimed).match(CLAIMED_MESSAGE_FILE);
-  if (!match) throw new Error(`invalid agent message claim: ${claimed}`);
-  const pending = path.join(path.dirname(claimed), match[1]!);
-  if (fs.existsSync(pending)) fs.unlinkSync(claimed);
-  else fs.renameSync(claimed, pending);
-}
-
-function recoverAgentMessageClaims(
-  mailbox: string,
-  activeClaimPaths: ReadonlySet<string>,
-): void {
-  for (const filename of fs.readdirSync(mailbox)) {
-    const match = filename.match(CLAIMED_MESSAGE_FILE);
-    if (!match) continue;
-    const claimed = path.join(mailbox, filename);
-    if (activeClaimPaths.has(claimed)) continue;
-    const ownerPid = Number(match[2]);
-    const leaseExpired =
-      fs.statSync(claimed).mtimeMs < Date.now() - CLAIM_LEASE_MS;
-    if (ownerPid !== process.pid && processAlive(ownerPid) && !leaseExpired)
-      continue;
-    requeueAgentMessageClaim(claimed);
-  }
-}
-
-function quarantineAgentMessage(
-  mailbox: string,
-  claimed: string,
-  filename: string,
-): void {
-  const rejected = path.join(mailbox, "rejected");
-  fs.mkdirSync(rejected, { recursive: true, mode: 0o700 });
-  fs.renameSync(claimed, path.join(rejected, `${filename}.${randomUUID()}`));
-}
-
-export function drainAgentMessages(
-  pi: Pick<ExtensionAPI, "sendMessage">,
-  queueDir: string,
-  sessionId: string,
-  onClaim: (claim: ClaimedAgentMessage) => void = () => {},
-  persistedMessageIds: ReadonlySet<string> = new Set(),
-  activeClaimPaths: ReadonlySet<string> = new Set(),
-  activeMessageIds: ReadonlySet<string> = new Set(),
-  batchSize: number = DRAIN_BATCH_SIZE,
-): AgentMessageDrain {
-  const mailbox = mailboxPath(queueDir, sessionId);
-  fs.mkdirSync(mailbox, { recursive: true, mode: 0o700 });
-  recoverAgentMessageClaims(mailbox, activeClaimPaths);
-  const claims: ClaimedAgentMessage[] = [];
-  const seenMessageIds = new Set(activeMessageIds);
-  const files = fs
-    .readdirSync(mailbox)
-    .filter((filename) => MESSAGE_FILE.test(filename))
-    .sort((left, right) => left.localeCompare(right));
-
-  for (const filename of files.slice(0, batchSize)) {
-    const pending = path.join(mailbox, filename);
-    const claimed = `${pending}.processing-${process.pid}-${randomUUID()}`;
-    try {
-      fs.renameSync(pending, claimed);
-      const now = new Date();
-      fs.utimesSync(claimed, now, now);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
-      throw error;
-    }
-    try {
-      const message = parseAgentMessage(
-        JSON.parse(fs.readFileSync(claimed, "utf8")),
-      );
-      if (message.target.sessionId !== sessionId)
-        throw new Error("agent message target does not match mailbox");
-      if (persistedMessageIds.has(message.id)) {
-        fs.unlinkSync(claimed);
-        continue;
-      }
-      if (seenMessageIds.has(message.id)) {
-        fs.unlinkSync(claimed);
-        continue;
-      }
-      seenMessageIds.add(message.id);
-      const claim = { message, path: claimed };
-      claims.push(claim);
-      onClaim(claim);
-      pi.sendMessage(
-        {
-          customType: "agent-message",
-          content: provenanceContent(message),
-          display: true,
-          details: {
-            version: message.version,
-            messageId: message.id,
-            provenance: message.provenance,
-            target: message.target,
-            createdAt: message.createdAt,
-          },
-        },
-        { deliverAs: "followUp", triggerTurn: true },
-      );
-    } catch (error) {
-      const claimedMessage = claims.find((claim) => claim.path === claimed);
-      if (claimedMessage) {
-        claims.splice(claims.indexOf(claimedMessage), 1);
-        try {
-          requeueAgentMessageClaim(claimed);
-        } catch {}
-        throw error;
-      }
-      try {
-        quarantineAgentMessage(mailbox, claimed, filename);
-      } catch (quarantineError) {
-        console.error(
-          "[@bds_pi/agent-message] failed to quarantine message:",
-          quarantineError,
-        );
-      }
-      console.error(
-        `[@bds_pi/agent-message] rejected queued message ${filename}:`,
-        error,
-      );
-    }
-  }
-  return { claims, hasMore: files.length > batchSize };
 }
 
 const AGENT_MESSAGE_PARAMETERS: TObject<{
@@ -363,237 +204,263 @@ const AGENT_MESSAGE_PARAMETERS: TObject<{
   message: TString;
 }> = Type.Object({
   sessionId: Type.String({
-    description:
-      "Target pi session id or an unambiguous id prefix. Use history_list to find it.",
+    description: "Target pi session id or an unambiguous prefix.",
   }),
-  message: Type.String({
-    minLength: 1,
-    maxLength: MAX_MESSAGE_CHARS,
-    description: "Message to deliver to the target agent.",
-  }),
+  message: Type.String({ minLength: 1, maxLength: MAX_TEXT_CHARS }),
 });
-
-type AgentMessageParams = Static<typeof AGENT_MESSAGE_PARAMETERS>;
 
 export function createAgentMessageTool(
   config: AgentMessageConfig,
-  listSessions: typeof listMentionableSessions = listMentionableSessions,
-  getSessionName: () => string | undefined = () => undefined,
 ): ToolDefinition<typeof AGENT_MESSAGE_PARAMETERS, AgentMessage> {
   return {
     name: "agent_message",
     label: "Agent Message",
     description:
-      "Send a durable message to another pi agent session. The message is queued while the target is inactive or busy, then delivered with explicit source-session provenance. Use history_list first when the target session id is unknown.",
-    promptSnippet:
-      "Queue a provenance-marked message for another pi agent session",
+      "Send a message to another pi session. It joins that session's conversation attributed to this session: an idle session starts working on it, a busy one reads it at its next step, a closed one receives it when resumed. Use history_list to find session ids.",
     parameters: AGENT_MESSAGE_PARAMETERS,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const input: AgentMessageParams = params;
-      const target = resolveTargetSession(
-        input.sessionId,
-        config.sessionsDirs.length
-          ? config
-          : {
-              ...config,
-              sessionsDirs: [
-                resolveNativeSessionRoot({
-                  cwd: ctx.cwd,
-                  sessionManager: ctx.sessionManager,
-                }),
-              ],
-            },
-        listSessions,
-      );
-      const sourceSessionId = ctx.sessionManager.getSessionId();
-      if (target.sessionId === sourceSessionId)
-        throw new Error("agent_message target must be a different pi session");
-      const sourceSessionName = getSessionName();
+      const text = params.message.trim();
+      if (!text) throw new Error("message is empty");
+      const roots = config.sessionsDirs.length
+        ? config.sessionsDirs
+        : [
+            resolveNativeSessionRoot({
+              cwd: ctx.cwd,
+              sessionManager: ctx.sessionManager,
+            }),
+          ];
+      const to = findSessionId(roots, params.sessionId);
+      const sessionId = ctx.sessionManager.getSessionId();
+      if (to === sessionId)
+        throw new Error("agent_message target is the current session");
+      const sessionName = ctx.sessionManager.getSessionName();
       const message: AgentMessage = {
-        version: MESSAGE_VERSION,
         id: randomUUID(),
-        provenance: {
-          kind: "pi-session",
-          trust: "claimed-local",
-          sessionId: sourceSessionId,
-          ...(sourceSessionName ? { sessionName: sourceSessionName } : {}),
+        from: {
+          sessionId,
+          ...(sessionName ? { sessionName } : {}),
           workspace: ctx.cwd,
         },
-        target: { sessionId: target.sessionId },
-        createdAt: new Date().toISOString(),
-        content: input.message.trim(),
+        to,
+        sentAt: new Date().toISOString(),
+        text,
       };
-      enqueueAgentMessage(config.queueDir, message);
+      postAgentMessage(config.queueDir, message);
       return {
-        content: [
-          {
-            type: "text",
-            text: `queued agent message ${message.id} for session ${target.sessionId}${target.sessionName ? ` (${target.sessionName})` : ""}`,
-          },
-        ],
+        content: [{ type: "text", text: `sent message to session ${to}` }],
         details: message,
       };
     },
   };
 }
 
-function persistedAgentMessageIds(entries: readonly unknown[]): Set<string> {
-  const ids = new Set<string>();
-  for (const value of entries) {
-    if (typeof value !== "object" || value === null) continue;
-    const entry = value as {
-      type?: unknown;
-      customType?: unknown;
-      details?: unknown;
-    };
-    if (entry.type !== "custom_message") continue;
-    if (entry.customType !== "agent-message") continue;
-    if (typeof entry.details !== "object" || entry.details === null) continue;
-    const messageId = (entry.details as { messageId?: unknown }).messageId;
-    if (typeof messageId === "string") ids.add(messageId);
-  }
-  return ids;
+function loadConfig(): AgentMessageConfig | undefined {
+  const { enabled, config } = getEnabledExtensionConfig(
+    "@bds_pi/agent-message",
+    CONFIG_DEFAULTS,
+    { schema: CONFIG_SCHEMA },
+  );
+  if (!enabled) return undefined;
+  return {
+    queueDir: expandPath(config.queueDir),
+    sessionsDirs: [...new Set(config.sessionsDirs.map(expandPath))],
+  };
 }
 
+/**
+ * omit `config` to read `@bds_pi/agent-message` settings, which can disable
+ * the extension; a supplied config is used as-is.
+ */
 export function createAgentMessageExtension(
-  deps: AgentMessageExtensionDeps = DEFAULT_DEPS,
+  config?: AgentMessageConfig,
+  startupGraceMs: number = STARTUP_GRACE_MS,
 ): (pi: ExtensionAPI) => void {
   return (pi) => {
-    const loaded = deps.getEnabledExtensionConfig(
-      "@bds_pi/agent-message",
-      CONFIG_DEFAULTS,
-      { schema: AGENT_MESSAGE_CONFIG_SCHEMA },
-    );
-    if (!loaded.enabled) return;
-    const config = normalizeConfig(loaded.config);
-    let watcher: fs.FSWatcher | undefined;
-    let initialDrainTimer: NodeJS.Timeout | undefined;
-    let reconcileTimer: NodeJS.Timeout | undefined;
-    let scheduledDrain: NodeJS.Immediate | undefined;
-    let currentSessionId: string | undefined;
-    let draining = false;
-    let drainRequested = false;
-    const claims = new Map<string, string>();
-    const persistedMessageIds = new Set<string>();
+    const resolved = config ?? loadConfig();
+    if (!resolved) return;
+    const { queueDir } = resolved;
+    pi.registerTool(withPromptPatch(createAgentMessageTool(resolved)));
 
-    const scheduleDrain = () => {
-      if (scheduledDrain) return;
-      scheduledDrain = setImmediate(() => {
-        scheduledDrain = undefined;
-        drain();
-      });
+    let sessionId: string | undefined;
+    let transcript: () => readonly unknown[] = () => [];
+    let isIdle = () => false;
+    let watcher: fs.FSWatcher | undefined;
+    let poll: NodeJS.Timeout | undefined;
+    let grace: NodeJS.Timeout | undefined;
+    let started = false;
+    /** pi reports idle before settle handlers run; wait for ours. */
+    let running = false;
+    /**
+     * run starters not yet persisted: pi defers runs started during
+     * settlement, and the watcher must not send those again meanwhile. a
+     * starter whose run fails before persisting it stays until the session
+     * restarts, rather than risk the double send.
+     */
+    const starting = new Set<string>();
+
+    /** unacknowledged mail, oldest first; removes acknowledged and malformed files. */
+    const pending = (): AgentMessage[] => {
+      if (!sessionId) return [];
+      const dir = mailboxDir(queueDir, sessionId);
+      const persisted = deliveredIds(transcript());
+      const messages: AgentMessage[] = [];
+      const names = fs
+        .readdirSync(dir)
+        .filter((name) => !name.startsWith(".") && name.endsWith(".json"))
+        .sort();
+      for (const name of names) {
+        const file = path.join(dir, name);
+        const id = name.slice(name.indexOf("_") + 1, -".json".length);
+        if (persisted.has(id)) {
+          fs.rmSync(file, { force: true });
+          starting.delete(id);
+          continue;
+        }
+        if (starting.has(id)) continue;
+        let message: AgentMessage | undefined;
+        try {
+          message = parseAgentMessage(
+            JSON.parse(fs.readFileSync(file, "utf8")),
+          );
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        }
+        if (
+          !message ||
+          message.to !== sessionId ||
+          messageFileName(message) !== name
+        ) {
+          console.error(`[@bds_pi/agent-message] rejected ${file}`);
+          fs.renameSync(file, `${file}.rejected`);
+          continue;
+        }
+        messages.push(message);
+      }
+      return messages;
     };
 
-    const drain = () => {
-      if (!currentSessionId) return;
-      if (draining) {
-        drainRequested = true;
-        return;
-      }
-      draining = true;
+    /** busy sessions take mail at their next boundary instead. */
+    const deliverIdle = (startTurn = true) => {
       try {
-        const result = drainAgentMessages(
-          pi,
-          config.queueDir,
-          currentSessionId,
-          (claim) => {
-            claims.set(claim.message.id, claim.path);
-          },
-          persistedMessageIds,
-          new Set(claims.values()),
-          new Set(claims.keys()),
-        );
-        if (result.hasMore) drainRequested = true;
+        // during the startup grace, hold mail for the first prompt's
+        // boundary or the grace's end rather than show it unanswered.
+        if (!sessionId || running || !isIdle() || (startTurn && !started))
+          return;
+        const mail = pending();
+        // one run per batch: only the last message starts it.
+        const starter = startTurn ? mail.pop() : undefined;
+        // appending while idle persists immediately; only starters need tracking.
+        for (const message of mail)
+          pi.sendMessage(asCustomMessage(message), { triggerTurn: false });
+        if (!starter) return;
+        starting.add(starter.id);
+        pi.sendMessage(asCustomMessage(starter), { triggerTurn: true });
       } catch (error) {
-        console.error("[@bds_pi/agent-message] mailbox drain failed:", error);
-      } finally {
-        draining = false;
-        if (drainRequested) {
-          drainRequested = false;
-          scheduleDrain();
-        }
+        console.error("[@bds_pi/agent-message] delivery failed:", error);
+      }
+    };
+
+    const atBoundary = (event: TurnEndEvent) => {
+      // pi won't continue past an error or abort; leave mail for the idle path.
+      if (event.outcome !== "completed") return;
+      try {
+        const mail = pending();
+        if (mail.length === 0) return;
+        return {
+          entries: [
+            ...event.entries,
+            ...mail.map((message) => ({
+              type: "custom_message" as const,
+              ...asCustomMessage(message),
+            })),
+          ],
+          continue: true,
+        };
+      } catch (error) {
+        console.error("[@bds_pi/agent-message] delivery failed:", error);
+        return undefined;
       }
     };
 
     const stop = () => {
-      if (initialDrainTimer) clearTimeout(initialDrainTimer);
-      initialDrainTimer = undefined;
-      if (reconcileTimer) clearInterval(reconcileTimer);
-      reconcileTimer = undefined;
-      if (scheduledDrain) clearImmediate(scheduledDrain);
-      scheduledDrain = undefined;
       watcher?.close();
       watcher = undefined;
-      currentSessionId = undefined;
-      drainRequested = false;
-      for (const claim of claims.values()) {
-        try {
-          requeueAgentMessageClaim(claim);
-        } catch (error) {
-          console.error(
-            "[@bds_pi/agent-message] failed to release mailbox claim:",
-            error,
-          );
-        }
-      }
-      claims.clear();
-      persistedMessageIds.clear();
+      clearInterval(poll);
+      poll = undefined;
+      clearTimeout(grace);
+      sessionId = undefined;
+      transcript = () => [];
+      isIdle = () => false;
+      started = false;
+      running = false;
+      starting.clear();
     };
 
-    pi.on("session_start", async (_event, ctx) => {
+    pi.on("session_start", (_event, ctx) => {
       stop();
-      currentSessionId = ctx.sessionManager.getSessionId();
-      for (const messageId of persistedAgentMessageIds(
-        ctx.sessionManager.getEntries(),
-      ))
-        persistedMessageIds.add(messageId);
-      const mailbox = mailboxPath(config.queueDir, currentSessionId);
-      fs.mkdirSync(mailbox, { recursive: true, mode: 0o700 });
-      initialDrainTimer = setTimeout(scheduleDrain, 0);
-      initialDrainTimer.unref();
-      reconcileTimer = setInterval(scheduleDrain, RECONCILE_INTERVAL_MS);
-      reconcileTimer.unref();
+      sessionId = ctx.sessionManager.getSessionId();
+      transcript = () => ctx.sessionManager.getEntries();
+      isIdle = () => ctx.isIdle();
+      const dir = mailboxDir(queueDir, sessionId);
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
       try {
-        watcher = deps.watch(mailbox, scheduleDrain);
-        watcher.on("error", (error) => {
-          console.error(
-            "[@bds_pi/agent-message] mailbox watcher failed:",
-            error,
-          );
-        });
-      } catch (error) {
-        console.error(
-          "[@bds_pi/agent-message] mailbox watcher unavailable; polling:",
-          error,
+        watcher = fs.watch(dir, () => deliverIdle());
+        watcher.on("error", (error) =>
+          console.error("[@bds_pi/agent-message] watcher failed:", error),
         );
+      } catch (error) {
+        console.error("[@bds_pi/agent-message] watcher unavailable:", error);
       }
+      poll = setInterval(() => deliverIdle(), POLL_MS);
+      poll.unref();
+      grace = setTimeout(() => {
+        started = true;
+        deliverIdle();
+      }, startupGraceMs);
+      grace.unref();
+      deliverIdle(false);
     });
 
-    pi.on("agent_settled", (_event, ctx) => {
-      if (!ctx.isIdle()) return;
-      const persisted = persistedAgentMessageIds(
-        ctx.sessionManager.getEntries(),
-      );
-      for (const messageId of persisted) {
-        persistedMessageIds.add(messageId);
-      }
-      for (const [messageId, claim] of claims) {
-        if (persisted.has(messageId)) fs.rmSync(claim, { force: true });
-        else requeueAgentMessageClaim(claim);
-        claims.delete(messageId);
-      }
-      scheduleDrain();
+    pi.on("agent_start", () => {
+      running = true;
+    });
+    pi.on("turn_end", atBoundary);
+
+    pi.on("agent_settled", (event) => {
+      // a run already happened, so there's no startup prompt left to protect.
+      clearTimeout(grace);
+      started = true;
+      running = false;
+      deliverIdle(!event.aborted);
     });
 
-    pi.on("session_shutdown", async () => stop());
-    pi.registerTool(
-      withPromptPatch(
-        createAgentMessageTool(config, deps.listMentionableSessions, () =>
-          pi.getSessionName(),
-        ),
-      ),
-    );
+    pi.on("session_shutdown", stop);
   };
+}
+
+function asCustomMessage(message: AgentMessage) {
+  return {
+    customType: CUSTOM_TYPE,
+    content: formatAgentMessage(message),
+    display: true,
+    details: message,
+  };
+}
+
+function deliveredIds(entries: readonly unknown[]): Set<string> {
+  const ids = new Set<string>();
+  for (const entry of entries as {
+    type?: unknown;
+    customType?: unknown;
+    details?: { id?: unknown };
+  }[])
+    if (
+      entry.type === "custom_message" &&
+      entry.customType === CUSTOM_TYPE &&
+      typeof entry.details?.id === "string"
+    )
+      ids.add(entry.details.id);
+  return ids;
 }
 
 const agentMessageExtension: (pi: ExtensionAPI) => void =
@@ -603,445 +470,592 @@ export default agentMessageExtension;
 
 if (import.meta.vitest) {
   const { afterEach, describe, expect, it, vi } = import.meta.vitest;
-  const tempDirs: string[] = [];
+  const {
+    createAgentSession,
+    DefaultResourceLoader,
+    ModelRuntime,
+    SessionManager,
+    SettingsManager,
+  } = await import("@earendil-works/pi-coding-agent");
+  const {
+    fauxProvider,
+    fauxAssistantMessage,
+    fauxToolCall,
+    InMemoryCredentialStore,
+  } = await import("@earendil-works/pi-ai");
 
-  function tempDir(label: string): string {
-    const directory = fs.mkdtempSync(
-      path.join(os.tmpdir(), `pi-agent-message-${label}-`),
-    );
-    tempDirs.push(directory);
-    return directory;
-  }
+  /** fs events can lag under load; the fallback poll would take 30s. */
+  const WATCH_WAIT = { timeout: 5_000 };
+  const eventually = (assertion: () => unknown) =>
+    vi.waitFor(assertion, WATCH_WAIT);
 
-  function session(
-    sessionId: string,
-    overrides: Partial<MentionableSession> = {},
-  ): MentionableSession {
-    return {
-      sessionId,
-      sessionName: "",
-      workspace: "/workspace",
-      filePath: `/sessions/${sessionId}.jsonl`,
-      startedAt: "2026-07-28T00:00:00.000Z",
-      updatedAt: "2026-07-28T00:00:00.000Z",
-      firstUserMessage: "work",
-      searchableText: "work",
-      branchCount: 1,
-      ...overrides,
-    };
-  }
-
+  const roots: string[] = [];
   afterEach(() => {
     vi.restoreAllMocks();
-    vi.unstubAllEnvs();
-    clearConfigCache();
-    setGlobalSettingsPath(
-      path.join(os.tmpdir(), `missing-agent-message-${randomUUID()}.json`),
-    );
-    for (const directory of tempDirs.splice(0))
-      fs.rmSync(directory, { recursive: true, force: true });
+    for (const root of roots.splice(0))
+      fs.rmSync(root, { recursive: true, force: true });
   });
 
+  function tempRoot(): string {
+    const root = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "pi-agent-message-")),
+    );
+    roots.push(root);
+    return root;
+  }
+
+  /** a native session file exists once a session has a conversation. */
+  function persistedSession(cwd: string, sessionDir?: string) {
+    const manager = SessionManager.create(cwd, sessionDir);
+    manager.appendMessage({ role: "user", content: "work", timestamp: 1 });
+    manager.appendMessage(fauxAssistantMessage("ok"));
+    if (!fs.existsSync(manager.getSessionFile()!))
+      throw new Error("fixture session was not persisted");
+    return manager;
+  }
+
+  function sendTool(
+    config: AgentMessageConfig,
+    from: ReturnType<typeof SessionManager.create>,
+    sessionId: string,
+    message: string,
+  ) {
+    return createAgentMessageTool(config).execute(
+      "call",
+      { sessionId, message },
+      undefined,
+      undefined,
+      { cwd: from.getCwd(), sessionManager: from } as never,
+    );
+  }
+
+  async function receiver(
+    root: string,
+    manager: ReturnType<typeof SessionManager.create>,
+    config: AgentMessageConfig,
+    extensions: ((pi: ExtensionAPI) => void)[] = [],
+    startupGraceMs = 0,
+    before: ((pi: ExtensionAPI) => void)[] = [],
+  ) {
+    const runtime = await ModelRuntime.create({
+      credentials: new InMemoryCredentialStore(),
+      refreshOnCreate: false,
+      modelsPath: null,
+    });
+    const faux = fauxProvider();
+    runtime.registerNativeProvider(faux.provider);
+    const settingsManager = SettingsManager.inMemory({
+      compaction: { enabled: false },
+      retry: { enabled: false },
+    });
+    const resourceLoader = new DefaultResourceLoader({
+      cwd: manager.getCwd(),
+      agentDir: root,
+      settingsManager,
+      noExtensions: true,
+      noSkills: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+      extensionFactories: [
+        ...before,
+        createAgentMessageExtension(config, startupGraceMs),
+        ...extensions,
+      ],
+    });
+    await resourceLoader.reload();
+    const { session } = await createAgentSession({
+      cwd: manager.getCwd(),
+      agentDir: root,
+      settingsManager,
+      resourceLoader,
+      modelRuntime: runtime,
+      model: faux.getModel(),
+      sessionManager: manager,
+    });
+    await session.bindExtensions({});
+    // let a zero grace elapse; longer ones are what the test is about.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    /** the runtime emits shutdown before disposing; watchers must not outlive it. */
+    const close = async () => {
+      await session.extensionRunner.emit({
+        type: "session_shutdown",
+        reason: "quit",
+      });
+      session.dispose();
+    };
+    const agentEntries = () =>
+      manager
+        .getEntries()
+        .flatMap((e) =>
+          e.type === "custom_message" && e.customType === CUSTOM_TYPE
+            ? [(e.details as AgentMessage).text]
+            : [],
+        );
+    return { session, faux, close, agentEntries };
+  }
+
+  function post(
+    config: AgentMessageConfig,
+    to: string,
+    text: string,
+    sentAt = new Date(),
+  ) {
+    return postAgentMessage(config.queueDir, {
+      id: randomUUID(),
+      from: { sessionId: "sender", workspace: "/sender" },
+      to,
+      sentAt: sentAt.toISOString(),
+      text,
+    });
+  }
+
+  const textOf = (message: { content?: unknown }): string =>
+    typeof message.content === "string"
+      ? message.content
+      : (message.content as { text?: string }[])
+          .map((part) => part.text ?? "")
+          .join("");
+
+  const lastUserText = (context: { messages: readonly any[] }) =>
+    textOf(context.messages.filter((m) => m.role === "user").at(-1));
+
   describe("agent-message", () => {
-    it.each(["grouped", "flat", "ephemeral", "explicit"] as const)(
-      "queues to a real SDK target through the %s history root",
-      async (mode) => {
-        const { SessionManager } =
-          await import("@earendil-works/pi-coding-agent");
-        const root = tempDir("native-root");
-        const workspace = path.join(root, "workspace");
-        vi.stubEnv("PI_CODING_AGENT_DIR", path.join(root, "agent"));
-        vi.stubEnv("PI_CODING_AGENT_SESSION_DIR", undefined);
-        const custom = path.join(root, "archive");
-        const target = SessionManager.create(
-          workspace,
-          mode === "grouped" ? undefined : custom,
+    it("resolves targets by id or prefix in grouped and flat roots", async () => {
+      const root = tempRoot();
+      const flat = path.join(root, "flat");
+      const grouped = path.join(root, "grouped");
+      const cwd = path.join(root, "work");
+      const a = persistedSession(cwd, flat);
+      const b = persistedSession(cwd, path.join(grouped, "--work--"));
+      // ids come from headers, whatever the filename; exact ids beat prefixes.
+      for (const id of ["abcd", "abcdef", "abcxyz"])
+        fs.writeFileSync(
+          path.join(flat, `imported-${id}.jsonl`),
+          `${JSON.stringify({ type: "session", id, cwd })}\n`,
         );
-        target.appendMessage({
-          role: "user",
-          content: "target work",
-          timestamp: 1,
-        });
-        if (mode === "ephemeral")
-          vi.stubEnv("PI_CODING_AGENT_SESSION_DIR", custom);
-        const source =
-          mode === "ephemeral"
-            ? SessionManager.inMemory(workspace)
-            : SessionManager.create(
-                workspace,
-                mode === "flat" ? custom : undefined,
-              );
-        const queueDir = path.join(root, "queue");
-        await createAgentMessageTool({
-          queueDir,
-          sessionsDirs: mode === "explicit" ? [custom] : [],
-        }).execute(
-          "native-root",
-          { sessionId: target.getSessionId(), message: "review this work" },
-          AbortSignal.timeout(10_000),
-          undefined,
-          {
-            cwd: workspace,
-            sessionManager: source,
-          } as unknown as ExtensionToolContext,
+      fs.writeFileSync(path.join(flat, "2026_notes.jsonl"), "not json\n");
+      fs.writeFileSync(
+        path.join(flat, "escape.jsonl"),
+        `${JSON.stringify({ type: "session", id: "../escape", cwd })}\n`,
+      );
+      const roots = [flat, grouped];
+      const config = {
+        queueDir: path.join(root, "queue"),
+        sessionsDirs: roots,
+      };
+
+      expect(findSessionId(roots, b.getSessionId())).toBe(b.getSessionId());
+      expect(
+        findSessionId(roots, b.getSessionId().slice(0, -1).toUpperCase()),
+      ).toBe(b.getSessionId());
+      expect(findSessionId(roots, "abcd")).toBe("abcd");
+      expect(findSessionId(roots, "abcx")).toBe("abcxyz");
+      expect(() => findSessionId(roots, "abc")).toThrow("ambiguous");
+      expect(() => findSessionId(roots, "")).toThrow("required");
+      expect(() => findSessionId(roots, "notes")).toThrow(
+        "no pi session matches",
+      );
+      await expect(sendTool(config, a, "../escape", "hi")).rejects.toThrow(
+        "unsupported pi session id",
+      );
+      expect(fs.existsSync(path.join(root, "escape"))).toBe(false);
+      await expect(sendTool(config, a, a.getSessionId(), "hi")).rejects.toThrow(
+        "current session",
+      );
+      await expect(sendTool(config, a, b.getSessionId(), "  ")).rejects.toThrow(
+        "empty",
+      );
+    });
+
+    it("starts a turn in an idle session, attributed to the sender", async () => {
+      const root = tempRoot();
+      const sessions = path.join(root, "sessions");
+      const cwd = path.join(root, "work");
+      const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
+      const sender = persistedSession(cwd, sessions);
+      sender.appendSessionInfo("planner");
+      const target = persistedSession(cwd, sessions);
+      const { session, faux, close } = await receiver(root, target, config);
+      const seen: string[] = [];
+      faux.setResponses([
+        (context) => {
+          seen.push(lastUserText(context));
+          return fauxAssistantMessage("on it");
+        },
+      ]);
+      try {
+        const sent = await sendTool(
+          config,
+          sender,
+          target.getSessionId(),
+          "review the diff",
         );
-        const mailbox = mailboxPath(queueDir, target.getSessionId());
-        const files = fs.readdirSync(mailbox);
-        expect(files).toHaveLength(1);
-        const queued = JSON.parse(
-          fs.readFileSync(path.join(mailbox, files[0]!), "utf8"),
+        await eventually(() => expect(seen).toHaveLength(1));
+        await session.waitForIdle();
+        expect(seen[0]).toBe(
+          `message from pi session ${sender.getSessionId()} (planner):\n\nreview the diff`,
         );
-        expect(queued).toMatchObject({
-          provenance: { sessionId: source.getSessionId(), workspace },
-          target: { sessionId: target.getSessionId() },
-          content: "review this work",
-        });
+        expect(
+          target.getEntries().find((entry) => entry.type === "custom_message"),
+        ).toMatchObject({ customType: CUSTOM_TYPE, details: sent.details });
+        await eventually(() =>
+          expect(
+            fs.readdirSync(mailboxDir(config.queueDir, target.getSessionId())),
+          ).toEqual([]),
+        );
+      } finally {
+        await close();
+      }
+    });
+
+    it("reaches a busy session at its next step, without pi's queue", async () => {
+      const root = tempRoot();
+      const cwd = path.join(root, "work");
+      const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
+      const target = SessionManager.inMemory(cwd);
+      const { session, faux, close, agentEntries } = await receiver(
+        root,
+        target,
+        config,
+      );
+      const seen: string[] = [];
+      faux.setResponses([
+        async () => {
+          post(config, target.getSessionId(), "also check the tests");
+          // the watcher fires while busy; mail must wait for the boundary.
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          expect(session.agent.hasQueuedMessages()).toBe(false);
+          return fauxAssistantMessage(fauxToolCall("missing_tool", {}), {
+            stopReason: "toolUse",
+          });
+        },
+        (context) => {
+          // the tool turn ended mid-run: mail is already in context.
+          seen.push(lastUserText(context));
+          return fauxAssistantMessage("checked");
+        },
+        () => fauxAssistantMessage("extra"),
+      ]);
+      try {
+        await session.prompt("start");
+        await session.waitForIdle();
+        expect(seen).toEqual([
+          "message from pi session sender:\n\nalso check the tests",
+        ]);
+        expect(agentEntries()).toEqual(["also check the tests"]);
+        expect(faux.state.callCount).toBe(2);
+      } finally {
+        await close();
+      }
+    });
+
+    it("answers mail that arrived during a failed turn", async () => {
+      const root = tempRoot();
+      const cwd = path.join(root, "work");
+      const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
+      const target = SessionManager.inMemory(cwd);
+      const { session, faux, close } = await receiver(root, target, config);
+      const seen: string[] = [];
+      faux.setResponses([
+        async () => {
+          post(config, target.getSessionId(), "are you there?");
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          return fauxAssistantMessage("", {
+            stopReason: "error",
+            errorMessage: "provider down",
+          });
+        },
+        (context) => {
+          seen.push(lastUserText(context));
+          return fauxAssistantMessage("yes");
+        },
+      ]);
+      try {
+        await session.prompt("start");
+        await eventually(() => expect(seen).toHaveLength(1));
+        await session.waitForIdle();
+        expect(seen).toEqual([
+          "message from pi session sender:\n\nare you there?",
+        ]);
+      } finally {
+        await close();
+      }
+    });
+
+    it.each([
+      ["escape clears pi's queue", "escape"],
+      ["an rpc abort", "rpc"],
+      ["an rpc abort and a reload", "reload"],
+      ["edit-queued clears pi's queue without aborting", "edit"],
+    ] as const)(
+      "delivers each message exactly once after %s",
+      async (_case, action) => {
+        const root = tempRoot();
+        const cwd = path.join(root, "work");
+        const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
+        const target = SessionManager.inMemory(cwd);
+        const { session, faux, close, agentEntries } = await receiver(
+          root,
+          target,
+          config,
+          [
+            // a slow settle handler, like session-name's summary request.
+            (pi) =>
+              pi.on(
+                "agent_settled",
+                () => new Promise((r) => setTimeout(r, 50)),
+              ),
+          ],
+        );
+        faux.setResponses([
+          async () => {
+            const now = Date.now();
+            post(config, target.getSessionId(), "first", new Date(now));
+            post(config, target.getSessionId(), "second", new Date(now + 1));
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            await session.prompt("queued by the user", {
+              streamingBehavior: "steer",
+            });
+            if (action !== "rpc" && action !== "reload") session.clearQueue();
+            if (action !== "edit") void session.abort();
+            return fauxAssistantMessage("first turn");
+          },
+          ...[1, 2, 3, 4].map(() => () => fauxAssistantMessage("ok")),
+        ]);
+        try {
+          await session.prompt("start");
+          await session.waitForIdle();
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          if (action === "reload") await session.reload();
+          if (action !== "edit") {
+            // the user stopped the run: show the mail, don't act on it.
+            expect(agentEntries()).toEqual(["first", "second"]);
+            expect(faux.state.callCount).toBe(1);
+            await session.prompt("carry on");
+          }
+          await session.waitForIdle();
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          await session.waitForIdle();
+          expect(agentEntries()).toEqual(["first", "second"]);
+          expect(
+            fs.readdirSync(mailboxDir(config.queueDir, target.getSessionId())),
+          ).toEqual([]);
+        } finally {
+          await close();
+        }
       },
     );
 
-    it("resolves exact ids ahead of ambiguous prefixes", () => {
-      const alpha = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-      const alphabet = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab";
-      const config = {
-        queueDir: tempDir("queue"),
-        sessionsDirs: ["/first", "/second"],
-      };
-      const listSessions = vi.fn((directory: string) =>
-        directory === "/first"
-          ? [session(alpha), session(alphabet)]
-          : [session(alpha)],
+    it("runs mail arriving while idle as one turn", async () => {
+      const root = tempRoot();
+      const cwd = path.join(root, "work");
+      const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
+      const target = SessionManager.inMemory(cwd);
+      const { session, faux, close, agentEntries } = await receiver(
+        root,
+        target,
+        config,
       );
-
-      expect(resolveTargetSession(alpha, config, listSessions).sessionId).toBe(
-        alpha,
-      );
-      expect(() =>
-        resolveTargetSession(
-          "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa",
-          config,
-          listSessions,
-        ),
-      ).toThrow("ambiguous target pi session prefix");
-    });
-
-    it("retains claims until persistence is acknowledged", () => {
-      const queueDir = tempDir("drain");
-      const sent: Array<{ message: any; options: any }> = [];
-      const sourceSessionId = "11111111-1111-4111-8111-111111111111";
-      const targetSessionId = "22222222-2222-4222-8222-222222222222";
-      const sendMessage = vi.fn((message, options) =>
-        sent.push({ message, options }),
-      );
-      for (const [id, createdAt, content] of [
-        [
-          "00000000-0000-4000-8000-000000000002",
-          "2026-07-28T00:00:02.000Z",
-          "second",
-        ],
-        [
-          "00000000-0000-4000-8000-000000000001",
-          "2026-07-28T00:00:01.000Z",
-          "first",
-        ],
-      ] as const)
-        enqueueAgentMessage(queueDir, {
-          version: 1,
-          id,
-          provenance: {
-            kind: "pi-session",
-            trust: "claimed-local",
-            sessionId: sourceSessionId,
-            sessionName: "source work",
-            workspace: "/source",
-          },
-          target: { sessionId: targetSessionId },
-          createdAt,
-          content,
-        });
-      const old = new Date(Date.now() - 2 * CLAIM_LEASE_MS);
-      for (const filename of fs.readdirSync(
-        mailboxPath(queueDir, targetSessionId),
-      ))
-        fs.utimesSync(
-          path.join(mailboxPath(queueDir, targetSessionId), filename),
-          old,
-          old,
-        );
-
-      const { claims } = drainAgentMessages(
-        { sendMessage } as any,
-        queueDir,
-        targetSessionId,
-      );
-      expect(claims).toHaveLength(2);
-      expect(fs.statSync(claims[0]!.path).mtimeMs).toBeGreaterThan(
-        Date.now() - 1_000,
-      );
-      expect(
-        sent.map(({ message }) => message.content.split("\n").at(-1)),
-      ).toEqual(["first", "second"]);
-      expect(sent[0]?.message).toMatchObject({
-        customType: "agent-message",
-        display: true,
-        details: {
-          provenance: {
-            kind: "pi-session",
-            trust: "claimed-local",
-            sessionId: sourceSessionId,
-            sessionName: "source work",
-            workspace: "/source",
-          },
-        },
-      });
-      expect(sent[0]?.options).toEqual({
-        deliverAs: "followUp",
-        triggerTurn: true,
-      });
-      expect(
-        fs.readdirSync(mailboxPath(queueDir, targetSessionId)),
-      ).toHaveLength(2);
-      const secondSend = vi.fn();
-      expect(
-        drainAgentMessages(
-          { sendMessage: secondSend } as any,
-          queueDir,
-          targetSessionId,
-          undefined,
-          new Set(),
-          new Set(claims.map((claim) => claim.path)),
-        ).claims,
-      ).toEqual([]);
-      expect(secondSend).not.toHaveBeenCalled();
-      for (const claim of claims) fs.rmSync(claim.path);
-    });
-
-    it("recovers abandoned claims and quarantines malformed messages", () => {
-      const queueDir = tempDir("recover");
-      const targetSessionId = "22222222-2222-4222-8222-222222222222";
-      const mailbox = mailboxPath(queueDir, targetSessionId);
-      fs.mkdirSync(mailbox, { recursive: true });
-      const validFilename =
-        "2026-07-28T00-00-00-000Z_00000000-0000-4000-8000-000000000001.json";
-      const validMessage: AgentMessage = {
-        version: 1,
-        id: "00000000-0000-4000-8000-000000000001",
-        provenance: {
-          kind: "pi-session",
-          trust: "claimed-local",
-          sessionId: "11111111-1111-4111-8111-111111111111",
-          workspace: "/source",
-        },
-        target: { sessionId: targetSessionId },
-        createdAt: "2026-07-28T00:00:00.000Z",
-        content: "recover me",
-      };
-      fs.writeFileSync(
-        path.join(
-          mailbox,
-          `${validFilename}.processing-${process.pid}-00000000-0000-4000-8000-000000000002`,
-        ),
-        JSON.stringify(validMessage),
-      );
-      fs.writeFileSync(
-        path.join(
-          mailbox,
-          "2026-07-28T00-00-01-000Z_00000000-0000-4000-8000-000000000003.json",
-        ),
-        "{bad json",
-      );
-      const error = vi.spyOn(console, "error").mockImplementation(() => {});
-
-      const { claims } = drainAgentMessages(
-        { sendMessage: vi.fn() } as any,
-        queueDir,
-        targetSessionId,
-      );
-
-      expect(claims).toHaveLength(1);
-      expect(fs.readdirSync(path.join(mailbox, "rejected"))).toHaveLength(1);
-      expect(error).toHaveBeenCalledWith(
-        expect.stringContaining("rejected queued message"),
-        expect.anything(),
-      );
-      fs.rmSync(claims[0]!.path);
-    });
-
-    it("removes already-persisted claims without redelivery", () => {
-      const queueDir = tempDir("dedupe");
-      const targetSessionId = "22222222-2222-4222-8222-222222222222";
-      const message: AgentMessage = {
-        version: 1,
-        id: "00000000-0000-4000-8000-000000000001",
-        provenance: {
-          kind: "pi-session",
-          trust: "claimed-local",
-          sessionId: "11111111-1111-4111-8111-111111111111",
-          workspace: "/source",
-        },
-        target: { sessionId: targetSessionId },
-        createdAt: "2026-07-28T00:00:00.000Z",
-        content: "already there",
-      };
-      enqueueAgentMessage(queueDir, message);
-      const sendMessage = vi.fn();
-
-      expect(
-        drainAgentMessages(
-          { sendMessage } as any,
-          queueDir,
-          targetSessionId,
-          undefined,
-          new Set([message.id]),
-        ).claims,
-      ).toEqual([]);
-      expect(sendMessage).not.toHaveBeenCalled();
-      expect(fs.readdirSync(mailboxPath(queueDir, targetSessionId))).toEqual(
-        [],
-      );
-    });
-
-    it("does not deliver duplicate message ids", () => {
-      const queueDir = tempDir("duplicate");
-      const targetSessionId = "22222222-2222-4222-8222-222222222222";
-      const message: AgentMessage = {
-        version: 1,
-        id: "00000000-0000-4000-8000-000000000001",
-        provenance: {
-          kind: "pi-session",
-          trust: "claimed-local",
-          sessionId: "11111111-1111-4111-8111-111111111111",
-          workspace: "/source",
-        },
-        target: { sessionId: targetSessionId },
-        createdAt: "2026-07-28T00:00:00.000Z",
-        content: "first",
-      };
-      enqueueAgentMessage(queueDir, message);
-      enqueueAgentMessage(queueDir, {
-        ...message,
-        createdAt: "2026-07-28T00:00:01.000Z",
-        content: "duplicate",
-      });
-      const sendMessage = vi.fn();
-
-      const first = drainAgentMessages(
-        { sendMessage } as any,
-        queueDir,
-        targetSessionId,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        1,
-      );
-      const second = drainAgentMessages(
-        { sendMessage } as any,
-        queueDir,
-        targetSessionId,
-        undefined,
-        undefined,
-        new Set(first.claims.map((claim) => claim.path)),
-        new Set([message.id]),
-        1,
-      );
-
-      expect(sendMessage).toHaveBeenCalledOnce();
-      expect(first.hasMore).toBe(true);
-      expect(first.claims).toHaveLength(1);
-      expect(second).toMatchObject({ claims: [], hasMore: false });
-      expect(
-        fs.readdirSync(mailboxPath(queueDir, targetSessionId)),
-      ).toHaveLength(1);
-      fs.rmSync(first.claims[0]!.path);
-    });
-
-    it("requeues dropped follow-ups and acknowledges persisted ones", async () => {
-      const tools: ToolDefinition[] = [];
-      const handlers = new Map<string, (...args: any[]) => unknown>();
-      const watcher = { close: vi.fn(), on: vi.fn() };
-      const queueDir = tempDir("extension");
-      const targetSessionId = "33333333-3333-4333-8333-333333333333";
-      const message: AgentMessage = {
-        version: 1,
-        id: "00000000-0000-4000-8000-000000000001",
-        provenance: {
-          kind: "pi-session",
-          trust: "claimed-local",
-          sessionId: "11111111-1111-4111-8111-111111111111",
-          workspace: "/source",
-        },
-        target: { sessionId: targetSessionId },
-        createdAt: "2026-07-28T00:00:00.000Z",
-        content: "retry me",
-      };
-      enqueueAgentMessage(queueDir, message);
-      const entries: unknown[] = [];
-      const extension = createAgentMessageExtension({
-        getEnabledExtensionConfig: vi.fn((_namespace, defaults) => ({
-          enabled: true,
-          config: {
-            ...defaults,
-            queueDir,
-            sessionsDirs: ["/sessions"],
-          },
-        })) as typeof getEnabledExtensionConfig,
-        listMentionableSessions: vi.fn(() => []),
-        watch: vi.fn(() => watcher) as unknown as typeof fs.watch,
-      });
-      const sendMessage = vi.fn();
-      const pi = {
-        registerTool: (tool: ToolDefinition) => tools.push(tool),
-        on: (event: string, handler: (...args: any[]) => unknown) =>
-          handlers.set(event, handler),
-        sendMessage,
-        getSessionName: () => "current work",
-      } as unknown as ExtensionAPI;
-      extension(pi);
-
-      expect(tools.map((tool) => tool.name)).toEqual(["agent_message"]);
-      expect([...handlers.keys()].sort()).toEqual([
-        "agent_settled",
-        "session_shutdown",
-        "session_start",
+      faux.setResponses([
+        () => fauxAssistantMessage("done"),
+        () => fauxAssistantMessage("read both"),
+        () => fauxAssistantMessage("extra"),
       ]);
-      await handlers.get("session_start")?.(
-        {},
-        {
-          sessionManager: {
-            getSessionId: () => targetSessionId,
-            getEntries: () => entries,
-          },
-        },
-      );
-      await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledOnce());
+      try {
+        await session.prompt("start");
+        await session.waitForIdle();
+        const now = Date.now();
+        post(config, target.getSessionId(), "first", new Date(now));
+        post(config, target.getSessionId(), "second", new Date(now + 1));
+        await eventually(() => expect(agentEntries()).toHaveLength(2));
+        await session.waitForIdle();
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        await session.waitForIdle();
+        expect(agentEntries()).toEqual(["first", "second"]);
+        expect(faux.state.callCount).toBe(2);
+      } finally {
+        await close();
+      }
+    });
 
-      handlers.get("agent_settled")?.(
-        {},
-        {
-          isIdle: () => true,
-          sessionManager: { getEntries: () => entries },
-        },
+    it("starts a turn for mail held by the startup grace once it ends", async () => {
+      const root = tempRoot();
+      const cwd = path.join(root, "work");
+      const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
+      const target = SessionManager.inMemory(cwd);
+      const { session, faux, close, agentEntries } = await receiver(
+        root,
+        target,
+        config,
+        [
+          (pi) =>
+            pi.on("session_start", () => {
+              post(config, target.getSessionId(), "during startup");
+            }),
+        ],
+        300,
       );
-      await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(2));
+      faux.setResponses([() => fauxAssistantMessage("on it")]);
+      try {
+        await eventually(() => expect(faux.state.callCount).toBe(1));
+        await session.waitForIdle();
+        expect(agentEntries()).toEqual(["during startup"]);
+      } finally {
+        await close();
+      }
+    });
 
-      entries.push({
-        type: "custom_message",
-        customType: "agent-message",
-        details: { messageId: message.id },
-      });
-      handlers.get("agent_settled")?.(
-        {},
-        {
-          isIdle: () => true,
-          sessionManager: { getEntries: () => entries },
-        },
-      );
-      expect(fs.readdirSync(mailboxPath(queueDir, targetSessionId))).toEqual(
+    it.each([
+      ["after", false],
+      ["before", true],
+    ])(
+      "starts one run for mail arriving in a settle handler %s ours",
+      async (_order, first) => {
+        const root = tempRoot();
+        const cwd = path.join(root, "work");
+        const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
+        const target = SessionManager.inMemory(cwd);
+        let releaseSettle: (() => void) | undefined;
+        let settles = 0;
+        // pi defers runs started from settle handlers; mail landing then is
+        // sent once from settle and again by the watcher unless tracked.
+        const slowSettle = (pi: ExtensionAPI) =>
+          pi.on("agent_settled", async () => {
+            if (settles++ > 0) return;
+            post(config, target.getSessionId(), "mid-settle");
+            await new Promise<void>((resolve) => (releaseSettle = resolve));
+          });
+        const { session, faux, close, agentEntries } = await receiver(
+          root,
+          target,
+          config,
+          first ? [] : [slowSettle],
+          0,
+          first ? [slowSettle] : [],
+        );
+        faux.setResponses(
+          [1, 2, 3, 4].map(() => () => fauxAssistantMessage("ok")),
+        );
+        try {
+          const run = session.prompt("start");
+          await eventually(() => expect(releaseSettle).toBeDefined());
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          releaseSettle!();
+          await run;
+          await session.waitForIdle();
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          await session.waitForIdle();
+          expect(agentEntries()).toEqual(["mid-settle"]);
+        } finally {
+          await close();
+        }
+      },
+    );
+
+    it("doesn't undo an abort for mail arriving in an earlier settle handler", async () => {
+      const root = tempRoot();
+      const cwd = path.join(root, "work");
+      const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
+      const target = SessionManager.inMemory(cwd);
+      let settles = 0;
+      const { session, faux, close, agentEntries } = await receiver(
+        root,
+        target,
+        config,
         [],
+        0,
+        [
+          (pi) =>
+            pi.on("agent_settled", async () => {
+              if (settles++ > 0) return;
+              post(config, target.getSessionId(), "while stopping");
+              await new Promise((resolve) => setTimeout(resolve, 300));
+            }),
+        ],
       );
+      faux.setResponses([
+        () => {
+          void session.abort();
+          return fauxAssistantMessage("interrupted");
+        },
+        () => fauxAssistantMessage("should not run"),
+      ]);
+      try {
+        await session.prompt("start");
+        await session.waitForIdle();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        await session.waitForIdle();
+        expect(agentEntries()).toEqual(["while stopping"]);
+        expect(faux.state.callCount).toBe(1);
+      } finally {
+        await close();
+      }
+    });
 
-      await handlers.get("session_shutdown")?.();
-      expect(watcher.close).toHaveBeenCalledOnce();
+    it("hands startup mail to the startup prompt instead of racing it", async () => {
+      const root = tempRoot();
+      const cwd = path.join(root, "work");
+      const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
+      const target = SessionManager.inMemory(cwd);
+      post(config, target.getSessionId(), "while you were away");
+      const dir = mailboxDir(config.queueDir, target.getSessionId());
+      fs.writeFileSync(path.join(dir, "2026_bad.json"), "{");
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const seen: string[][] = [];
+      const { session, faux, close } = await receiver(
+        root,
+        target,
+        config,
+        [
+          // slow startup handlers, like the editor's git status, during and
+          // after which more mail arrives.
+          (pi) => {
+            pi.on("session_start", async () => {
+              post(config, target.getSessionId(), "during startup");
+              await new Promise((resolve) => setTimeout(resolve, 100));
+            });
+            pi.on("resources_discover", async () => {
+              await new Promise((resolve) => setTimeout(resolve, 100));
+              post(config, target.getSessionId(), "during discovery");
+              await new Promise((resolve) => setTimeout(resolve, 100));
+            });
+          },
+        ],
+        1_000,
+      );
+      const userTexts = (context: any) =>
+        context.messages
+          .filter((m: any) => m.role === "user")
+          .map((m: any) => textOf(m));
+      faux.setResponses(
+        [1, 2].map(() => (context: any) => {
+          seen.push(userTexts(context));
+          return fauxAssistantMessage("ok");
+        }),
+      );
+      const mail = (text: string) =>
+        `message from pi session sender:\n\n${text}`;
+      try {
+        await session.prompt("startup prompt");
+        await session.waitForIdle();
+        // backlog is context for the prompt; mid-startup mail waits for the
+        // run's next boundary instead of starting a run of its own.
+        expect(seen).toEqual([
+          [mail("while you were away"), "startup prompt"],
+          [
+            mail("while you were away"),
+            "startup prompt",
+            mail("during startup"),
+            mail("during discovery"),
+          ],
+        ]);
+        await eventually(() =>
+          expect(fs.readdirSync(dir)).toEqual(["2026_bad.json.rejected"]),
+        );
+      } finally {
+        await close();
+      }
     });
   });
 }
