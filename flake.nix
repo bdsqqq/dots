@@ -143,12 +143,18 @@
       systems =
         [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" "aarch64-linux" ];
 
-      # optionalAttrs, not mkIf: an mkIf'd check still appears in attrNames on
-      # linux, and CI builds every name it lists.
+      # darwin-only checks. optionalAttrs on `system`, not mkIf: an mkIf'd check
+      # still appears in attrNames, which CI builds, and testing pkgs would force
+      # it for every system just to list names.
       imports = [{
-        perSystem = { pkgs, ... }: {
-          checks = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
+        perSystem = { pkgs, system, ... }: {
+          checks = inputs.nixpkgs.lib.optionalAttrs (inputs.nixpkgs.lib.hasSuffix "-darwin" system) {
             hue-control = import ./modules/hue-control/check.nix { inherit pkgs; };
+            # the audit shells out to /usr/bin/plutil.
+            household-intake-smb-audit = pkgs.runCommand "household-intake-smb-audit-tests" { } ''
+              ${pkgs.nodejs}/bin/node --test ${./modules/household-intake}/smb-audit.test.mjs
+              touch "$out"
+            '';
           };
         };
       }];
@@ -231,10 +237,6 @@
         packages.kindle-tailscale-autostart =
           import ./modules/kindle-tailscale-autostart { inherit pkgs; };
 
-        checks.household-intake-smb-audit = pkgs.runCommand "household-intake-smb-audit-tests" { } ''
-          ${pkgs.nodejs}/bin/node --test ${./modules/household-intake}/smb-audit.test.mjs
-          touch "$out"
-        '';
 
         checks.credential-ownership =
           pkgs.runCommand "credential-ownership"
