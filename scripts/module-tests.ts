@@ -19,7 +19,7 @@ import {
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-const TEST_FILE = /\.test\.(ts|mts|mjs|js)$/u;
+const TEST_FILE = /\.test\.[cm]?[jt]s$/u;
 
 /** these import `bun:` modules, so bun runs them instead of node. */
 const BUN_DIRS = ["modules/html-stuff/"];
