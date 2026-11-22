@@ -73,6 +73,10 @@ jobs:
   publish:
     needs: test
     if: github.event_name != 'pull_request'
+    # one publisher across refs, so an older build can't move `latest` back.
+    concurrency:
+      group: publish-pi-release
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     defaults:
       run:
