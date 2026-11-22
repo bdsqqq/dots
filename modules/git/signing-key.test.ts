@@ -22,19 +22,18 @@ const fixture = JSON.parse(execFileSync("nix", [
         config.home.homeDirectory = "/fixture";
         osConfig.networking.hostName = "fixture-host";
       };
-    in {
       script = configured.home.activation.ensureGitSigningKey;
+    in {
+      inherit script;
+      # eval names store paths without building them; these are what the
+      # snippet and the test run, so a fresh runner can build them first.
+      drvs = builtins.attrNames (builtins.getContext "\${script}\${pkgs.bash}\${pkgs.openssh}");
       sshKeygen = "\${pkgs.openssh}/bin/ssh-keygen";
       bash = "\${pkgs.bash}/bin/bash";
     }
   `,
 ], { encoding: "utf8" }));
-// eval names store paths without building them, and a fresh runner has none
-// of what the snippet runs: realise every store path it and the test use.
-const storePaths = [...new Set(
-  `${fixture.script} ${fixture.bash} ${fixture.sshKeygen}`.match(/\/nix\/store\/[a-z0-9]{32}-[^/\s"']+/g) ?? [],
-)];
-execFileSync("nix", ["build", "--no-link", ...storePaths], { stdio: "pipe" });
+execFileSync("nix", ["build", "--no-link", ...fixture.drvs.map((drv: string) => `${drv}^*`)], { stdio: "pipe" });
 
 function setup(t: { after: (cleanup: () => void) => void }) {
   const home = mkdtempSync(join(tmpdir(), "git-signing-test-"));

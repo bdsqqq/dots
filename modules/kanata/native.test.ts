@@ -44,6 +44,13 @@ test('run log reader finds the current startup behind megabytes of heartbeats', 
 test('evaluated activation command stages runnable signed files only into a temporary prefix', { skip: process.platform !== 'darwin' }, () => {
   const evaluated = spawnSync('nix', ['eval', '--raw', '--no-write-lock-file', '.#darwinConfigurations.mbp-m2.config.system.activationScripts.extraActivation.text'], { cwd: root, encoding: 'utf8', timeout: 120_000 });
   assert.equal(evaluated.status, 0, evaluated.stderr);
+  // eval names store paths (kanata, libiconv, the installer) without building
+  // them; build exactly the derivations the script's string context holds.
+  const context = spawnSync('nix', ['eval', '--json', '--no-write-lock-file', '.#darwinConfigurations.mbp-m2.config.system.activationScripts.extraActivation.text', '--apply', 'builtins.getContext'], { cwd: root, encoding: 'utf8', timeout: 120_000 });
+  assert.equal(context.status, 0, context.stderr);
+  const drvs = Object.keys(JSON.parse(context.stdout)).map((drv) => `${drv}^*`);
+  const realised = spawnSync('nix', ['build', '--no-link', ...drvs], { encoding: 'utf8', timeout: 900_000 });
+  assert.equal(realised.status, 0, realised.stderr);
   // Expand the trusted Nix-generated argument list for inspection, not execution.
   const expanded = spawnSync('/bin/bash', ['-c', `printf '%s\\0' ${evaluated.stdout}`], { encoding: 'utf8' });
   assert.equal(expanded.status, 0, expanded.stderr);
@@ -57,15 +64,7 @@ test('evaluated activation command stages runnable signed files only into a temp
   const stage = ['/bin/bash', join(moduleDir, 'activate.sh'), ...binding.stage.slice(1)];
   assert.equal(stage[7], '/usr/local/bin/kanata');
   assert.equal(stage[8], '/usr/local/lib/kanata');
-  // eval names the fetched installer without downloading it, and a bare store
-  // path can't be fetched; realise the derivation that produces it.
-  const toplevel = spawnSync('nix', ['eval', '--raw', '--no-write-lock-file', '.#darwinConfigurations.mbp-m2.config.system.build.toplevel.drvPath'], { cwd: root, encoding: 'utf8', timeout: 300_000 });
-  assert.equal(toplevel.status, 0, toplevel.stderr);
-  const producer = spawnSync('nix-store', ['-qR', toplevel.stdout], { encoding: 'utf8', maxBuffer: 1 << 28 })
-    .stdout.split('\n').find((drv) => drv.endsWith(`${binding.package.slice('/nix/store/'.length + 33)}.drv`));
-  assert.ok(producer, `no derivation produces ${binding.package}`);
-  const fetched = spawnSync('nix-store', ['--realise', producer], { encoding: 'utf8', timeout: 300_000 });
-  assert.equal(fetched.status, 0, fetched.stderr);
+
   const signature = spawnSync('/usr/sbin/pkgutil', ['--check-signature', binding.package], { encoding: 'utf8' });
   assert.equal(signature.status, 0, signature.stderr);
   assert.match(signature.stdout, /Developer ID Installer: Fumihiko Takayama \(G43BCU2T37\)/);
