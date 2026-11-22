@@ -92,7 +92,10 @@ export function upgradeObservation(expectation: ExternalExpectation, rows: Row[]
   return { ...observation, status, sampleAt: Math.min(at, ingestedAt, hostAt), detail: { reasonCode: reason, readiness: context.readiness } };
 }
 
-export const UPGRADE_QUERY = "| where normalized_event_service == 'tailnet-registry' and normalized_event_operation == 'host.upgrade_health' | extend sampled_at = _time, event = normalized_event | summarize arg_max(sampled_at, event) by host = normalized_host | project host, sampled_at, event";
+// the raw-text filter comes first: normalized_* parse every body as JSON, which made
+// this query outrun the 12s request timeout over 15 minutes of papertrail. it only
+// narrows; the normalized filters still decide.
+export const UPGRADE_QUERY = "| where body contains 'host.upgrade_health' | where normalized_event_service == 'tailnet-registry' and normalized_event_operation == 'host.upgrade_health' | extend sampled_at = _time, event = normalized_event | summarize arg_max(sampled_at, event) by host = normalized_host | project host, sampled_at, event";
 
 /** No redirects, credentials, response bodies or arbitrary exception text enter logs. */
 export async function fetchManifest(url: string, request: typeof fetch = fetch): Promise<unknown> {
