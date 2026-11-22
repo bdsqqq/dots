@@ -4,18 +4,12 @@ let
   cfg = config.my.cloudflareIngress;
   # The certificate-compromise fix requires both cloudflared >= 2026.10.2
   # and Go >= 1.27.3: https://blog.cloudflare.com/emudhra-certificate-compromise/
+  # nixpkgs' own build, so hosts substitute it instead of compiling. the asserts
+  # keep the floor in place if nixpkgs ever moves backwards.
   cloudflaredPackage =
     assert lib.versionAtLeast pkgs.cloudflared.go.version "1.27.3";
-    pkgs.cloudflared.overrideAttrs (finalAttrs: _: {
-      version = "2026.10.4";
-      src = pkgs.fetchFromGitHub {
-        owner = "cloudflare";
-        repo = "cloudflared";
-        tag = finalAttrs.version;
-        hash = "sha256-HuKjytbGutwjUMepozeUmeeHczm4qI7vMvS+hgLsaZ0=";
-      };
-      vendorHash = "sha256-WtGk5HE6PxAWqwvj8mAAzobuoSw+y6BqBEEB0hRQafk=";
-    });
+    assert lib.versionAtLeast pkgs.cloudflared.version "2026.10.2";
+    pkgs.cloudflared;
   runtimeBindings = builtins.fromJSON (
     builtins.readFile ../../cloudflare/runtime-bindings.json
   );
@@ -294,10 +288,6 @@ in
         message = "Cloudflare ingress connector trust classes must have generated Tailscale tags";
       }
     ];
-
-    warnings = lib.optional
-      (lib.versionAtLeast pkgs.cloudflared.version cloudflaredPackage.version)
-      "nixpkgs cloudflared ${pkgs.cloudflared.version} has caught up with the ingress override (${cloudflaredPackage.version}); remove cloudflaredPackage from modules/cloudflare-ingress/default.nix and use pkgs.cloudflared directly.";
 
     sops.secrets = authSecrets // appSecrets;
 
