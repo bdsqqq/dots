@@ -43,6 +43,7 @@ import {
   agentStarted,
   closedDelivery,
   sessionStarted,
+  starterMayRun,
   turnEnded,
   windowEnded,
   woke,
@@ -402,6 +403,15 @@ export function createAgentMessageExtension(
       poll.unref();
       apply(sessionStarted(isIdle(), readMailbox));
       openAfter(startupGraceMs);
+    });
+
+    pi.on("before_agent_start", (event, ctx) => {
+      if (
+        event.messageType === "custom" &&
+        event.message.customType === CUSTOM_TYPE &&
+        !starterMayRun(state)
+      )
+        ctx.abort();
     });
 
     pi.on("agent_start", () => {
@@ -1003,6 +1013,45 @@ if (import.meta.vitest) {
         }
       },
     );
+
+    it("doesn't run mail queued behind a prompt the user then stops", async () => {
+      const root = tempRoot();
+      const cwd = path.join(root, "work");
+      const config = { queueDir: path.join(root, "queue"), sessionsDirs: [] };
+      const target = SessionManager.inMemory(cwd);
+      let session!: Awaited<ReturnType<typeof receiver>>["session"];
+      let settles = 0;
+      // pi defers both the prompt and our starter, then runs them in order.
+      const promptMidSettle = (pi: ExtensionAPI) =>
+        pi.on("agent_settled", async () => {
+          if (settles++ > 0) return;
+          void session.prompt("next");
+          post(config, target.getSessionId(), "queued behind next");
+        });
+      const started = await receiver(root, target, config, [], 0, [
+        promptMidSettle,
+      ]);
+      session = started.session;
+      const { faux, close, agentEntries } = started;
+      faux.setResponses([
+        () => fauxAssistantMessage("done"),
+        () => {
+          void session.abort();
+          return fauxAssistantMessage("stopped");
+        },
+        () => fauxAssistantMessage("should not run"),
+      ]);
+      try {
+        await session.prompt("start");
+        await session.waitForIdle();
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        await session.waitForIdle();
+        expect(agentEntries()).toEqual(["queued behind next"]);
+        expect(faux.state.callCount).toBe(2);
+      } finally {
+        await close();
+      }
+    });
 
     it("hands startup mail to the startup prompt instead of racing it", async () => {
       const root = tempRoot();

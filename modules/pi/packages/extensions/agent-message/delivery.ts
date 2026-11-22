@@ -31,8 +31,6 @@ export type Phase = "closed" | "grace" | "stopped" | "open";
 
 export interface DeliveryState {
   readonly phase: Phase;
-  /** from agent_start until our settle handler: pi reports idle before settle handlers run. */
-  readonly running: boolean;
   /**
    * run starters not yet persisted: pi defers runs started during
    * settlement, and wakes must not send those again meanwhile.
@@ -51,7 +49,6 @@ export interface Delivery<T extends Mail> {
 
 export const closedDelivery: DeliveryState = {
   phase: "closed",
-  running: false,
   starting: new Set(),
 };
 
@@ -84,15 +81,12 @@ function deliverIdle<T extends Mail>(
   action: Action,
   read: ReadMailbox<T>,
 ): Delivery<T> {
-  if (state.phase === "closed" || state.running || !idle || action === "hold")
+  if (state.phase === "closed" || !idle || action === "hold")
     return { state, append: [] };
   try {
     const { starting, mail } = unacked(state, read);
-    // one run at a time: only the last message starts it, and a starter pi
-    // hasn't run yet will read the rest. a second deferred starter would run
-    // after the first, even if the user stopped it.
-    const start =
-      action === "start" && starting.size === 0 ? mail.pop() : undefined;
+    // one run per batch: only the last message starts it.
+    const start = action === "start" ? mail.pop() : undefined;
     if (start) starting.add(start.id);
     return { state: { ...state, starting }, append: mail, start };
   } catch (error) {
@@ -106,7 +100,7 @@ export function sessionStarted<T extends Mail>(
   read: ReadMailbox<T>,
 ): Delivery<T> {
   return deliverIdle(
-    { phase: "grace", running: false, starting: new Set() },
+    { phase: "grace", starting: new Set() },
     idle,
     "show",
     read,
@@ -133,9 +127,18 @@ export function woke<T extends Mail>(
   return deliverIdle(state, idle, wakeAction[state.phase], read);
 }
 
+/**
+ * pi runs a deferred starter after anything queued ahead of it, so the user
+ * may have stopped a run in between. false: abort the run before its first
+ * request; the mail is still shown.
+ */
+export function starterMayRun(state: DeliveryState): boolean {
+  return state.phase === "open";
+}
+
 export function agentStarted(state: DeliveryState): DeliveryState {
   const phase: Phase = state.phase === "stopped" ? "open" : state.phase;
-  return { ...state, phase, running: true };
+  return { ...state, phase };
 }
 
 /** pi won't continue past an error or abort, so only completed turns take mail. */
@@ -162,12 +165,7 @@ export function agentSettled<T extends Mail>(
 ): Delivery<T> {
   const phase: Phase =
     state.phase === "closed" ? "closed" : aborted ? "stopped" : "open";
-  return deliverIdle(
-    { ...state, phase, running: false },
-    idle,
-    wakeAction[phase],
-    read,
-  );
+  return deliverIdle({ ...state, phase }, idle, wakeAction[phase], read);
 }
 
 if (import.meta.vitest) {
@@ -205,6 +203,7 @@ if (import.meta.vitest) {
     windowEnded: typeof windowEnded;
     woke: typeof woke;
     agentStarted: typeof agentStarted;
+    starterMayRun: typeof starterMayRun;
     turnEnded: typeof turnEnded;
     agentSettled: typeof agentSettled;
   }
@@ -214,6 +213,7 @@ if (import.meta.vitest) {
     windowEnded,
     woke,
     agentStarted,
+    starterMayRun,
     turnEnded,
     agentSettled,
   };
@@ -235,12 +235,14 @@ if (import.meta.vitest) {
   }
 
   function startRun(w: World, v: Variant, starter?: string): void {
-    if (starter && w.stopped?.includes(starter))
+    const aborted = starter !== undefined && !v.starterMayRun(w.ext);
+    if (starter && !aborted && w.stopped?.includes(starter))
       throw new Violation(`${starter} started a run the user had stopped`);
     w.runActive = true;
     w.turns = 0;
     w.ext = v.agentStarted(w.ext);
     if (starter) persist(w, starter);
+    if (aborted) endRun(w, true);
   }
 
   function apply(w: World, v: Variant, d: Delivery<Mail>): void {
@@ -278,7 +280,20 @@ if (import.meta.vitest) {
     const out: Step[] = [
       {
         label: "wake",
-        run: (w, v) => apply(w, v, v.woke(w.ext, idle(w), read(w))),
+        run: (w, v) => {
+          const d = v.woke(w.ext, idle(w), read(w));
+          apply(w, v, d);
+          // a stopped user still sees mail as it arrives.
+          if (d.state.phase === "stopped" && idle(w)) {
+            const hidden = read(w)().unacked.filter(
+              (m) => !d.state.starting.has(m.id),
+            );
+            if (hidden.length)
+              throw new Violation(
+                `${hidden[0]!.id} hidden from a stopped session`,
+              );
+          }
+        },
       },
     ];
     // the windows are timed to outlast the host's startup prompt and pi's
@@ -312,10 +327,7 @@ if (import.meta.vitest) {
           w.hostPromptPending = false;
         },
       });
-    if (
-      w.budget.prompts > 0 &&
-      (w.hostPromptPending || (!w.runActive && !w.settling))
-    )
+    if (w.budget.prompts > 0 && (w.hostPromptPending || !w.runActive))
       out.push({
         label: "user prompts",
         run: (w, v) => {
@@ -475,14 +487,6 @@ if (import.meta.vitest) {
   /** each removes the guard a past fix added; the checker must reject it. */
   const pastBugs: [string, string, Variant][] = [
     [
-      "d05119cf",
-      "a wake during an earlier slow settle handler started a run for mail the user had just stopped",
-      {
-        ...real,
-        woke: (s, i, r) => woke({ ...s, running: false }, i, r),
-      },
-    ],
-    [
       "20db80d7",
       "re-sending on abort restarted the run",
       {
@@ -497,6 +501,11 @@ if (import.meta.vitest) {
         ...real,
         sessionStarted: (i, r) => windowEnded(sessionStarted(i, r).state, i, r),
       },
+    ],
+    [
+      "d05119cf",
+      "a run started for mail the user had just stopped",
+      { ...real, starterMayRun: () => true },
     ],
     [
       "2b1e11db",
