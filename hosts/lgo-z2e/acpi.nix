@@ -205,15 +205,9 @@ in
   # quickshell should trigger these through systemd/polkit instead of writing
   # sysfs or ACPI directly from the user session.
 
-  boot.extraModulePackages = [
-    (config.boot.kernelPackages.acpi_call.overrideAttrs (old: {
-      # Upstream's manual install skips Kbuild signing; the module aggregator
-      # requires the certificate. Sign only after fixup has finished stripping.
-      postFixup = (old.postFixup or "") + ''
-        ${pkgs.lib.getExe pkgs.kmodigest} "$out/lib/modules/${config.boot.kernelPackages.kernel.modDirVersion}/misc/acpi_call.ko"
-      '';
-    }))
-  ];
+  # nixpkgs installs acpi_call through Kbuild modules_install, which signs
+  # (kmodigest) and compresses the module itself.
+  boot.extraModulePackages = [ config.boot.kernelPackages.acpi_call ];
   boot.kernelModules = [ "acpi_call" ];
 
   environment.systemPackages = [ legionAcpi ];
