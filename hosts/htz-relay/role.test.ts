@@ -97,9 +97,20 @@ function assertInfrastructureOnly(role: Role): void {
   assert.deepEqual(role.activations.filter((name) => bootstrap.includes(name)), []);
 }
 
-let evaluated: Role | undefined;
-// lazily: evaluation runs at import otherwise, before skips apply.
-const current = (): Role => (evaluated ??= evaluate());
+// lazily, since evaluation at import runs before skips apply; once, failure
+// included, so a broken eval costs one timeout rather than one per test.
+let evaluated: { role: Role } | { error: unknown } | undefined;
+const current = (): Role => {
+  if (!evaluated) {
+    try {
+      evaluated = { role: evaluate() };
+    } catch (error) {
+      evaluated = { error };
+    }
+  }
+  if ("error" in evaluated) throw evaluated.error;
+  return evaluated.role;
+};
 
 test("the full relay derivation evaluates without agent or developer bootstrap", onLinux, () => {
   assert.match(current().drvPath, /-nixos-system-htz-relay-.*\.drv$/);

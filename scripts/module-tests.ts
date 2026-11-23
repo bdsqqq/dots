@@ -23,12 +23,42 @@ import { dirname, join } from "node:path";
 const TEST_FILE = /(\.test|(^|\/)test_[^/]*)\.[cm]?[jt]s$/u;
 
 /**
- * a test that imports `bun:test` declares its own runner. comments are
- * stripped first so a mention in prose doesn't count.
+ * a test that imports `bun:test` declares its own runner. scans code tokens
+ * only: comments and string/template contents are skipped, so quoting an
+ * import, or a "/*" inside a string, can't change the answer. a module
+ * specifier is the one string the scanner reads, right after `from`/`import`.
  */
 export function importsBunTest(source: string): boolean {
-  const code = source.replace(/\/\*[\s\S]*?\*\/|(^|[^:])\/\/.*$/gmu, "$1");
-  return /(?:\bfrom|\bimport|\bimport\s*\()\s*["']bun:test["']/u.test(code);
+  let previous = "";
+  for (let i = 0; i < source.length; ) {
+    const c = source[i]!;
+    if (c === "/" && source[i + 1] === "/") {
+      i = source.indexOf("\n", i);
+      if (i < 0) return false;
+    } else if (c === "/" && source[i + 1] === "*") {
+      i = source.indexOf("*\/", i + 2);
+      if (i < 0) return false;
+      i += 2;
+    } else if (c === '"' || c === "'" || c === "`") {
+      let j = i + 1;
+      while (j < source.length && source[j] !== c) j += source[j] === "\\" ? 2 : 1;
+      if ((previous === "from" || previous === "import" || previous === "import(") &&
+          c !== "`" && source.slice(i + 1, j) === "bun:test")
+        return true;
+      previous = "string";
+      i = j + 1;
+    } else if (/[A-Za-z_$]/u.test(c)) {
+      let j = i;
+      while (j < source.length && /[\w$]/u.test(source[j]!)) j++;
+      previous = source.slice(i, j);
+      i = j;
+    } else {
+      if (c === "(" && previous === "import") previous = "import(";
+      else if (!/\s/u.test(c)) previous = c;
+      i++;
+    }
+  }
+  return false;
 }
 
 /** path prefix → why this harness can't run it. */

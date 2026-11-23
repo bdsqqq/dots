@@ -58,5 +58,9 @@ test("bun detection reads import specifiers, not prose", () => {
   assert.ok(importsBunTest(`const { test } = await import("${bun}");`));
   assert.ok(!importsBunTest(`// unlike files that import { test } from "${bun}"\nimport test from "node:test";`));
   assert.ok(!importsBunTest(`/* from "${bun}" */ import test from "node:test";`));
+  // quoting an import is not importing it.
+  assert.ok(!importsBunTest(`const example = 'import { test } from "${bun}"'; import test from "node:test";`));
+  // comment markers inside strings must not hide a real import.
+  assert.ok(importsBunTest(`const a = "/*"; import { test } from "${bun}"; const b = "*/";`));
   assert.ok(!importsBunTest('const url = "https://example.test"; import test from "node:test";'));
 });
