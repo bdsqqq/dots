@@ -38,7 +38,7 @@
   "tuiMode": "regular",
   "fullscreenExitOutput": "resume-hint",
   "packages": [
-    "https://github.com/earendil-works/pi-claude-code"
+    "git:github.com/bdsqqq/pi-claude-code@0665b571fe36e4faa894a57c20c2c0be047f3e11"
   ],
   "@bds_pi/session-recap": {
     "enabled": false
