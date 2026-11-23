@@ -1,0 +1,19 @@
+{
+  "name": "helium",
+  "bundle": "/Applications/Helium.app",
+  "bundleId": "net.imput.helium",
+  "compare": "short",
+  "feed": {
+    "kind": "github",
+    "repo": "imputnet/helium-macos",
+    "tag": "{version}",
+    "asset": "helium_{version}_arm64-macos.dmg",
+    "linux": {
+      "repo": "imputnet/helium-linux",
+      "assets": {
+        "x64": "helium-{version}-x86_64.AppImage",
+        "arm64": "helium-{version}-arm64.AppImage"
+      }
+    }
+  }
+}

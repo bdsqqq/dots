@@ -13,7 +13,7 @@ function fixture(t: { after: (f: () => void) => void }) {
   const root = mkdtempSync(join(tmpdir(), "app-pins-vendor-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const home = join(root, "home"), repo = join(root, "repo"), files = join(root, "files");
-  for (const dir of [home, join(repo, "modules/app-pins/pins"), files]) mkdirSync(dir, { recursive: true });
+  for (const dir of [home, join(repo, "modules"), files]) mkdirSync(dir, { recursive: true });
   return { root, home, repo, files };
 }
 function deps(api: Record<string, unknown>, files: Record<string, string>): Deps {
@@ -29,7 +29,7 @@ function deps(api: Record<string, unknown>, files: Record<string, string>): Deps
 
 // claude: one executable per version under versions/, selected by ~/.local/bin/claude.
 const claudeApp = (home: string): VendorApp =>
-  ({ name: "claude", kind: "vendor", layout: "claude", pin: "modules/app-pins/pins/claude.json", watch: [], home });
+  ({ name: "claude", kind: "vendor", layout: "claude", pin: "modules/claude/app-pin.json", watch: [], home });
 const claudeBase = "https://downloads.claude.ai/claude-code-releases";
 function claudeRelease(files: string, version: string) {
   const binaries = Object.fromEntries(platforms.map(p => {
@@ -107,7 +107,7 @@ test("a cli that is not the vendor's native install is refused, not overwritten"
 
 // codex: one package directory per release, selected by standalone/current.
 const codexApp = (home: string): VendorApp =>
-  ({ name: "codex", kind: "vendor", layout: "codex", pin: "modules/app-pins/pins/codex.json", watch: [], home });
+  ({ name: "codex", kind: "vendor", layout: "codex", pin: "modules/codex/app-pin.json", watch: [], home });
 const targets = { "darwin-arm64": "aarch64-apple-darwin", "linux-x64": "x86_64-unknown-linux-musl", "linux-arm64": "aarch64-unknown-linux-musl" };
 const codexBase = "https://releases.openai.com/codex/releases";
 function codexPackage(dir: string, version: string, target: string) {

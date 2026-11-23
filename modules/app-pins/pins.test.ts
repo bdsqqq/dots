@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { compare, install, record, worktree, type BundleApp as App, type Deps } from "./pins.ts";
+import { compare, install, loadApps, record, worktree, type BundleApp as App, type Deps } from "./pins.ts";
 
 const onMac = { skip: process.platform !== "darwin" && "builds app bundles with ditto and reads them with plutil" };
 
@@ -183,4 +183,39 @@ test("a linux pin that failed to resolve is retried without a new mac update", o
   const later = await record(spec, worktree(repo), deps({}, { ...release("1.2.0", v2.sha256), ...linux }));
   assert.ok(later.status === "unchanged" && later.linuxAdvanced && later.changed);
   assert.equal(JSON.parse(readFileSync(join(repo, spec.pin), "utf8")).linux.version, "1.2.0");
+});
+
+test("a url feed pins the installed version's own build, hashed locally", onMac, async t => {
+  const root = fixture(t), repo = join(root, "repo"), v2 = zipArtifact(root, "1.2.0");
+  const spec: App = { name: "demo", bundle: join(root, "apps/Demo.app"), bundleId: "dev.demo", pin: "modules/demo/app-pin.json",
+    compare: "short", feed: { kind: "url", url: "https://example.test/Demo-{version}.zip" }, install: false };
+  bundle(spec.bundle, "dev.demo", "1.2.0");
+  const d = deps({ "https://example.test/Demo-1.2.0.zip": v2.file }, {});
+  assert.equal((await record(spec, worktree(repo), d)).status, "recorded");
+  const pin = JSON.parse(readFileSync(join(repo, spec.pin), "utf8"));
+  assert.deepEqual(pin.darwin.arm64, { url: "https://example.test/Demo-1.2.0.zip", sha256: v2.sha256, format: "zip" });
+  // record-only: an older install stays as it is, and nothing is downloaded.
+  bundle(spec.bundle, "dev.demo", "1.0.0");
+  const calls: string[] = [];
+  const watched: Deps = { ...deps({}, {}, calls), download: async () => { throw new Error("must not download"); } };
+  assert.equal((await install(spec, worktree(repo), watched)).status, "record_only");
+  assert.deepEqual(calls, []);
+  assert.match(readFileSync(join(spec.bundle, "Contents/Info.plist"), "utf8"), /1\.0\.0/);
+});
+
+test("modules declare their own apps, pinned beside the spec", t => {
+  const root = fixture(t), modules = join(root, "modules");
+  mkdirSync(join(modules, "demo"), { recursive: true });
+  writeFileSync(join(modules, "demo/app-pin.spec.json"), JSON.stringify({ name: "demo", bundle: "/Applications/Demo.app",
+    bundleId: "dev.demo", compare: "short", feed: { kind: "url", url: "https://example.test/Demo-{version}.zip" } }));
+  assert.deepEqual(Object.keys(loadApps(modules)), ["demo"]);
+  assert.equal(loadApps(modules).demo.pin, "modules/demo/app-pin.json");
+  mkdirSync(join(modules, "other"));
+  writeFileSync(join(modules, "other/app-pin.spec.json"), JSON.stringify({ name: "demo" }));
+  assert.throws(() => loadApps(modules), /demo is declared twice/);
+  // the real repo: every app is declared by the module that owns it.
+  const real = loadApps();
+  for (const name of ["rex", "helium", "t3-code", "tailscale", "claude", "codex"]) {
+    assert.equal(real[name]?.pin, `modules/${name}/app-pin.json`);
+  }
 });
