@@ -10,6 +10,9 @@ import { fileURLToPath } from "node:url";
 import { parseEnv as nodeParseEnv, promisify } from "node:util";
 import { mergeEnvironment, secretEnvironment, syncCredentials } from "./sync-credentials.ts";
 
+// syncCredentials serializes writers with /usr/bin/lockf, which only macOS has.
+const locks = { skip: process.platform !== "darwin" && "locks with /usr/bin/lockf" };
+
 const parseEnv = (text: string) => ({ ...nodeParseEnv(text) });
 
 test("preserves comments, multiline settings, and native edits while adopting duplicate credentials", () => {
@@ -63,7 +66,7 @@ test("discovers names and aliases without a consumer inventory; arbitrary file s
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("cookie names stay file-only even when their contents are small dotenv-compatible UTF-8", async () => {
+test("cookie names stay file-only even when their contents are small dotenv-compatible UTF-8", locks, async () => {
   const root = await mkdtemp(join(tmpdir(), "t3-cookie-policy-"));
   try {
     const secret = join(root, "secret");
@@ -90,7 +93,10 @@ test("cookie names stay file-only even when their contents are small dotenv-comp
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("waits for the current writer and recovers after SIGKILL without reclaiming lock files", { timeout: 15_000 }, async () => {
+test("waits for the current writer and recovers after SIGKILL without reclaiming lock files", {
+  ...locks,
+  timeout: 15_000,
+}, async () => {
   const root = await mkdtemp(join(tmpdir(), "t3-lock-recovery-"));
   const home = join(root, "t3");
   await mkdir(home);
@@ -135,7 +141,7 @@ test("waits for the current writer and recovers after SIGKILL without reclaiming
   }
 });
 
-test("syncs discovered additions, rotation and retirement; preserves native changes; never restarts", async () => {
+test("syncs discovered additions, rotation and retirement; preserves native changes; never restarts", locks, async () => {
   const root = await mkdtemp(join(tmpdir(), "t3-credentials-"));
   try {
     const home = join(root, "t3");
@@ -165,7 +171,7 @@ test("syncs discovered additions, rotation and retirement; preserves native chan
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("manual symlink command discovers secrets without printing their values", async () => {
+test("manual symlink command discovers secrets without printing their values", locks, async () => {
   const root = await mkdtemp(join(tmpdir(), "t3-credential-cli-"));
   try {
     const secret = join(root, "secret");
@@ -186,7 +192,7 @@ test("manual symlink command discovers secrets without printing their values", a
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("missing secrets fail without replacing live configuration; symlink targets are untouched", async () => {
+test("missing secrets fail without replacing live configuration; symlink targets are untouched", locks, async () => {
   const root = await mkdtemp(join(tmpdir(), "t3-credentials-"));
   try {
     const secret = join(root, "secret");

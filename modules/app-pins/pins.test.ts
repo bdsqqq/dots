@@ -7,6 +7,8 @@ import { join } from "node:path";
 import test from "node:test";
 import { compare, install, record, worktree, type BundleApp as App, type Deps } from "./pins.ts";
 
+const onMac = { skip: process.platform !== "darwin" && "builds app bundles with ditto and reads them with plutil" };
+
 const plist = (id: string, version: string, build: string) => `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict>
 <key>CFBundleIdentifier</key><string>${id}</string>
@@ -58,7 +60,7 @@ test("versions compare by numeric runs, including nightly suffixes", () => {
   assert.equal(compare("2067", "2067"), 0);
 });
 
-test("record pins the exact installed build, then ignores equal and older installs", async t => {
+test("record pins the exact installed build, then ignores equal and older installs", onMac, async t => {
   const root = fixture(t), spec = githubSpec(root), repo = join(root, "repo");
   const v2 = zipArtifact(root, "1.2.0");
   bundle(spec.bundle, "dev.demo", "1.2.0");
@@ -73,13 +75,13 @@ test("record pins the exact installed build, then ignores equal and older instal
   assert.equal(JSON.parse(readFileSync(join(repo, spec.pin), "utf8")).version, "1.2.0");
 });
 
-test("record refuses a bundle with a different identity", async t => {
+test("record refuses a bundle with a different identity", onMac, async t => {
   const root = fixture(t), spec = githubSpec(root);
   bundle(spec.bundle, "dev.impostor", "9.0.0");
   await assert.rejects(record(spec, worktree(join(root, "repo")), deps({}, {})), /not dev\.demo/);
 });
 
-test("install fills missing or older apps, and leaves newer ones alone", async t => {
+test("install fills missing or older apps, and leaves newer ones alone", onMac, async t => {
   const root = fixture(t), spec = githubSpec(root), repo = join(root, "repo");
   const v2 = zipArtifact(root, "1.2.0");
   bundle(spec.bundle, "dev.demo", "1.2.0");
@@ -99,7 +101,7 @@ test("install fills missing or older apps, and leaves newer ones alone", async t
   assert.match(readFileSync(join(spec.bundle, "Contents/Info.plist"), "utf8"), /2\.0\.0/);
 });
 
-test("install rejects a corrupted artifact and keeps the existing app", async t => {
+test("install rejects a corrupted artifact and keeps the existing app", onMac, async t => {
   const root = fixture(t), spec = githubSpec(root), repo = join(root, "repo");
   const v2 = zipArtifact(root, "1.2.0"), tampered = zipArtifact(root, "6.6.6");
   bundle(spec.bundle, "dev.demo", "1.2.0");
@@ -110,7 +112,7 @@ test("install rejects a corrupted artifact and keeps the existing app", async t 
   assert.match(readFileSync(join(spec.bundle, "Contents/Info.plist"), "utf8"), /1\.0\.0/);
 });
 
-test("install skips an older app while it is running", async t => {
+test("install skips an older app while it is running", onMac, async t => {
   const root = fixture(t), spec = githubSpec(root), repo = join(root, "repo");
   const v2 = zipArtifact(root, "1.2.0");
   bundle(spec.bundle, "dev.demo", "1.2.0");
@@ -121,7 +123,7 @@ test("install skips an older app while it is running", async t => {
   assert.equal((await install(spec, worktree(repo), running)).status, "running");
 });
 
-test("sparkle record pins the installed build, not the newest appcast item", async t => {
+test("sparkle record pins the installed build, not the newest appcast item", onMac, async t => {
   const root = fixture(t), repo = join(root, "repo");
   const artifact = zipArtifact(root, "1.0.0");
   const spec: App = { name: "demo", bundle: join(root, "apps/Demo.app"), bundleId: "dev.demo", pin: "modules/demo/app-pin.json",
@@ -140,7 +142,7 @@ test("sparkle record pins the installed build, not the newest appcast item", asy
   assert.equal(pin.rexCommit, "a".repeat(40));
 });
 
-test("a newer app installed while the pin downloads is not overwritten", async t => {
+test("a newer app installed while the pin downloads is not overwritten", onMac, async t => {
   const root = fixture(t), spec = githubSpec(root), repo = join(root, "repo");
   const v2 = zipArtifact(root, "1.2.0");
   bundle(spec.bundle, "dev.demo", "1.2.0");
@@ -152,7 +154,7 @@ test("a newer app installed while the pin downloads is not overwritten", async t
   assert.match(readFileSync(join(spec.bundle, "Contents/Info.plist"), "utf8"), /3\.0\.0/);
 });
 
-test("the running check matches bundle paths with regex metacharacters", async t => {
+test("the running check matches bundle paths with regex metacharacters", onMac, async t => {
   const root = fixture(t), spec = { ...githubSpec(root), bundle: join(root, "apps/Demo (Nightly).app") };
   const repo = join(root, "repo"), v2 = zipArtifact(root, "1.2.0");
   bundle(spec.bundle, "dev.demo", "1.2.0");
@@ -169,7 +171,7 @@ test("the running check matches bundle paths with regex metacharacters", async t
   assert.equal((await install(spec, worktree(repo), real)).status, "running");
 });
 
-test("a linux pin that failed to resolve is retried without a new mac update", async t => {
+test("a linux pin that failed to resolve is retried without a new mac update", onMac, async t => {
   const root = fixture(t), repo = join(root, "repo"), v2 = zipArtifact(root, "1.2.0");
   const spec: App = { ...githubSpec(root), feed: { kind: "github", repo: "o/demo", tag: "v{version}", asset: "Demo-{version}.zip",
     linux: { repo: "o/demo-linux", assets: { x64: "demo-{version}-x64", arm64: "demo-{version}-arm64" } } } };

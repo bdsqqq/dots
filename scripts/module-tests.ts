@@ -5,8 +5,9 @@
  * a directory with a package.json and pnpm lockfile is a package: it gets a
  * frozen install, then `node --test` on every selected test file under it,
  * not its `test` script, whose glob can miss a new file. other test files run
- * with `node --test`, or `bun test` under BUN_DIRS. a test is selected unless EXCLUDED names it with a
- * reason, so a new test runs in CI by default.
+ * with `node --test`. a test is selected unless EXCLUDED names it, so a new
+ * test runs in CI by default.
+ * platform requirements live in each test, as node:test `skip` options.
  *
  *   node --experimental-strip-types scripts/module-tests.ts [--list]
  */
@@ -21,43 +22,24 @@ import { dirname, join } from "node:path";
 
 const TEST_FILE = /(\.test|(^|\/)test_[^/]*)\.[cm]?[jt]s$/u;
 
-/** these import `bun:` modules, so bun runs them instead of node. */
-const BUN_DIRS = ["modules/html-stuff/"];
-const isBun = (file: string) => BUN_DIRS.some((dir) => file.startsWith(dir));
-
 /** path prefix → why this harness can't run it. */
 export const EXCLUDED: Record<string, string> = {
   "modules/pi/": "has its own vitest suite and CI job",
-  "modules/tailnet-registry/": "bun tests; built by checks.tailnet-registry",
-  "modules/node-pnpm/runtime.test.ts":
-    "fixture pkgs lacks stdenv.hostPlatform; fails on main since 632bf51d",
+  "modules/tailnet-registry/": "bun tests, built by checks.tailnet-registry",
+  "modules/html-stuff/": "bun tests, built by checks.html-stuff",
   "modules/household-intake/smb-audit.test.mjs":
     "built by checks.household-intake-smb-audit on the macOS job",
   "scripts/check-credential-ownership.test.ts":
     "built by checks.credential-ownership, which provides python",
 };
 
-/** path prefix → the one platform it can run on, and why. */
-export const PLATFORM_ONLY: Record<string, { platform: NodeJS.Platform; reason: string }> = {
-  "modules/app-pins/cli.test.ts": { platform: "darwin", reason: "installs app bundles with ditto and plutil" },
-  "modules/app-pins/pins.test.ts": { platform: "darwin", reason: "builds app bundles with ditto" },
-  "modules/app-pins/publish.test.ts": { platform: "darwin", reason: "reads bundle versions with plutil" },
-  "modules/t3-code/sync-credentials.test.ts": { platform: "darwin", reason: "locks with /usr/bin/lockf" },
-  "hosts/htz-relay/role.test.ts": {
-    platform: "linux",
-    reason: "evaluates the linux relay; on macOS runners it exceeds its 120s eval budget",
-  },
-};
 
-const excluded = (file: string, platform: NodeJS.Platform): boolean =>
-  Object.keys(EXCLUDED).some((prefix) => file.startsWith(prefix)) ||
-  Object.entries(PLATFORM_ONLY).some(
-    ([prefix, only]) => file.startsWith(prefix) && only.platform !== platform,
-  );
+const excluded = (file: string): boolean =>
+  Object.keys(EXCLUDED).some((prefix) => file.startsWith(prefix));
 
 export type Suite =
   | { kind: "package"; dir: string; files: string[] }
-  | { kind: "file"; file: string; runner: "node" | "bun" };
+  | { kind: "file"; file: string };
 
 /** the nearest ancestor with a package.json and a pnpm lockfile. */
 function owningPackage(
@@ -72,13 +54,12 @@ function owningPackage(
 export function selectSuites(
   files: readonly string[],
   isPackage: (dir: string) => boolean,
-  platform: NodeJS.Platform = process.platform,
 ): Suite[] {
   const packages = new Map<string, string[]>();
   const loose: string[] = [];
   for (const file of files) {
-    if (!TEST_FILE.test(file) || excluded(file, platform)) continue;
-    const dir = isBun(file) ? undefined : owningPackage(file, isPackage);
+    if (!TEST_FILE.test(file) || excluded(file)) continue;
+    const dir = owningPackage(file, isPackage);
     if (dir) packages.set(dir, [...(packages.get(dir) ?? []), file]);
     else loose.push(file);
   }
@@ -86,14 +67,7 @@ export function selectSuites(
     ...[...packages.keys()].sort().map(
       (dir) => ({ kind: "package", dir, files: packages.get(dir)!.sort() }) as const,
     ),
-    ...loose.sort().map(
-      (file) =>
-        ({
-          kind: "file",
-          file,
-          runner: isBun(file) ? "bun" : "node",
-        }) as const,
-    ),
+    ...loose.sort().map((file) => ({ kind: "file", file }) as const),
   ];
 }
 
@@ -111,9 +85,7 @@ function trackedFiles(): string[] {
 const label = (suite: Suite) =>
   suite.kind === "package"
     ? `${suite.dir}/ (${suite.files.length} files)`
-    : suite.runner === "bun"
-      ? `${suite.file} (bun)`
-      : suite.file;
+    : suite.file;
 
 function run(suite: Suite): SpawnSyncReturns<string> {
   const options: SpawnSyncOptionsWithStringEncoding = {
@@ -121,9 +93,7 @@ function run(suite: Suite): SpawnSyncReturns<string> {
     stdio: ["ignore", "pipe", "pipe"],
   };
   if (suite.kind === "file")
-    return suite.runner === "bun"
-      ? spawnSync("bun", ["test", suite.file], options)
-      : spawnSync(process.execPath, ["--experimental-strip-types", "--test", suite.file], options);
+    return spawnSync(process.execPath, ["--experimental-strip-types", "--test", suite.file], options);
   const install = spawnSync(
     "pnpm",
     ["install", "--frozen-lockfile", "--ignore-scripts"],
@@ -138,7 +108,9 @@ function run(suite: Suite): SpawnSyncReturns<string> {
 }
 
 function main(): number {
-  const suites = selectSuites(trackedFiles(), isPackage);
+  // a tracked file deleted in the worktree isn't a test to run.
+  // a tracked file deleted in the worktree isn't a test to run.
+  const suites = selectSuites(trackedFiles().filter((file) => existsSync(file)), isPackage);
   if (process.argv.includes("--list")) {
     console.log(suites.map(label).join("\n"));
     return 0;

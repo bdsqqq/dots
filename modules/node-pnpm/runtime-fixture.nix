@@ -27,7 +27,7 @@ let
   desktop = headMode: isDarwin:
     let
       pkgs = configured // {
-        stdenv = { inherit isDarwin; isLinux = !isDarwin; };
+        stdenv.hostPlatform = { inherit isDarwin; isLinux = !isDarwin; };
         ghostty = "/fixture/ghostty";
         yazi = "/fixture/yazi";
       };

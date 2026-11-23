@@ -346,7 +346,7 @@ in
     let
       common = {
         my.o11y.credential.required = true;
-        nixpkgs.overlays = [ (import ../../overlays/otelcol-contrib.nix) ];
+        nixpkgs.overlays = [ (import ./otelcol-contrib.nix) ];
         environment.systemPackages = [ pkgs.opentelemetry-collector-contrib ];
         environment.etc."otelcol/axiom.yaml".source = otelcolConfig;
       };
