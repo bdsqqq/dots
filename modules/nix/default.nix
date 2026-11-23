@@ -21,7 +21,8 @@
     optimise.automatic = true;
     gc = {
       automatic = lib.mkDefault true;
-      options = lib.mkDefault "--delete-older-than 3d";
+      # Macs keep only each scanned profile's current generation; hourly upgrades otherwise pile up.
+      options = lib.mkDefault (if pkgs.stdenv.hostPlatform.isDarwin then "--delete-old" else "--delete-older-than 3d");
     } // lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
       interval = lib.mkDefault {
         Hour = 3;
