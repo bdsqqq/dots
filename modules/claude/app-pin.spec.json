@@ -1,0 +1,8 @@
+{
+  "kind": "vendor",
+  "layout": "claude",
+  "watch": [
+    ".local/bin",
+    ".local/share/claude/versions"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "bundle": "/Applications/Rex.app",
+  "bundleId": "com.superlogical.rex",
+  "compare": "build",
+  "feed": {
+    "kind": "sparkle",
+    "url": "https://blob.superlogical.com/public/rex-app/snapshot-arm64/appcast.xml"
+  },
+  "linuxRelease": "modules/rex/release.json"
+}

@@ -6,14 +6,20 @@ stays in charge of updating, and the repo records what it actually installed.
 same contract as pnpm globals: nix kickstarts, updates happen outside the
 store, and git carries the result to every other host.
 
-two kinds are pinned, both listed in [`apps.json`](apps.json):
+this module holds only the machinery. each app is declared by the module
+that owns it, in `app-pin.spec.json`, with its pin beside it in
+`app-pin.json` (e.g. [`../rex/`](../rex), [`../claude/`](../claude)). two
+kinds are pinned:
 
-- **mac app bundles** (rex, helium, t3 code). their pins live beside the
-  module that consumes them.
+- **mac app bundles** (rex, helium, t3 code, tailscale).
+- **record-only apps** (tailscale) set `"install": false`: the pin records
+  what the updater accepted, and nothing installs it. tailscale's bundle is
+  root-owned and carries a system extension, so how to install a pin of it is
+  still open.
 - **vendor CLIs** (claude, codex), installed in each vendor's own native
   layout, the one their install scripts and `claude update` / `codex update`
   maintain. T3 runs those updates; every host, mac or linux, records what it
-  accepted and installs the pin. their pins live in [`pins/`](pins).
+  accepted and installs the pin.
 
 ## the contract
 
@@ -71,9 +77,24 @@ two kinds are pinned, both listed in [`apps.json`](apps.json):
 
 ## adding an app
 
+put `app-pin.spec.json` in the module that owns the app (create one if none
+exists, as claude and codex did): the `BundleApp` or `VendorApp` fields from
+`pins.ts` / `vendor.ts`, without `name` or `pin`. the module's directory is
+the app's name, and its pin is `app-pin.json` beside the spec. `pins.ts` and
+`default.nix` both discover these files.
+
+moving an app's pin to another path is a migration: publishers running the
+old code keep writing the old path until their checkout advances. either pause
+them across the move (`launchctl bootout` the agent; on linux stop the
+`.timer` and `.path` units before the service), or read both paths for a
+while, as `vendor.ts` does for the claude and codex pins that moved out of
+`pins/`.
+
 an app fits if its updater replaces the whole bundle on each update, which is
 what makes watching `Info.plist` reliable. its feed must also let you look up
-an exact build by version. Sparkle appcasts and GitHub releases both qualify.
+an exact build by version. Sparkle appcasts listing every build, GitHub
+releases, and versioned download urls (`"kind": "url"`, for appcasts that
+list only the newest build) all qualify.
 an app that patches files in place, or whose vendor deletes old builds,
 doesn't fit. a CLI fits if its vendor publishes per-version builds with
 hashes for every pinned platform, and selects the running build with a link.

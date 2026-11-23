@@ -261,5 +261,5 @@ in
     config.allowUnfree = true;
   };
 
-  my.appPins.apps = [ "claude" "codex" ];
+  my.appPins.apps = [ "tailscale" "claude" "codex" ];
 }

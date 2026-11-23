@@ -317,7 +317,7 @@ in
     access.tailnet = "owner";
   };
   # self-updating apps record their own updates into tracked pins.
-  my.appPins.apps = [ "rex" "helium" "t3-code" "claude" "codex" ];
+  my.appPins.apps = [ "rex" "helium" "t3-code" "tailscale" "claude" "codex" ];
   # Helium ships with Sparkle checks off; update it like the other pinned apps.
   system.defaults.CustomUserPreferences."net.imput.helium" = {
     SUEnableAutomaticChecks = true;
