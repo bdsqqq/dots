@@ -46,13 +46,14 @@ jobs:
 
       - run: node --experimental-strip-types scripts/module-tests.ts
 
-      # repo-checks builds linux flake checks; darwin-only ones build here.
-      - name: build darwin-only flake checks
+      # repo-checks builds the linux flake checks; every darwin check builds
+      # here, since several modules (html-stuff, backups) run on macs too.
+      - name: build darwin flake checks
         if: runner.os == 'macOS'
         run: |
           set -euo pipefail
-          names=$(nix eval --json .#checks.aarch64-darwin --apply 'cs: builtins.attrNames (removeAttrs cs (builtins.attrNames (builtins.getFlake (toString ./.)).checks.x86_64-linux))' --impure | jq -r '.[]')
-          [ -n "$names" ] || { echo 'no darwin-only flake checks found' >&2; exit 1; }
+          names=$(nix eval --json .#checks.aarch64-darwin --apply builtins.attrNames | jq -r '.[]')
+          [ -n "$names" ] || { echo 'no darwin flake checks found' >&2; exit 1; }
           echo "checks: $names"
           # macOS's bash 3.2 has no mapfile.
           checks=()
