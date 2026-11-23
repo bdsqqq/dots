@@ -84,8 +84,11 @@ the app's name, and its pin is `app-pin.json` beside the spec. `pins.ts` and
 `default.nix` both discover these files.
 
 moving an app's pin to another path is a migration: publishers running the
-old code keep writing the old path until their checkout advances. pause them
-(`launchctl bootout` / `systemctl --user stop`) across the move.
+old code keep writing the old path until their checkout advances. either pause
+them across the move (`launchctl bootout` the agent; on linux stop the
+`.timer` and `.path` units before the service), or read both paths for a
+while, as `vendor.ts` does for the claude and codex pins that moved out of
+`pins/`.
 
 an app fits if its updater replaces the whole bundle on each update, which is
 what makes watching `Info.plist` reliable. its feed must also let you look up

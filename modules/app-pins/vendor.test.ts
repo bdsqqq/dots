@@ -192,3 +192,19 @@ test("codex: an update that lands while the pin downloads wins", async t => {
   const root = join(f.home, ".codex/packages/standalone");
   assert.equal(readlinkSync(join(root, "current")), join(root, "releases/0.171.0-x86_64-unknown-linux-musl"));
 });
+
+test("a bump written to the pre-move pin path still counts", async t => {
+  const f = fixture(t), app = claudeApp(f.home), old = claudeRelease(f.files, "2.1.300"), v = claudeRelease(f.files, "2.1.329");
+  claudeInstall(f.home, "2.1.300");
+  await recordVendor(app, worktree(f.repo), deps(old.api, {}));
+  // a publisher still on the old code records 2.1.329 at the legacy path.
+  mkdirSync(join(f.repo, "modules/app-pins/pins"), { recursive: true });
+  claudeInstall(f.home, "2.1.329");
+  await recordVendor({ ...app, pin: "modules/app-pins/pins/claude.json" }, worktree(f.repo), deps(v.api, {}));
+  assert.equal(JSON.parse(readFileSync(join(f.repo, app.pin), "utf8")).version, "2.1.300");
+  // an older host installs the higher of the two.
+  claudeInstall(f.home, "2.1.300");
+  assert.deepEqual(await installVendor(app, worktree(f.repo), deps({}, v.files), "linux-x64"), { status: "installed", version: "2.1.329" });
+  // and a new publisher on that version sees it as already pinned.
+  assert.equal((await recordVendor(app, worktree(f.repo), deps(v.api, {}))).status, "unchanged");
+});

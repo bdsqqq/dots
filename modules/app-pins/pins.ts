@@ -57,7 +57,7 @@ export const specFile = "app-pin.spec.json";
  * the same files.
  */
 export function loadApps(modules = join(here, "..")): Record<string, App> {
-  const apps: Record<string, App> = {};
+  const apps: Record<string, App> = Object.create(null);
   for (const dir of readdirSync(modules).sort()) {
     const file = join(modules, dir, specFile);
     if (!existsSync(file)) continue;
