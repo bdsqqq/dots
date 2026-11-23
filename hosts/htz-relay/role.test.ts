@@ -97,25 +97,27 @@ function assertInfrastructureOnly(role: Role): void {
   assert.deepEqual(role.activations.filter((name) => bootstrap.includes(name)), []);
 }
 
-const current = evaluate();
+let evaluated: Role | undefined;
+// lazily: evaluation runs at import otherwise, before skips apply.
+const current = (): Role => (evaluated ??= evaluate());
 
 test("the full relay derivation evaluates without agent or developer bootstrap", onLinux, () => {
-  assert.match(current.drvPath, /-nixos-system-htz-relay-.*\.drv$/);
-  assertInfrastructureOnly(current);
+  assert.match(current().drvPath, /-nixos-system-htz-relay-.*\.drv$/);
+  assertInfrastructureOnly(current());
 });
 
 test("relay services and all existing application/ingress containers remain enabled", onLinux, () => {
-  for (const [name, enabled] of Object.entries(current.services)) assert.equal(enabled, true, name);
-  assert.deepEqual(current.containers.sort(), ["apps", "cloudflare-ingress", "cloudflare-ingress-files", "cloudflare-ingress-t3"]);
-  assert.match(current.automerge, /\/bin\/syncthing-automerge$/);
+  for (const [name, enabled] of Object.entries(current().services)) assert.equal(enabled, true, name);
+  assert.deepEqual(current().containers.sort(), ["apps", "cloudflare-ingress", "cloudflare-ingress-files", "cloudflare-ingress-t3"]);
+  assert.match(current().automerge, /\/bin\/syncthing-automerge$/);
 });
 
 test("unused personal-agent credentials are not provisioned by the relay role", onLinux, () => {
   for (const name of ["gh_token", "hf_token", "artificial_analysis_api_key", "sentry_auth_token"])
-    assert.ok(!current.secrets.includes(name), name);
-  assert.ok(current.secrets.includes("tailscale_auth_key"));
-  assert.ok(current.secrets.includes("axiom/papertrail_token"));
-  assert.ok(current.secrets.includes("axiom/host_metrics_token"));
+    assert.ok(!current().secrets.includes(name), name);
+  assert.ok(current().secrets.includes("tailscale_auth_key"));
+  assert.ok(current().secrets.includes("axiom/papertrail_token"));
+  assert.ok(current().secrets.includes("axiom/host_metrics_token"));
 });
 
 test("native Nix collects old generations after upgrades with pressure GC enabled", onLinux, () => {
@@ -124,23 +126,23 @@ test("native Nix collects old generations after upgrades with pressure GC enable
     gcAutomatic: true, gcOptions: "--delete-old", gcAfterUpgrade: true,
     pressureBytes: 4 * 1024 ** 3, targetBytes: 8 * 1024 ** 3,
   };
-  assert.deepEqual(current.maintenance, expected);
-  assert.throws(() => assert.deepEqual({ ...current.maintenance, gcAfterUpgrade: false }, expected));
+  assert.deepEqual(current().maintenance, expected);
+  assert.throws(() => assert.deepEqual({ ...current().maintenance, gcAfterUpgrade: false }, expected));
 });
 
 test("incident evaluation is unprivileged, persistent, and wired to both query and ingest credentials", onLinux, () => {
-  assert.equal(current.incidents.enabled, true);
-  assert.equal(current.incidents.timer, true);
-  assert.match(current.incidents.execStart, /\/bin\/axiom-incidents poll$/);
-  assert.equal(current.incidents.stateDirectory, "axiom-incidents");
-  assert.equal(current.incidents.user, "bdsqqq");
+  assert.equal(current().incidents.enabled, true);
+  assert.equal(current().incidents.timer, true);
+  assert.match(current().incidents.execStart, /\/bin\/axiom-incidents poll$/);
+  assert.equal(current().incidents.stateDirectory, "axiom-incidents");
+  assert.equal(current().incidents.user, "bdsqqq");
   const expected = [
     "query-token:/run/secrets/axiom/personal_token",
     "org-id:/run/secrets/axiom/personal_org_id",
     "ingest-token:/run/secrets/axiom/papertrail_token",
   ];
-  assert.deepEqual(current.incidents.credentials, expected);
-  assert.throws(() => assert.deepEqual(current.incidents.credentials.slice(0, 2), expected));
+  assert.deepEqual(current().incidents.credentials, expected);
+  assert.throws(() => assert.deepEqual(current().incidents.credentials.slice(0, 2), expected));
 });
 
 test("the verifier detects an isolated reintroduction of a global developer runtime", onLinux, () => {

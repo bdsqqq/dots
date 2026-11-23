@@ -22,8 +22,14 @@ import { dirname, join } from "node:path";
 
 const TEST_FILE = /(\.test|(^|\/)test_[^/]*)\.[cm]?[jt]s$/u;
 
-/** a test that imports `bun:test` declares its own runner. */
-const BUN_TEST = /from\s+["']bun:test["']/u;
+/**
+ * a test that imports `bun:test` declares its own runner. comments are
+ * stripped first so a mention in prose doesn't count.
+ */
+export function importsBunTest(source: string): boolean {
+  const code = source.replace(/\/\*[\s\S]*?\*\/|(^|[^:])\/\/.*$/gmu, "$1");
+  return /(?:\bfrom|\bimport|\bimport\s*\()\s*["']bun:test["']/u.test(code);
+}
 
 /** path prefix → why this harness can't run it. */
 export const EXCLUDED: Record<string, string> = {
@@ -123,7 +129,7 @@ function run(suite: Suite): SpawnSyncReturns<string> {
 
 function main(): number {
   const suites = selectSuites(trackedFiles(), isPackage, (file) =>
-    BUN_TEST.test(readFileSync(file, "utf8")),
+    importsBunTest(readFileSync(file, "utf8")),
   );
   if (process.argv.includes("--list")) {
     console.log(suites.map(label).join("\n"));

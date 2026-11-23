@@ -158,7 +158,7 @@ test("a clone that lags main still publishes a newer install, and never downgrad
   assert.match(git(f.remote, "show", "main:modules/demo/app-pin.json"), /1\.5\.0/);
 });
 
-test("every bump commit says what changed, including metadata-only bumps", onMac, () => {
+test("every bump commit says what changed, including metadata-only bumps", () => {
   const app = loadApps().rex;
   assert.equal(message(app, "mbp-m2", { status: "recorded", from: "0.1.0 (1)", to: "0.1.0 (2)", linuxAdvanced: false, changed: true }),
     "bump rex (auto-committed from mbp-m2)\n\n0.1.0 (1) -> 0.1.0 (2)\n");

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { selectSuites } from "./module-tests.ts";
+import { importsBunTest, selectSuites } from "./module-tests.ts";
 
 test("new tests are selected by default; packages run once; exclusions hold", () => {
   const files = [
@@ -48,4 +48,15 @@ test("bun suites stay on bun even inside a package", () => {
     (file) => file === "modules/html-stuff/server.test.ts",
   );
   assert.deepEqual(suites, [{ kind: "file", file: "modules/html-stuff/server.test.ts", runner: "bun" }]);
+});
+
+test("bun detection reads import specifiers, not prose", () => {
+  // built from parts so this file doesn't itself look like a bun test.
+  const bun = ["bun", "test"].join(":");
+  assert.ok(importsBunTest(`import { test } from "${bun}";`));
+  assert.ok(importsBunTest(`import { test } from'${bun}'`));
+  assert.ok(importsBunTest(`const { test } = await import("${bun}");`));
+  assert.ok(!importsBunTest(`// unlike files that import { test } from "${bun}"\nimport test from "node:test";`));
+  assert.ok(!importsBunTest(`/* from "${bun}" */ import test from "node:test";`));
+  assert.ok(!importsBunTest('const url = "https://example.test"; import test from "node:test";'));
 });

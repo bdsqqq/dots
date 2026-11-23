@@ -1,5 +1,6 @@
-# building backrest runs its go tests (postCheck in ./default.nix) against a
-# host's generated config. mmn-m4 runs the backups, so its config is the one
-# under test.
-{ self }:
-self.darwinConfigurations.mmn-m4.config.my.backup.backendPackage
+# the backup server; building it builds backrest, whose postCheck (./default.nix)
+# runs the go tests against mmn-m4's generated config, the host that backs up.
+{ self, system, lib, ... }:
+lib.optionalAttrs (system == "aarch64-darwin") {
+  backrest = self.darwinConfigurations.mmn-m4.config.my.backup.package;
+}

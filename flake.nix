@@ -143,18 +143,19 @@
       systems =
         [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" "aarch64-linux" ];
 
-      # darwin-only checks. optionalAttrs on `system`, not mkIf: an mkIf'd check
-      # still appears in attrNames, which CI builds, and testing pkgs would force
-      # it for every system just to list names.
+      # checks that only run on some systems. each module's check.nix returns
+      # the checks that apply to `system`, gated on the string rather than on
+      # pkgs, so listing names doesn't force pkgs for every system.
       imports = [{
-        perSystem = { pkgs, system, ... }: {
-          checks = inputs.nixpkgs.lib.optionalAttrs (inputs.nixpkgs.lib.hasSuffix "-darwin" system) {
-            hue-control = import ./modules/hue-control/check.nix { inherit pkgs; };
-            household-intake-smb-audit = import ./modules/household-intake/check.nix { inherit pkgs; };
-          } // inputs.nixpkgs.lib.optionalAttrs (system == "aarch64-darwin") {
-            backrest = import ./modules/backup/check.nix { inherit self; };
+        perSystem = { pkgs, system, ... }:
+          let
+            lib = inputs.nixpkgs.lib;
+            scoped = file: import file { inherit pkgs system lib self; };
+          in {
+            checks = scoped ./modules/household-intake/check.nix
+              // scoped ./modules/backup/check.nix
+              // scoped ./modules/hue-control/checks.nix;
           };
-        };
       }];
 
       perSystem = { config, self', inputs', pkgs, system, ... }: {
