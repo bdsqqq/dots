@@ -3,7 +3,10 @@ let
   cfg = config.my.t3Code.credentialSync;
   repo = "${config.my.paths.commonplace}/01_files/nix/modules/t3-code";
   home = config.users.users.bdsqqq.home;
-  secrets = builtins.mapAttrs (_: secret: secret.path) config.sops.secrets;
+  # the claude token stays with claude-pi; the launcher only reads service.env.
+  secrets = builtins.mapAttrs (_: secret: secret.path)
+    (builtins.removeAttrs config.sops.secrets [ "claude_code_oauth_token" ])
+  // builtins.mapAttrs (name: value: "${pkgs.writeText "t3-env-${name}" value}") cfg.environment;
   manifest = pkgs.writeText "t3-credentials.json" (builtins.toJSON {
     home = "${home}/.t3";
     inherit secrets;
@@ -19,6 +22,11 @@ in
 
   options.my.t3Code.credentialSync = {
     enable = lib.mkEnableOption "credential synchronization into native T3 service.env";
+    environment = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = { };
+      description = "Non-secret values for the native T3 service environment.";
+    };
   };
 
   config = lib.mkIf cfg.enable {
