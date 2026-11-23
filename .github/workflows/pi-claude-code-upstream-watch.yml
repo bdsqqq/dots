@@ -1,0 +1,39 @@
+# temporary: modules/pi/settings.json uses the bdsqqq/pi-claude-code fork until
+# upstream fixes earendil-works/pi-claude-code#40 (the 5-cache-breakpoint 400).
+# once upstream closes #40 or merges #33/#41, this calls the T3 thread that
+# owns the switch back, then disables itself. delete it with the fork.
+name: pi-claude-code upstream watch
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: check upstream and notify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WEBHOOK: ${{ secrets.PI_CLAUDE_CODE_FIX_WEBHOOK }}
+          UPSTREAM: earendil-works/pi-claude-code
+        run: |
+          set -euo pipefail
+          issue=$(gh issue view 40 -R "$UPSTREAM" --json state -q .state)
+          merged=""
+          for pr in 33 41; do
+            if [ "$(gh pr view "$pr" -R "$UPSTREAM" --json state -q .state)" = MERGED ]; then
+              merged="$merged #$pr"
+            fi
+          done
+          echo "issue #40: $issue; merged:${merged:- none}"
+          if [ "$issue" = OPEN ] && [ -z "$merged" ]; then exit 0; fi
+
+          jq -n --arg issue "$issue" --arg merged "$merged" \
+            '{signal: "pi-claude-code-40-fixed", issue40: $issue, mergedPrs: $merged}' |
+            curl --fail-with-body -sS -X POST -H 'content-type: application/json' --data @- "$WEBHOOK"
+          gh workflow disable pi-claude-code-upstream-watch.yml -R "$GITHUB_REPOSITORY"
