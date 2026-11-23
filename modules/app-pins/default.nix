@@ -9,14 +9,14 @@ let
   # "mbp-m5", matching the hand-written provenance, not the mDNS "mbp-m5.local".
   host = lib.removeSuffix ".local" config.networking.hostName;
   node = "${pkgs.nodejs_latest}/bin/node";
-  # each module that owns an app declares it in app-pin.spec.json (see loadApps in
-  # pins.ts, which reads the same files).
-  declared = lib.concatMap (dir:
+  # each module that owns an app declares it in app-pin.spec.json, named after the
+  # module's directory (see loadApps in pins.ts, which reads the same files).
+  apps = lib.filterAttrs (_: spec: spec != null) (lib.mapAttrs (dir: _:
     let file = ../. + "/${dir}/app-pin.spec.json"; in
-    lib.optional (builtins.pathExists file)
-      (builtins.fromJSON (builtins.readFile file) // { pin = "modules/${dir}/app-pin.json"; })
-  ) (builtins.attrNames (lib.filterAttrs (_: type: type == "directory") (builtins.readDir ../.)));
-  apps = builtins.listToAttrs (map (spec: lib.nameValuePair spec.name spec) declared);
+    if builtins.pathExists file
+    then builtins.fromJSON (builtins.readFile file) // { pin = "modules/${dir}/app-pin.json"; }
+    else null
+  ) (lib.filterAttrs (_: type: type == "directory") (builtins.readDir ../.)));
   isDarwin = lib.hasInfix "darwin" hostSystem;
   isVendor = name: (apps.${name}.kind or "bundle") == "vendor";
   vendors = builtins.filter isVendor cfg.apps;

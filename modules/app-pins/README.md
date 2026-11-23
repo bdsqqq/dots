@@ -78,10 +78,14 @@ kinds are pinned:
 ## adding an app
 
 put `app-pin.spec.json` in the module that owns the app (create one if none
-exists, as claude and codex did): `name` plus the `BundleApp` or `VendorApp`
-fields from `pins.ts` / `vendor.ts`, without `pin`. its pin is `app-pin.json`
-beside it. `pins.ts` and `default.nix` both discover these files, and a name
-declared twice is an error.
+exists, as claude and codex did): the `BundleApp` or `VendorApp` fields from
+`pins.ts` / `vendor.ts`, without `name` or `pin`. the module's directory is
+the app's name, and its pin is `app-pin.json` beside the spec. `pins.ts` and
+`default.nix` both discover these files.
+
+moving an app's pin to another path is a migration: publishers running the
+old code keep writing the old path until their checkout advances. pause them
+(`launchctl bootout` / `systemctl --user stop`) across the move.
 
 an app fits if its updater replaces the whole bundle on each update, which is
 what makes watching `Info.plist` reliable. its feed must also let you look up

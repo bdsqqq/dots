@@ -52,17 +52,17 @@ const here = dirname(fileURLToPath(import.meta.url));
 export const specFile = "app-pin.spec.json";
 /**
  * each app declares itself from the module that owns it, as
- * `modules/<module>/app-pin.spec.json`, pinned beside it in `app-pin.json`.
- * default.nix discovers the same files.
+ * `modules/<module>/app-pin.spec.json`, pinned beside it in `app-pin.json`. the
+ * module's directory is the app's name, so names are unique. default.nix discovers
+ * the same files.
  */
 export function loadApps(modules = join(here, "..")): Record<string, App> {
   const apps: Record<string, App> = {};
   for (const dir of readdirSync(modules).sort()) {
     const file = join(modules, dir, specFile);
     if (!existsSync(file)) continue;
-    const spec = JSON.parse(readFileSync(file, "utf8")) as Omit<App, "pin">;
-    if (apps[spec.name]) throw new Error(`app-pins: ${spec.name} is declared twice (${file})`);
-    apps[spec.name] = { ...spec, pin: `modules/${dir}/app-pin.json` } as App;
+    const spec = JSON.parse(readFileSync(file, "utf8")) as Omit<App, "name" | "pin">;
+    apps[dir] = { ...spec, name: dir, pin: `modules/${dir}/app-pin.json` } as App;
   }
   return apps;
 }

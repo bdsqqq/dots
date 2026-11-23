@@ -1,5 +1,4 @@
 {
-  "name": "codex",
   "kind": "vendor",
   "layout": "codex",
   "watch": [

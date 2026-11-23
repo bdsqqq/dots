@@ -206,13 +206,13 @@ test("a url feed pins the installed version's own build, hashed locally", onMac,
 test("modules declare their own apps, pinned beside the spec", t => {
   const root = fixture(t), modules = join(root, "modules");
   mkdirSync(join(modules, "demo"), { recursive: true });
-  writeFileSync(join(modules, "demo/app-pin.spec.json"), JSON.stringify({ name: "demo", bundle: "/Applications/Demo.app",
+  writeFileSync(join(modules, "demo/app-pin.spec.json"), JSON.stringify({ bundle: "/Applications/Demo.app",
     bundleId: "dev.demo", compare: "short", feed: { kind: "url", url: "https://example.test/Demo-{version}.zip" } }));
-  assert.deepEqual(Object.keys(loadApps(modules)), ["demo"]);
-  assert.equal(loadApps(modules).demo.pin, "modules/demo/app-pin.json");
-  mkdirSync(join(modules, "other"));
-  writeFileSync(join(modules, "other/app-pin.spec.json"), JSON.stringify({ name: "demo" }));
-  assert.throws(() => loadApps(modules), /demo is declared twice/);
+  mkdirSync(join(modules, "plain"));
+  const apps = loadApps(modules);
+  assert.deepEqual(Object.keys(apps), ["demo"], "the module directory names the app");
+  assert.equal(apps.demo.name, "demo");
+  assert.equal(apps.demo.pin, "modules/demo/app-pin.json");
   // the real repo: every app is declared by the module that owns it.
   const real = loadApps();
   for (const name of ["rex", "helium", "t3-code", "tailscale", "claude", "codex"]) {

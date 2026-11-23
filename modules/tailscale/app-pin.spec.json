@@ -1,5 +1,4 @@
 {
-  "name": "tailscale",
   "bundle": "/Applications/Tailscale.app",
   "bundleId": "io.tailscale.ipn.macsys",
   "compare": "short",

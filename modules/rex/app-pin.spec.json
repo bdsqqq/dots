@@ -1,5 +1,4 @@
 {
-  "name": "rex",
   "bundle": "/Applications/Rex.app",
   "bundleId": "com.superlogical.rex",
   "compare": "build",

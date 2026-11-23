@@ -1,5 +1,4 @@
 {
-  "name": "helium",
   "bundle": "/Applications/Helium.app",
   "bundleId": "net.imput.helium",
   "compare": "short",
