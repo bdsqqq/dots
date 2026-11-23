@@ -15,6 +15,7 @@ in
   imports = [
     ./packages/extensions/web-search/credential.nix
     ../jev/credential.nix
+    ../claude-code
   ];
   my.parallelWebSearch.credential.required = true;
   my.jev.credential.required = true;

@@ -40,9 +40,16 @@ export function parseVendorPin(value: unknown, app: string): VendorPin {
   }
   return p;
 }
+/**
+ * before pins moved into their modules, these lived at modules/app-pins/pins/<name>.json,
+ * and a publisher still running that code can write there after the move. read both and
+ * take the higher, so such a bump still counts. drop once main has no legacy pins.
+ */
+const legacyPin = (app: VendorApp) => `modules/app-pins/pins/${app.name}.json`;
 function readPin(app: VendorApp, store: Store): VendorPin | null {
-  const text = store.read(app.pin);
-  return text === null ? null : parseVendorPin(JSON.parse(text), app.name);
+  const pins = [app.pin, legacyPin(app)].map(path => store.read(path))
+    .filter((text): text is string => text !== null).map(text => parseVendorPin(JSON.parse(text), app.name));
+  return pins.reduce<VendorPin | null>((a, b) => !a || compare(b.version, a.version) > 0 ? b : a, null);
 }
 
 async function hashFile(path: string): Promise<string> {

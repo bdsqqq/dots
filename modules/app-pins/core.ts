@@ -11,7 +11,7 @@ export type Store = { read(path: string): string | null; write(path: string, tex
 export type RecordResult =
   | { status: "absent" }
   | { status: "recorded" | "unchanged"; from?: string; to: string; linuxAdvanced: boolean; changed: boolean };
-export type InstallResult = { status: "installed" | "current" | "newer" | "running" | "unpinned"; version?: string };
+export type InstallResult = { status: "installed" | "current" | "newer" | "running" | "unpinned" | "record_only"; version?: string };
 
 /** expected failures carry a stable code; callers map it, never the message, into events. */
 export type AppPinErrorCode =

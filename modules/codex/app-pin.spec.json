@@ -1,0 +1,7 @@
+{
+  "kind": "vendor",
+  "layout": "codex",
+  "watch": [
+    ".codex/packages/standalone"
+  ]
+}

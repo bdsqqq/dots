@@ -13,7 +13,7 @@ function fixture(t: { after: (f: () => void) => void }) {
   const root = mkdtempSync(join(tmpdir(), "app-pins-vendor-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const home = join(root, "home"), repo = join(root, "repo"), files = join(root, "files");
-  for (const dir of [home, join(repo, "modules/app-pins/pins"), files]) mkdirSync(dir, { recursive: true });
+  for (const dir of [home, join(repo, "modules"), files]) mkdirSync(dir, { recursive: true });
   return { root, home, repo, files };
 }
 function deps(api: Record<string, unknown>, files: Record<string, string>): Deps {
@@ -29,7 +29,7 @@ function deps(api: Record<string, unknown>, files: Record<string, string>): Deps
 
 // claude: one executable per version under versions/, selected by ~/.local/bin/claude.
 const claudeApp = (home: string): VendorApp =>
-  ({ name: "claude", kind: "vendor", layout: "claude", pin: "modules/app-pins/pins/claude.json", watch: [], home });
+  ({ name: "claude", kind: "vendor", layout: "claude", pin: "modules/claude/app-pin.json", watch: [], home });
 const claudeBase = "https://downloads.claude.ai/claude-code-releases";
 function claudeRelease(files: string, version: string) {
   const binaries = Object.fromEntries(platforms.map(p => {
@@ -107,7 +107,7 @@ test("a cli that is not the vendor's native install is refused, not overwritten"
 
 // codex: one package directory per release, selected by standalone/current.
 const codexApp = (home: string): VendorApp =>
-  ({ name: "codex", kind: "vendor", layout: "codex", pin: "modules/app-pins/pins/codex.json", watch: [], home });
+  ({ name: "codex", kind: "vendor", layout: "codex", pin: "modules/codex/app-pin.json", watch: [], home });
 const targets = { "darwin-arm64": "aarch64-apple-darwin", "linux-x64": "x86_64-unknown-linux-musl", "linux-arm64": "aarch64-unknown-linux-musl" };
 const codexBase = "https://releases.openai.com/codex/releases";
 function codexPackage(dir: string, version: string, target: string) {
@@ -191,4 +191,20 @@ test("codex: an update that lands while the pin downloads wins", async t => {
   assert.deepEqual(await installVendor(app, worktree(f.repo), racing, "linux-x64"), { status: "newer", version: "0.171.0" });
   const root = join(f.home, ".codex/packages/standalone");
   assert.equal(readlinkSync(join(root, "current")), join(root, "releases/0.171.0-x86_64-unknown-linux-musl"));
+});
+
+test("a bump written to the pre-move pin path still counts", async t => {
+  const f = fixture(t), app = claudeApp(f.home), old = claudeRelease(f.files, "2.1.300"), v = claudeRelease(f.files, "2.1.329");
+  claudeInstall(f.home, "2.1.300");
+  await recordVendor(app, worktree(f.repo), deps(old.api, {}));
+  // a publisher still on the old code records 2.1.329 at the legacy path.
+  mkdirSync(join(f.repo, "modules/app-pins/pins"), { recursive: true });
+  claudeInstall(f.home, "2.1.329");
+  await recordVendor({ ...app, pin: "modules/app-pins/pins/claude.json" }, worktree(f.repo), deps(v.api, {}));
+  assert.equal(JSON.parse(readFileSync(join(f.repo, app.pin), "utf8")).version, "2.1.300");
+  // an older host installs the higher of the two.
+  claudeInstall(f.home, "2.1.300");
+  assert.deepEqual(await installVendor(app, worktree(f.repo), deps({}, v.files), "linux-x64"), { status: "installed", version: "2.1.329" });
+  // and a new publisher on that version sees it as already pinned.
+  assert.equal((await recordVendor(app, worktree(f.repo), deps(v.api, {}))).status, "unchanged");
 });

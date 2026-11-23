@@ -31,6 +31,8 @@ export type Pin = {
 };
 type Feed =
   | { kind: "sparkle"; url: string }
+  /** an exact build at a versioned url; for vendors whose appcast lists only the newest build. */
+  | { kind: "url"; url: string }
   | { kind: "github"; repo: string; tag: string; asset: string;
       linux?: { repo: string; assets: { x64: string; arm64: string } } };
 export type BundleApp = {
@@ -39,15 +41,30 @@ export type BundleApp = {
   compare: "build" | "short";
   feed: Feed;
   linuxRelease?: string;
+  /** false: record what the updater accepted, but never install the pin. */
+  install?: boolean;
 };
 export type App = BundleApp | VendorApp;
 type BundleInstalled = Installed & { bundleId: string };
 const isVendor = (app: App): app is VendorApp => app.kind === "vendor";
 
 const here = dirname(fileURLToPath(import.meta.url));
-export function loadApps(): Record<string, App> {
-  const specs: Record<string, Omit<BundleApp, "name"> | Omit<VendorApp, "name">> = JSON.parse(readFileSync(join(here, "apps.json"), "utf8"));
-  return Object.fromEntries(Object.entries(specs).map(([name, spec]) => [name, { name, ...spec }]));
+export const specFile = "app-pin.spec.json";
+/**
+ * each app declares itself from the module that owns it, as
+ * `modules/<module>/app-pin.spec.json`, pinned beside it in `app-pin.json`. the
+ * module's directory is the app's name, so names are unique. default.nix discovers
+ * the same files.
+ */
+export function loadApps(modules = join(here, "..")): Record<string, App> {
+  const apps: Record<string, App> = Object.create(null);
+  for (const dir of readdirSync(modules).sort()) {
+    const file = join(modules, dir, specFile);
+    if (!existsSync(file)) continue;
+    const spec = JSON.parse(readFileSync(file, "utf8")) as Omit<App, "name" | "pin">;
+    apps[dir] = { ...spec, name: dir, pin: `modules/${dir}/app-pin.json` } as App;
+  }
+  return apps;
 }
 
 export const worktree = (repo: string): Store => ({
@@ -124,6 +141,12 @@ async function resolve(app: BundleApp, installed: Installed, deps: Deps, previou
     const commit = item.match(/\(`([a-f0-9]{40})`\)/)?.[1];
     if (commit) pin.rexCommit = commit;
     return pin;
+  }
+  if (app.feed.kind === "url") {
+    const url = expand(app.feed.url, installed.version);
+    if (!/^https:\/\//.test(url)) throw new AppPinError("invalid_pin", `${app.name} feed url is not https`);
+    // hashed here, not taken from a published checksum, like the sparkle path.
+    return { ...base, darwin: { arm64: { url, sha256: await hashUrl(deps, url), format: url.endsWith(".zip") ? "zip" : "dmg" } } };
   }
   const f = app.feed;
   const assetName = expand(f.asset, installed.version);
@@ -211,6 +234,7 @@ function running(app: BundleApp, deps: Deps): boolean {
 
 export async function install(app: App, store: Store, deps: Deps): Promise<InstallResult> {
   if (isVendor(app)) return installVendor(app, store, deps);
+  if (app.install === false) return { status: "record_only" };
   const pin = readPin(app, store);
   if (!pin) return { status: "unpinned" };
   const installed = installedBundle(app, deps);

@@ -1,0 +1,10 @@
+{
+  "bundle": "/Applications/Tailscale.app",
+  "bundleId": "io.tailscale.ipn.macsys",
+  "compare": "short",
+  "feed": {
+    "kind": "url",
+    "url": "https://pkgs.tailscale.com/stable/Tailscale-{version}-macos.zip"
+  },
+  "install": false
+}

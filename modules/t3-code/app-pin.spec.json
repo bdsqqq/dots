@@ -1,0 +1,11 @@
+{
+  "bundle": "/Applications/T3 Code (Nightly).app",
+  "bundleId": "com.t3tools.t3code",
+  "compare": "short",
+  "feed": {
+    "kind": "github",
+    "repo": "pingdotgg/t3code",
+    "tag": "v{version}",
+    "asset": "T3-Code-{version}-arm64.zip"
+  }
+}
