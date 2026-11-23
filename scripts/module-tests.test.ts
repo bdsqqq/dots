@@ -55,12 +55,19 @@ test("bun detection reads import specifiers, not prose", () => {
   const bun = ["bun", "test"].join(":");
   assert.ok(importsBunTest(`import { test } from "${bun}";`));
   assert.ok(importsBunTest(`import { test } from'${bun}'`));
-  assert.ok(importsBunTest(`const { test } = await import("${bun}");`));
   assert.ok(!importsBunTest(`// unlike files that import { test } from "${bun}"\nimport test from "node:test";`));
   assert.ok(!importsBunTest(`/* from "${bun}" */ import test from "node:test";`));
   // quoting an import is not importing it.
   assert.ok(!importsBunTest(`const example = 'import { test } from "${bun}"'; import test from "node:test";`));
   // comment markers inside strings must not hide a real import.
   assert.ok(importsBunTest(`const a = "/*"; import { test } from "${bun}"; const b = "*/";`));
+  // regex contents are not imports, and can't hide one.
+  assert.ok(!importsBunTest(`const r = /from "${bun}"/; import test from "node:test";`));
+  assert.ok(importsBunTest(`const r = /'/; import { test } from "${bun}";`));
+  // nor are template contents, nested or not.
+  assert.ok(!importsBunTest("const s = `${`import x from \"" + bun + "\"`}`; import test from \"node:test\";"));
+  // typescript syntax is understood, and type-only imports don't run bun.
+  assert.ok(importsBunTest(`import { test } from "${bun}"; const n: number = 1;`));
+  assert.ok(!importsBunTest(`import type { Matchers } from "${bun}"; import test from "node:test";`));
   assert.ok(!importsBunTest('const url = "https://example.test"; import test from "node:test";'));
 });

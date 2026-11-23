@@ -9,7 +9,7 @@
  * selected unless EXCLUDED names it, so a new test runs in CI by default.
  * platform requirements live in each test, as node:test `skip` options.
  *
- *   node --experimental-strip-types scripts/module-tests.ts [--list]
+ *   node --experimental-strip-types --experimental-vm-modules scripts/module-tests.ts [--list]
  */
 
 import {
@@ -18,47 +18,27 @@ import {
   type SpawnSyncReturns,
 } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { stripTypeScriptTypes } from "node:module";
+import vm from "node:vm";
 import { dirname, join } from "node:path";
 
 const TEST_FILE = /(\.test|(^|\/)test_[^/]*)\.[cm]?[jt]s$/u;
 
 /**
- * a test that imports `bun:test` declares its own runner. scans code tokens
- * only: comments and string/template contents are skipped, so quoting an
- * import, or a "/*" inside a string, can't change the answer. a module
- * specifier is the one string the scanner reads, right after `from`/`import`.
+ * a test that statically imports `bun:test` declares its own runner. node's
+ * own parser reads the module's import requests, so strings, comments, and
+ * regexes that mention it don't count.
  */
+const { SourceTextModule } = vm as typeof vm & {
+  SourceTextModule?: new (code: string) => { moduleRequests: { specifier: string }[] };
+};
+
 export function importsBunTest(source: string): boolean {
-  let previous = "";
-  for (let i = 0; i < source.length; ) {
-    const c = source[i]!;
-    if (c === "/" && source[i + 1] === "/") {
-      i = source.indexOf("\n", i);
-      if (i < 0) return false;
-    } else if (c === "/" && source[i + 1] === "*") {
-      i = source.indexOf("*\/", i + 2);
-      if (i < 0) return false;
-      i += 2;
-    } else if (c === '"' || c === "'" || c === "`") {
-      let j = i + 1;
-      while (j < source.length && source[j] !== c) j += source[j] === "\\" ? 2 : 1;
-      if ((previous === "from" || previous === "import" || previous === "import(") &&
-          c !== "`" && source.slice(i + 1, j) === "bun:test")
-        return true;
-      previous = "string";
-      i = j + 1;
-    } else if (/[A-Za-z_$]/u.test(c)) {
-      let j = i;
-      while (j < source.length && /[\w$]/u.test(source[j]!)) j++;
-      previous = source.slice(i, j);
-      i = j;
-    } else {
-      if (c === "(" && previous === "import") previous = "import(";
-      else if (!/\s/u.test(c)) previous = c;
-      i++;
-    }
-  }
-  return false;
+  if (!SourceTextModule) throw new Error("run with --experimental-vm-modules");
+  const code = stripTypeScriptTypes(source, { mode: "strip" });
+  return new SourceTextModule(code).moduleRequests.some(
+    (request) => request.specifier === "bun:test",
+  );
 }
 
 /** path prefix → why this harness can't run it. */
@@ -158,7 +138,8 @@ function run(suite: Suite): SpawnSyncReturns<string> {
 }
 
 function main(): number {
-  const suites = selectSuites(trackedFiles(), isPackage, (file) =>
+  // a tracked file deleted in the worktree isn't a test to run.
+  const suites = selectSuites(trackedFiles().filter((file) => existsSync(file)), isPackage, (file) =>
     importsBunTest(readFileSync(file, "utf8")),
   );
   if (process.argv.includes("--list")) {

@@ -47,9 +47,9 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-scripts
         working-directory: modules/pi
 
-      - run: node --experimental-strip-types --test scripts/module-tests.test.ts
+      - run: node --experimental-strip-types --experimental-vm-modules --test scripts/module-tests.test.ts
 
-      - run: node --experimental-strip-types scripts/module-tests.ts
+      - run: node --experimental-strip-types --experimental-vm-modules scripts/module-tests.ts
 
       # repo-checks builds linux flake checks; darwin-only ones build here.
       - name: build darwin-only flake checks
