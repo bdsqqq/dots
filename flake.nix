@@ -316,6 +316,7 @@
                 "syncthing_gui_password"
               ];
               mmn-m4 = [
+                "TYPESAFE_API_KEY"
                 "artificial_analysis_api_key"
                 "axiom.toml"
                 "axiom/host_metrics_token"
@@ -325,6 +326,7 @@
                 "axiom/personal_url"
                 "gh_token"
                 "hf_token"
+                "parallel_api_key"
                 "restic_ssd_01_password"
                 "rex_netrc"
                 "syncthing_gui_password"

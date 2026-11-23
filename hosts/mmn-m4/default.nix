@@ -52,6 +52,7 @@ in
     ../../modules/remindctl
     ../../modules/agent-desktop
     ../../modules/node-pnpm
+    ../../modules/pi
     ../../modules/app-pins
     ../../modules/1password
     ../../modules/orbstack
