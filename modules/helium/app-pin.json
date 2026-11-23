@@ -1,24 +1,24 @@
 {
   "schemaVersion": 1,
   "app": "helium",
-  "version": "0.21.3.1",
-  "build": "0.21.3.1",
+  "version": "0.22.1.1",
+  "build": "0.22.1.1",
   "darwin": {
     "arm64": {
-      "url": "https://github.com/imputnet/helium-macos/releases/download/0.21.3.1/helium_0.21.3.1_arm64-macos.dmg",
-      "sha256": "3debd0f2f3a3cf0f4bfa5dfbe4d807a3391c17c752178be4449719245ed0610b",
+      "url": "https://github.com/imputnet/helium-macos/releases/download/0.22.1.1/helium_0.22.1.1_arm64-macos.dmg",
+      "sha256": "8c234480c01223c9dbc9e8dc5bc5be08b8e4341437d62dae9d75942b594fbd51",
       "format": "dmg"
     }
   },
   "linux": {
-    "version": "0.21.3.1",
+    "version": "0.22.1.1",
     "x64": {
-      "url": "https://github.com/imputnet/helium-linux/releases/download/0.21.3.1/helium-0.21.3.1-x86_64.AppImage",
-      "sha256": "a8540596c93a44631605602f3bc4eeda5bff83eb1a3a8b02e4d04a4c8473e29d"
+      "url": "https://github.com/imputnet/helium-linux/releases/download/0.22.1.1/helium-0.22.1.1-x86_64.AppImage",
+      "sha256": "af4684e0e351a68534dc33443b369d02bc3ac2633734c97848c8a7439bcbb367"
     },
     "arm64": {
-      "url": "https://github.com/imputnet/helium-linux/releases/download/0.21.3.1/helium-0.21.3.1-arm64.AppImage",
-      "sha256": "f7f3ae03f9a9c55f1b2d420688a86391fd7d3432f1e62588a2e6dd780c154404"
+      "url": "https://github.com/imputnet/helium-linux/releases/download/0.22.1.1/helium-0.22.1.1-arm64.AppImage",
+      "sha256": "e3e049fdc15f1c3b1853e6b3acebee5c88db0bb867276ab40c58f5ba54794d0b"
     }
   }
 }
