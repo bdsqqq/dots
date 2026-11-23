@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { importsBunTest, selectSuites } from "./module-tests.ts";
+import { selectSuites } from "./module-tests.ts";
 
 test("new tests are selected by default; packages run once; exclusions hold", () => {
   const files = [
@@ -21,7 +21,7 @@ test("new tests are selected by default; packages run once; exclusions hold", ()
         "modules/company-money/money.test.ts",
       ],
     },
-    { kind: "file", file: "modules/new-thing/brand-new.test.ts", runner: "node" },
+    { kind: "file", file: "modules/new-thing/brand-new.test.ts" },
   ]);
 });
 
@@ -39,35 +39,4 @@ test("a package runs every selected test file, not just its script's glob", () =
 test("every node test extension is discovered", () => {
   const files = ["a/x.test.ts", "a/x.test.mts", "a/x.test.cts", "a/x.test.js", "a/x.test.mjs", "a/x.test.cjs", "a/test_x.ts", "a/x.ts", "a/latest_x.ts"];
   assert.equal(selectSuites(files, () => false).length, 7);
-});
-
-test("bun suites stay on bun even inside a package", () => {
-  const suites = selectSuites(
-    ["modules/html-stuff/server.test.ts"],
-    (dir) => dir === "modules/html-stuff",
-    (file) => file === "modules/html-stuff/server.test.ts",
-  );
-  assert.deepEqual(suites, [{ kind: "file", file: "modules/html-stuff/server.test.ts", runner: "bun" }]);
-});
-
-test("bun detection reads import specifiers, not prose", () => {
-  // built from parts so this file doesn't itself look like a bun test.
-  const bun = ["bun", "test"].join(":");
-  assert.ok(importsBunTest(`import { test } from "${bun}";`));
-  assert.ok(importsBunTest(`import { test } from'${bun}'`));
-  assert.ok(!importsBunTest(`// unlike files that import { test } from "${bun}"\nimport test from "node:test";`));
-  assert.ok(!importsBunTest(`/* from "${bun}" */ import test from "node:test";`));
-  // quoting an import is not importing it.
-  assert.ok(!importsBunTest(`const example = 'import { test } from "${bun}"'; import test from "node:test";`));
-  // comment markers inside strings must not hide a real import.
-  assert.ok(importsBunTest(`const a = "/*"; import { test } from "${bun}"; const b = "*/";`));
-  // regex contents are not imports, and can't hide one.
-  assert.ok(!importsBunTest(`const r = /from "${bun}"/; import test from "node:test";`));
-  assert.ok(importsBunTest(`const r = /'/; import { test } from "${bun}";`));
-  // nor are template contents, nested or not.
-  assert.ok(!importsBunTest("const s = `${`import x from \"" + bun + "\"`}`; import test from \"node:test\";"));
-  // typescript syntax is understood, and type-only imports don't run bun.
-  assert.ok(importsBunTest(`import { test } from "${bun}"; const n: number = 1;`));
-  assert.ok(!importsBunTest(`import type { Matchers } from "${bun}"; import test from "node:test";`));
-  assert.ok(!importsBunTest('const url = "https://example.test"; import test from "node:test";'));
 });

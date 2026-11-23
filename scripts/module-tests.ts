@@ -5,11 +5,11 @@
  * a directory with a package.json and pnpm lockfile is a package: it gets a
  * frozen install, then `node --test` on every selected test file under it,
  * not its `test` script, whose glob can miss a new file. other test files run
- * with `node --test`, or `bun test` when they import `bun:test`. a test is
- * selected unless EXCLUDED names it, so a new test runs in CI by default.
+ * with `node --test`. a test is selected unless EXCLUDED names it, so a new
+ * test runs in CI by default.
  * platform requirements live in each test, as node:test `skip` options.
  *
- *   node --experimental-strip-types --experimental-vm-modules scripts/module-tests.ts [--list]
+ *   node --experimental-strip-types scripts/module-tests.ts [--list]
  */
 
 import {
@@ -17,34 +17,16 @@ import {
   type SpawnSyncOptionsWithStringEncoding,
   type SpawnSyncReturns,
 } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { stripTypeScriptTypes } from "node:module";
-import vm from "node:vm";
+import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 const TEST_FILE = /(\.test|(^|\/)test_[^/]*)\.[cm]?[jt]s$/u;
 
-/**
- * a test that statically imports `bun:test` declares its own runner. node's
- * own parser reads the module's import requests, so strings, comments, and
- * regexes that mention it don't count.
- */
-const { SourceTextModule } = vm as typeof vm & {
-  SourceTextModule?: new (code: string) => { moduleRequests: { specifier: string }[] };
-};
-
-export function importsBunTest(source: string): boolean {
-  if (!SourceTextModule) throw new Error("run with --experimental-vm-modules");
-  const code = stripTypeScriptTypes(source, { mode: "strip" });
-  return new SourceTextModule(code).moduleRequests.some(
-    (request) => request.specifier === "bun:test",
-  );
-}
-
 /** path prefix → why this harness can't run it. */
 export const EXCLUDED: Record<string, string> = {
   "modules/pi/": "has its own vitest suite and CI job",
-  "modules/tailnet-registry/": "built by checks.tailnet-registry",
+  "modules/tailnet-registry/": "bun tests, built by checks.tailnet-registry",
+  "modules/html-stuff/": "bun tests, built by checks.html-stuff",
   "modules/household-intake/smb-audit.test.mjs":
     "built by checks.household-intake-smb-audit on the macOS job",
   "scripts/check-credential-ownership.test.ts":
@@ -57,7 +39,7 @@ const excluded = (file: string): boolean =>
 
 export type Suite =
   | { kind: "package"; dir: string; files: string[] }
-  | { kind: "file"; file: string; runner: "node" | "bun" };
+  | { kind: "file"; file: string };
 
 /** the nearest ancestor with a package.json and a pnpm lockfile. */
 function owningPackage(
@@ -72,13 +54,12 @@ function owningPackage(
 export function selectSuites(
   files: readonly string[],
   isPackage: (dir: string) => boolean,
-  isBun: (file: string) => boolean = () => false,
 ): Suite[] {
   const packages = new Map<string, string[]>();
   const loose: string[] = [];
   for (const file of files) {
     if (!TEST_FILE.test(file) || excluded(file)) continue;
-    const dir = isBun(file) ? undefined : owningPackage(file, isPackage);
+    const dir = owningPackage(file, isPackage);
     if (dir) packages.set(dir, [...(packages.get(dir) ?? []), file]);
     else loose.push(file);
   }
@@ -86,14 +67,7 @@ export function selectSuites(
     ...[...packages.keys()].sort().map(
       (dir) => ({ kind: "package", dir, files: packages.get(dir)!.sort() }) as const,
     ),
-    ...loose.sort().map(
-      (file) =>
-        ({
-          kind: "file",
-          file,
-          runner: isBun(file) ? "bun" : "node",
-        }) as const,
-    ),
+    ...loose.sort().map((file) => ({ kind: "file", file }) as const),
   ];
 }
 
@@ -111,9 +85,7 @@ function trackedFiles(): string[] {
 const label = (suite: Suite) =>
   suite.kind === "package"
     ? `${suite.dir}/ (${suite.files.length} files)`
-    : suite.runner === "bun"
-      ? `${suite.file} (bun)`
-      : suite.file;
+    : suite.file;
 
 function run(suite: Suite): SpawnSyncReturns<string> {
   const options: SpawnSyncOptionsWithStringEncoding = {
@@ -121,9 +93,7 @@ function run(suite: Suite): SpawnSyncReturns<string> {
     stdio: ["ignore", "pipe", "pipe"],
   };
   if (suite.kind === "file")
-    return suite.runner === "bun"
-      ? spawnSync("bun", ["test", suite.file], options)
-      : spawnSync(process.execPath, ["--experimental-strip-types", "--test", suite.file], options);
+    return spawnSync(process.execPath, ["--experimental-strip-types", "--test", suite.file], options);
   const install = spawnSync(
     "pnpm",
     ["install", "--frozen-lockfile", "--ignore-scripts"],
@@ -139,9 +109,8 @@ function run(suite: Suite): SpawnSyncReturns<string> {
 
 function main(): number {
   // a tracked file deleted in the worktree isn't a test to run.
-  const suites = selectSuites(trackedFiles().filter((file) => existsSync(file)), isPackage, (file) =>
-    importsBunTest(readFileSync(file, "utf8")),
-  );
+  // a tracked file deleted in the worktree isn't a test to run.
+  const suites = selectSuites(trackedFiles().filter((file) => existsSync(file)), isPackage);
   if (process.argv.includes("--list")) {
     console.log(suites.map(label).join("\n"));
     return 0;

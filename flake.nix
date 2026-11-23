@@ -436,6 +436,7 @@
         checks.agents-research-acquire = import ./modules/agents/research/2026-09-28/check.nix { inherit pkgs; };
 
         checks.service-events = import ./modules/service-events/check.nix { inherit pkgs; };
+        checks.html-stuff = import ./modules/html-stuff/check.nix { inherit pkgs; };
 
 
         checks.tailnet-artifacts = pkgs.runCommand "tailnet-artifacts-check" { } ''
