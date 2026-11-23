@@ -68,6 +68,14 @@ creation_rules:
     key_groups:
       - age:
           - *user_bdsqqq
+  # Only pi hosts consume the shared Claude subscription token.
+  - path_regex: ^modules/claude-code/secrets\.yaml$
+    key_groups:
+      - age:
+          - *user_bdsqqq
+          - *host_lgo_z2e
+          - *host_htz_xfs_lab
+          - *host_htz_lab
   - path_regex: ^modules/(o11y|pi/packages/extensions/web-search)/secrets\.yaml$
     key_groups:
       - age:
