@@ -26,7 +26,7 @@ work and personal provider logins do not automatically separate tool accounts.
 the agent module exposes the shared collection through four local aliases;
 its CLI entrypoints link back to canonical skills beside each module. package
 installation still requires explicit host imports. these links do not provision
-credentials or complete consent. REA uses Pi's native installed-release path.
+credentials or complete consent.
 
 authorize Google/WhatsApp/X on the host that will run unattended work.
 Reminders and Obsidian remain Mac/app capabilities. OpenHue needs LAN access to

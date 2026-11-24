@@ -45,8 +45,6 @@ external skills are vendored, not fetched: `linear` from `bdsqqq/lnr`, and
 `vercel-labs/agent-skills`. update them by copying upstream. skills that other
 programs install into an agent's skills directory land in this checkout as
 untracked files; commit or discard them.
-`reverse-engineer-anything` stays with its installed REA release through
-[`../pi/settings.json`](../pi/settings.json), not this collection.
 
 the [pi skill executor](../pi/packages/extensions/skill/index.ts) keeps caller
 arguments after the instruction block as a lossless JSON string. absence/blank

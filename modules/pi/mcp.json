@@ -1,11 +1,3 @@
 {
-  "mcpServers": {
-    "rea": {
-      "type": "stdio",
-      "command": "rea",
-      "args": ["mcp"],
-      "description": "REA provides reverse-engineering tools for local artifacts, native binaries, managed code, browser pages, and runtimes.",
-      "exposure": "codemode"
-    }
-  }
+  "mcpServers": {}
 }

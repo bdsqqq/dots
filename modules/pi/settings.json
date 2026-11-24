@@ -7,8 +7,7 @@
     "+codemode"
   ],
   "skills": [
-    "~/.config/agents/skills",
-    "~/commonplace/01_files/nix/modules/node-pnpm/node_modules/rea-agents/skills"
+    "~/.config/agents/skills"
   ],
   "themes": [
     "~/.pi/agent/extensions/editor/themes"
