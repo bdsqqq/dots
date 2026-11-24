@@ -9,7 +9,7 @@ the [module pattern](README.md).
 
 **VERIFIED (traced):** the sources below declare commands or services. no dedicated
 entrypoint for these capabilities was found in the shared skill collection;
-REA's Pi-native path is separate. the replay below is a countercheck for this
+the replay below is a countercheck for this
 bounded absence finding, not proof about every installed agent. **HUNCH:** guidance may help
 when platform, data freshness, privacy, or multi-step operation matters.
 
@@ -52,8 +52,7 @@ Linear already has a vendored [Linear](agents/skills/linear/SKILL.md)
 entrypoint.
 [Git](agents/skills/git/SKILL.md),
 [company money](agents/skills/company-money/SKILL.md), and Axiom have shared guidance.
-REA stays with its installed release via [Pi's native skills path](pi/settings.json#L8);
-there is no shared REA owner. Axiom's
+Axiom's
 [skill](agents/skills/using-axiom/SKILL.md) focuses on MCP access; CLI coverage
 still needs assessment against actual tasks.
 
@@ -113,7 +112,6 @@ rg -n 'settings\s*=|\.text\s*=|extraConfig\s*=|builtins\.toJSON' \
   modules -g '*.nix' -g '!**/node_modules/**'
 find modules/agents/skills -name SKILL.md -print
 rg -n 'skills|mkOutOfStoreSymlink' modules/agents/default.nix
-rg -n 'rea-agents/skills' modules/pi/settings.json
 rg -n -i 'transcri|helium|hue-control|household-intake|photo-intelligence|yt-dlp|gallery-dl|wikiman|agent-browser|parallel-web|vercel' \
   modules/agents/skills -g SKILL.md
 ls -l modules/agents/skills/{gog,wacli,goplaces,openhue,xurl,weather,remindctl,obsidian}/SKILL.md

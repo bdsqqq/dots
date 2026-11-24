@@ -13,7 +13,6 @@
     "npm": "^12.2.2",
     "openportal": "^0.1.32",
     "parallel-web-cli": "^0.9.4",
-    "rea-agents": "6.9.0",
     "t3": "0.1.10",
     "turbo": "^2.11.11",
     "typescript": "^7.0.2",
