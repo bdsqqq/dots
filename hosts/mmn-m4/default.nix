@@ -190,6 +190,7 @@ in
               "mbp-m2"
               "mbp-m5"
               "htz-relay"
+              "lgo-z2e"
             ])
             // {
               mbp-m2 = syncthing.devices.mbp-m2 // {
@@ -201,6 +202,7 @@ in
               "mbp-m2"
               "mbp-m5"
               "htz-relay"
+              "lgo-z2e"
             ]
               { label = "commonplace"; };
             kindle = syncthing.folderFor "kindle" "/Users/bdsqqq" true [ "mbp-m2" ] { };
