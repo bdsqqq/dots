@@ -1,163 +1,55 @@
 # dots
 
-multi-host Nix configuration for nix-darwin, NixOS, and Home Manager. hosts
-select capabilities explicitly; each capability keeps its
-system, user, package, scripts, tests, and assets together.
+my machines, described with nix-darwin, NixOS, and Home Manager: three macs, a
+handheld, and a few Hetzner boxes.
 
-## live, editable systems
+most nix setups make the store the source of truth, and every settings change
+becomes a rebuild. I didn't want that. programs keep their config in ordinary
+tracked files linked out of the repo, so Ghostty, Niri, or Pi can rewrite their
+own settings and `pnpm add -g` just installs a package. Nix makes sure each
+machine has what those programs need; the programs stay in charge of their own
+files. [modules/README.md](modules/README.md) walks through how a module is
+wired that way.
 
-across every host and feature, the repo manages the live system without
-exclusively controlling it. programs read and write editable, tracked files:
-`pnpm add -g` updates the global manifest and installs locally; Pi can modify its
-own modules; Niri consumes live config edits.
+## finding things
 
-Nix supplies prerequisites, links, and services. native install/build/reload
-workflows remain available; rebuild/switch is required only where the change
-needs system activation.
+each machine is one file, `hosts/<name>/default.nix`, that imports every
+feature it runs. there are no shared `base` or `desktop` profiles, so that file
+is the whole answer to "what's on this machine". each feature is one directory,
+`modules/<feature>/`, holding its nix, native config, tests, secrets, and agent
+skill.
 
-the goal is prompt, automatic convergence of published changes across hosts,
-with manual catch-up always available—not a claim of complete implementation.
-preserve unpublished edits rather than resetting them during updates.
+| host          | platform       | role                                |
+| ------------- | -------------- | ----------------------------------- |
+| `mbp-m2`      | aarch64-darwin | main laptop                         |
+| `mbp-m5`      | aarch64-darwin | work laptop                         |
+| `mmn-m4`      | aarch64-darwin | household storage and media         |
+| `lgo-z2e`     | x86_64-linux   | Legion Go handheld, Niri and Steam  |
+| `htz-relay`   | x86_64-linux   | storage, Syncthing, app relay       |
+| `htz-lab`     | x86_64-linux   | agent host                          |
+| `htz-xfs-lab` | x86_64-linux   | agent host, XFS/VDO storage testing |
 
-installation and runtime must use the same live source and manifest/lockfile.
-replacing live files with immutable snapshots or deployment-only copies requires
-explicit agreement.
+## keeping machines current
 
-## architecture
+I push to `main` and mostly forget about it: every host rebuilds itself hourly
+from the published flake ([modules/nix](modules/nix/README.md)). dependency
+bumps show up as PRs from the flake-update workflow. apps that update
+themselves, like Rex, Helium, or the Claude and Codex CLIs, work the other way
+round: whichever machine updates first commits the version it got, and the
+rest follow ([app-pins](modules/app-pins/README.md)).
 
-```mermaid
-flowchart TD
-  F[flake.nix<br/>inputs and output wiring] --> H[hosts/name/default.nix]
-  H -->|explicit imports| M[modules/feature]
-  M --> D[default.nix<br/>system entry point]
-  M --> HM[home.nix<br/>Home Manager fragment]
-  M --> P[package.nix<br/>derivation]
-  M --> L[lib.nix<br/>pure helpers]
-  M --> T[tailnet-app.nix<br/>service declaration]
-  T --> G[generated tailnet artifacts]
-```
-
-- `flake.nix` owns inputs, platform constructors, overlays, checks, packages,
-  and named configuration outputs.
-- `hosts/<name>/` owns machine identity, hardware and topology, feature
-  selection, and host-specific values.
-- `modules/<feature>/` owns a reusable capability across system and Home
-  Manager scopes. supporting scripts, tests, packages, and assets stay with
-  that feature.
-- hosts import features directly. repeated imports are intentional: there are
-  no implicit `base`, `desktop`, or `dev` bundles.
-- `assets/`, `config/`, `overlays/`, and `scripts/` contain repository-wide
-  support files rather than Nix architecture roots.
-
-### feature file contracts
-
-| file              | contract                                                                                     |
-| ----------------- | -------------------------------------------------------------------------------------------- |
-| `default.nix`     | system-level feature entry point; importing `modules/foo` selects it                         |
-| `home.nix`        | direct Home Manager module, imported by the feature's system adapter                         |
-| `package.nix`     | reusable package expression, imported directly rather than placed in a module `imports` list |
-| `lib.nix`         | pure data or helpers without a NixOS option graph                                            |
-| `service.nix`     | explicit deployment integration when packaging and service policy are separate               |
-| `tailnet-app.nix` | declarative tailnet and Cloudflare metadata discovered by the catalog                        |
-| `credential.nix`  | the feature's stable credential owner; consumers import it and set its requirement flag      |
-| `secrets.yaml`    | canonical ciphertext adjacent to its `credential.nix` owner                                  |
-
-for all modules, keep `default.nix`, any needed native config, and useful local
-`SKILL.md` together. programs read and write the separate, editable native files
-through out-of-store links; Nix supplies prerequisites and wiring, not an
-immutable replacement for those files. see the [editable module pattern](modules/README.md)
-and [existing agent-surface/settings audit](modules/agent-surface-audit.md).
-the [tool setup guide](modules/agent-tool-setup.md) covers account consent,
-pairing, and credential provisioning.
-
-colocated CLI skills enter the portable `modules/agents/skills` collection through
-relative entrypoint symlinks. the agent module links that root to local
-discovery aliases; hosts still select packages explicitly. discovery, installation,
-runtime access, and authentication need separate checks.
-
-## configurations
-
-| output      | platform       | role                                      |
-| ----------- | -------------- | ----------------------------------------- |
-| `mbp-m2`    | aarch64-darwin | primary graphical workstation             |
-| `mbp-m5`    | aarch64-darwin | work-issued development workstation       |
-| `mmn-m4`    | aarch64-darwin | household storage and media service host  |
-| `lgo-z2e`   | x86_64-linux   | Niri/Jovian graphical system              |
-| `htz-relay` | x86_64-linux   | storage, Syncthing, and application relay |
-
-## common operations
+when I don't want to wait for the hour:
 
 ```bash
-# inspect inputs and format
-nix flake metadata
-nix fmt
-
-# verify the Darwin host before activation
-nix build .#darwinConfigurations.mbp-m2.system --dry-run
-nix build .#darwinConfigurations.mbp-m2.system
 sudo darwin-rebuild switch --flake .#mbp-m2
-
-# verify a NixOS host before activation
-nix build .#nixosConfigurations.lgo-z2e.config.system.build.toplevel --dry-run
-nix build .#nixosConfigurations.lgo-z2e.config.system.build.toplevel
 sudo nixos-rebuild switch --flake .#lgo-z2e
 ```
 
-replace the host name with the target configuration. do not cross-build by
-default.
+## services and secrets
 
-## automatic updates
+services reachable over my tailnet are declared next to the feature that runs
+them, in `tailnet-app.nix`. the Tailscale policy and Cloudflare config are
+generated from those declarations with `nix run .#generate-tailnet-artifacts`.
 
-all hosts import the hourly upgrade policy through `modules/nix`. Linux uses
-`system.autoUpgrade` without automatic reboots; Darwin uses a root launchd job.
-Darwin can opt into build-only with `system.autoUpgrade.operation = "build"`.
-these jobs consume the published GitHub flake, not an editable local checkout.
-they do not wait for idle or supply health-based rollback.
-
-system upgrade jobs alone do not synchronize live checkouts, install their
-dependencies, or reload programs.
-
-`flake.lock` and custom package pins still need repository updates. the
-flake-update workflow proposes those changes; host timers do not advance them.
-
-[rex is the direct-publish pilot](modules/rex/README.md): a scheduled Depot CI
-job validates both linux artifacts, commits only its release record to `main`, and host timers
-apply that published pin independently of host rebuilds. this does not change
-the update policy for other features.
-
-## tailnet declarations
-
-features publish services with `modules/**/tailnet-app.nix`. the catalog
-validates those declarations and projects them into:
-
-- `generated/fleet-apps.json`
-- `cloudflare/apps.auto.tfvars.json`
-- `tailscale/services.json`
-- `tailscale/capabilities.json`
-
-regenerate and verify the projections after changing a declaration:
-
-```bash
-nix run .#generate-tailnet-artifacts
-nix build .#checks.aarch64-darwin.tailnet-artifacts
-```
-
-generated JSON is output, not an additional source of truth.
-
-## secrets
-
-secrets use sops-nix. `.sops.yaml` contains public recipients, while encrypted
-values and runtime declarations live beside the domain that owns them. consumer
-count does not affect ownership: a second consumer imports the same
-`credential.nix` rather than moving or copying its ciphertext.
-
-```bash
-sops modules/<feature>/secrets.yaml
-sops updatekeys modules/<feature>/secrets.yaml
-nix build .#checks.aarch64-darwin.credential-ownership
-nix build .#checks.aarch64-darwin.credential-host-closures
-```
-
-`modules/secrets/default.nix` owns only shared sops/age infrastructure.
-never commit private age keys. see [SECRETS.md](./SECRETS.md) for setup and
-rotation.
+secrets are sops-encrypted and also live with their feature, in
+`secrets.yaml`. [SECRETS.md](SECRETS.md) covers keys and rotation.
