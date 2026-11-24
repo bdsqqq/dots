@@ -13,12 +13,11 @@ wired that way.
 
 ## finding things
 
-each machine is one file, `hosts/<name>/default.nix`, that imports the
-features it runs. there are no shared `base` or `desktop` profiles, so apart from
-a little shared wiring in `flake.nix`, that file answers "what's on this
-machine". each feature is one directory,
-`modules/<feature>/`, holding its nix, native config, tests, secrets, and agent
-skill.
+each machine starts at `hosts/<name>/default.nix`, which imports the features
+it runs. there are no shared `base` or `desktop` profiles, so that file plus the
+host's entry in `flake.nix` answer "what's on this machine". each feature is
+one directory, `modules/<feature>/`, holding its nix, native config, tests,
+secrets, and agent skill.
 
 | host          | platform       | role                                |
 | ------------- | -------------- | ----------------------------------- |
