@@ -155,12 +155,10 @@ const FREE_BYTES = '`host-metrics`:`system.filesystem.usage` | where state == "f
 const FREE_FRACTION = '(`host-metrics`:`system.filesystem.usage` | where state == "free" and mode == "rw" | group by `host.name`, mountpoint using min, `host-metrics`:`system.filesystem.usage` | where mode == "rw" | group by `host.name`, mountpoint, state using max | group by `host.name`, mountpoint using sum) | compute free_fraction using / | align to 30s using min';
 
 /**
- * one host-declared level against the recent samples. the ledger holds the
- * "stayed bad for afterMinutes" part: anything unknown in between (stale samples,
- * a sleeping laptop, a value inside the hysteresis band) restarts that clock.
- * a level that waits must see every recent sample bad, so a dip and a recovery
- * inside one poll don't count as "still low". an immediate level reacts to the
- * lowest sample, as before.
+ * the ledger, not this function, decides "stayed bad for afterMinutes": anything
+ * unknown in between (stale samples, a sleeping laptop, the hysteresis band)
+ * restarts that clock. so a level that waits must see every sample in the poll
+ * bad, or a dip that recovers inside one poll would keep the clock running.
  */
 export function diskObservation(kind: string, level: { bad: number; healthy: number; afterMinutes: number; unit: "bytes" | "fraction" },
     host: string, mount: string, points: Point[], now: number): Observation {
@@ -262,7 +260,7 @@ export async function observations(client: Axiom, config: Configuration, now: nu
   return { observations: result, errors };
 }
 
-/** the condition as a person reads it: a disk level names its own threshold, not the kind's legacy default. */
+/** the kind string is the incident's identity and keeps its legacy threshold; the title says the one that fired. */
 function describe(event: Transition): string {
   const { threshold, unit } = event.detail;
   if (!isDiskKind(event.kind) || typeof threshold !== "number") return event.kind;

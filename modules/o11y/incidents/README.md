@@ -22,6 +22,14 @@ activation, or restart commands exist in the evaluator.
 - oom recovery requires a quiet log window **and** fresh uptime; a dead host is
   not proof that memory pressure stopped.
 
+sqlite commits a transition and its outbox record together. the match monitor
+consumes these transition events, not raw metrics. a recovery event carries
+`action = Closed`; a match monitor's native `.Action` would incorrectly say
+`Open` for that same event. the lifecycle webhook template must use the matched
+record's action, ids, and timestamp. hosted email remains axiom's existing
+notifier; its match-notification subject can still say “triggered,” while the
+record identifies recovery.
+
 ## disk alerts are declared by each host
 
 a host says how its disks are used with `my.diskAlerts`
@@ -30,16 +38,15 @@ declaration from the flake and applies it. "low" means different things on a
 37 GiB server root, a laptop whose caches swing tens of GiB within the hour, and
 a volume that exists to fill up, so the threshold lives next to the machine.
 
-- **profile** sets the defaults. `server` (linux): critical below 2 GiB on the
-  first bad poll, low below 8 GiB for an hour. `workstation` (darwin, and
-  lgo-z2e): critical below 2 GiB for 30 minutes, low below 8 GiB for 12 hours.
-  the duration is what separates a full disk from a busy one. a level that
-  waits needs every sample in a poll below its threshold, so a dip that
-  recovers within the poll doesn't count.
+- **profile** sets the defaults: `server` (linux) pages on a critically full
+  disk at once, `workstation` (darwin, lgo-z2e) waits long enough that a
+  build or a cache doesn't page someone who is at the keyboard. how long free
+  space stays low is what separates a full disk from a busy one, so the
+  profiles differ mostly in duration, not in size.
 - **mounts** default to the writable data mounts the collector reports. a host
   can override one level, set it to `null` to stop watching it, or add a
-  `capacity` level for a disk meant to fill up. that one is relative (below 15%
-  for 6 hours) and never critical: it answers "time to grow the volume?".
+  `capacity` level for a disk meant to fill up. that one is relative, slow and
+  never critical: it answers "time to grow the volume?".
 - dropping a declared condition closes its open incident with a "no longer
   monitored" event, since it can no longer recover by measurement.
 
@@ -55,19 +62,11 @@ condition unknown, which restarts the clock instead of paging.
 the disk monitors in [monitors.json](../monitors.json) are unrouted mirrors of
 the raw signal; paging only follows the declarations.
 
-sqlite commits a transition and its outbox record together. the match monitor
-consumes these transition events, not raw metrics. a recovery event carries
-`action = Closed`; a match monitor's native `.Action` would incorrectly say
-`Open` for that same event. the lifecycle webhook template must use the matched
-record's action, ids, and timestamp. hosted email remains axiom's existing
-notifier; its match-notification subject can still say “triggered,” while the
-record identifies recovery.
-
 ## external convergence and readiness (opt-in)
 
 `externalExpectations` is optional in the existing runtime JSON. enable only the
 always-on mini first; a host must already have a `hosts: telemetry missing` rule
-and an entry in `mounts`. inventory alone never opts in a sleeping laptop.
+and an entry in `disks`. inventory alone never opts in a sleeping laptop.
 parent integration must add this field to the relay's generated runtime config;
 no monitor definition, notification route, database migration or initialization
 is required. the lifecycle match monitor already handles these conditions.

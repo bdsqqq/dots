@@ -144,7 +144,6 @@ test("query errors remain unknown rather than empty-result absence or recovery",
   try {
     const client = new Axiom({ query: "q", ingest: "i", org: "o" }, async () => { throw new Error("timeout"); });
     const result = await observations(client, fixture.config, now);
-    // uptime, disk free bytes (one query for every declared byte level), oom, guard.
     assert.deepEqual(result.errors.toSorted(), ["disk free bytes", "hosts: kernel killed a process for lack of memory", "hosts: storage guard unhealthy (htz-xfs)", "uptime"]);
     assert.ok(result.observations.every(o => o.status === "unknown"));
   } finally { rmSync(fixture.directory, { recursive: true }); }

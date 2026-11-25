@@ -14,9 +14,9 @@ let
     if isDarwin then [ "/System/Volumes/Data" ]
     else builtins.filter (m: builtins.elem m watchable) (builtins.attrNames (config.fileSystems or { }));
 
-  # bad below `below` for `afterMinutes` opens an incident; it closes once free
-  # space holds at `recover`. `afterMinutes` is what tells a full disk apart from
-  # a busy one, so it differs most between profiles.
+  # `afterMinutes` is what tells a full disk apart from a busy one, so it's what
+  # differs most between profiles. 0 opens on the first bad poll. `recover` sits
+  # above `below` so the edge doesn't flap.
   level = defaults: lib.types.submodule {
     options = {
       below = lib.mkOption { type = lib.types.ints.positive; default = defaults.below; };
@@ -69,7 +69,7 @@ in
       type = lib.types.attrsOf mount;
       description = "writable mountpoints the incident evaluator watches here, each with the profile's levels unless overridden.";
     };
-    # what the evaluator reads from every host; plain data, no derivations.
+    # the relay's evaluator reads this from every host's config, so it must stay plain data.
     resolved = lib.mkOption {
       type = lib.types.attrs;
       readOnly = true;

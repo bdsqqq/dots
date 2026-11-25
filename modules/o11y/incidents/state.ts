@@ -200,7 +200,6 @@ export class IncidentStore {
     });
   }
 
-  /** keys of incidents that are open now, whatever produced them. */
   openKeys(): string[] {
     return this.db.prepare("SELECT key FROM incidents WHERE incidentId IS NOT NULL ORDER BY key").all().map(row => row.key as string);
   }
