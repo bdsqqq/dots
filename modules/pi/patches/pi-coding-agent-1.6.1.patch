@@ -1,5 +1,5 @@
 diff --git a/dist/core/agent-session.js b/dist/core/agent-session.js
-index 009632b..22e96bb 100644
+index fc41fb4..0b57dd2 100644
 --- a/dist/core/agent-session.js
 +++ b/dist/core/agent-session.js
 @@ -1198,15 +1198,15 @@ export class AgentSession {
@@ -275,10 +275,10 @@ index 45337c1..00cd713 100644
          async execute(_toolCallId, input, signal, _onUpdate, ctx) {
              const { path, edits } = validateEditInput(input);
 diff --git a/dist/core/tools/renderers/bash.js b/dist/core/tools/renderers/bash.js
-index 43430f1..898f96a 100644
+index 541dd5c..15c4eae 100644
 --- a/dist/core/tools/renderers/bash.js
 +++ b/dist/core/tools/renderers/bash.js
-@@ -44,8 +44,7 @@ function rebuildBashResultRenderComponent(component, result, options, showImages
+@@ -47,8 +47,7 @@ function rebuildBashResultRenderComponent(component, result, options, showImages
              component.addChild(new VisualLinePreview({
                  text: styledOutput,
                  maxVisualLines: BASH_PREVIEW_LINES,
@@ -1007,10 +1007,10 @@ index 961a48e..4ac2f37 100644
      /** Temp file with the full text output, when the output was truncated. */
      fullOutputPath?: string;
 diff --git a/dist/extensions/mcp/tools.js b/dist/extensions/mcp/tools.js
-index 67aa2b8..791ae75 100644
+index f506a04..637f33b 100644
 --- a/dist/extensions/mcp/tools.js
 +++ b/dist/extensions/mcp/tools.js
-@@ -243,7 +243,6 @@ export function createMcpToolRenderers(label) {
+@@ -127,7 +127,6 @@ export function createMcpToolRenderers(label) {
                  component.addChild(new VisualLinePreview({
                      text: styled,
                      maxVisualLines: OUTPUT_PREVIEW_LINES,
@@ -1217,15 +1217,16 @@ index 4789d61..178ccd2 100644
  //# sourceMappingURL=assistant-message.js.map
 \ No newline at end of file
 diff --git a/dist/modes/interactive/components/bash-execution.js b/dist/modes/interactive/components/bash-execution.js
-index 45a7558..bd200ab 100644
+index e83c4a6..6005039 100644
 --- a/dist/modes/interactive/components/bash-execution.js
 +++ b/dist/modes/interactive/components/bash-execution.js
-@@ -1,13 +1,13 @@
+@@ -1,14 +1,14 @@
  /**
   * Component for displaying bash command execution with streaming output.
   */
 -import { Container, Loader, Spacer, Text } from "@earendil-works/pi-tui";
 +import { Box, Container, Loader, Spacer, Text } from "@earendil-works/pi-tui";
+ import { bashTruncationNote } from "../../../core/messages.js";
  import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncateTail, } from "../../../core/tools/truncate.js";
  import { stripAnsi } from "../../../utils/ansi.js";
  import { theme } from "../theme/theme.js";
@@ -1236,7 +1237,7 @@ index 45a7558..bd200ab 100644
  // Preview line limit when not expanded (matches tool execution behavior)
  const PREVIEW_LINES = 20;
  export class BashExecutionComponent extends Container {
-@@ -94,9 +94,6 @@ export class BashExecutionComponent extends Container {
+@@ -97,9 +97,6 @@ export class BashExecutionComponent extends Container {
          });
          // Get the lines to potentially display (after context truncation)
          const availableLines = contextTruncation.content ? contextTruncation.content.split("\n") : [];
@@ -1246,7 +1247,7 @@ index 45a7558..bd200ab 100644
          // Rebuild content container
          this.contentContainer.clear();
          // Command header
-@@ -110,25 +107,14 @@ export class BashExecutionComponent extends Container {
+@@ -113,25 +110,14 @@ export class BashExecutionComponent extends Container {
                  this.contentContainer.addChild(new Text(`\n${displayText}`, this.outputPad, 0));
              }
              else {
@@ -1280,7 +1281,7 @@ index 45a7558..bd200ab 100644
              }
          }
          // Loader or status
-@@ -137,14 +123,8 @@ export class BashExecutionComponent extends Container {
+@@ -140,14 +126,8 @@ export class BashExecutionComponent extends Container {
          }
          else {
              const statusParts = [];
@@ -2063,10 +2064,10 @@ index c5212e7..7324270 100644
              else {
                  this.cachedLines = lines;
 diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive/interactive-mode.js
-index cbd9365..7992e10 100644
+index 03e89af..b82fc35 100644
 --- a/dist/modes/interactive/interactive-mode.js
 +++ b/dist/modes/interactive/interactive-mode.js
-@@ -3677,8 +3677,16 @@ export class InteractiveMode {
+@@ -3685,8 +3685,16 @@ export class InteractiveMode {
          await this.runtimeHost.dispose();
          const resumeCommand = formatResumeCommand(this.sessionManager);
          if (resumeCommand) {
@@ -2084,9 +2085,9 @@ index cbd9365..7992e10 100644
 +            process.stdout.write(`\n${banner}\n\n${resumeCommand}\n`);
          }
          await flushStdout();
-         process.exit(0);
+         // dispose() only starts killing a running `!` command, which on Windows loses the race with
 diff --git a/package.json b/package.json
-index e1a43e9..b6473ff 100644
+index add559e..bf79349 100644
 --- a/package.json
 +++ b/package.json
 @@ -7,7 +7,7 @@

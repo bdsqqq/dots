@@ -870,7 +870,7 @@ if (import.meta.vitest) {
           cwd: temporary,
           input: await readFile(
             new URL(
-              "../../../patches/pi-coding-agent-1.6.0.patch",
+              "../../../patches/pi-coding-agent-1.6.1.patch",
               import.meta.url,
             ),
             "utf8",
@@ -1174,7 +1174,7 @@ if (import.meta.vitest) {
         );
         const currentPatch = await readFile(
           new URL(
-            "../../../patches/pi-coding-agent-1.6.0.patch",
+            "../../../patches/pi-coding-agent-1.6.1.patch",
             import.meta.url,
           ),
           "utf8",
