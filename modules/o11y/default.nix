@@ -319,7 +319,7 @@ let
   '';
 in
 {
-  imports = [ ./credential.nix ] ++ lib.optionals isDarwin [ ./darwin.nix ];
+  imports = [ ./credential.nix ./disk-alerts.nix ] ++ lib.optionals isDarwin [ ./darwin.nix ];
 
   options.services.o11y = {
     enable = lib.mkOption {

@@ -507,4 +507,6 @@ in
   system.stateVersion = "25.05";
 
   my.appPins.apps = [ "claude" "codex" ];
+  # a personal machine (games, builds) that also sleeps: workstation timing.
+  my.diskAlerts.profile = "workstation";
 }

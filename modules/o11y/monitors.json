@@ -1,7 +1,7 @@
 [
   {
     "name": "hosts: critical disk space (below 2 GiB)",
-    "description": "Critical headroom on a writable root or persistent data volume. A 2 GiB buffer is smaller than routine build/package bursts. Uses the lowest sample over two minutes so a brief near-full event is not hidden by recovery. Excludes boot partitions, APFS helper volumes, simulator images, and bind-mount duplicates. Group identifies the host and mountpoint; inspect growth before deleting anything.",
+    "description": "Critical headroom on a writable root or persistent data volume. A 2 GiB buffer is smaller than routine build/package bursts. Uses the lowest sample over two minutes so a brief near-full event is not hidden by recovery. Excludes boot partitions, APFS helper volumes, simulator images, and bind-mount duplicates. Group identifies the host and mountpoint; inspect growth before deleting anything. Paging thresholds and timing come from each host's my.diskAlerts (modules/o11y/disk-alerts.nix), applied by the relay's incident evaluator; this unrouted monitor only mirrors the raw signal in Axiom.",
     "type": "Threshold",
     "mplQuery": "`host-metrics`:`system.filesystem.usage` | where state == \"free\" and mode == \"rw\" | where mountpoint in [\"/\", \"/System/Volumes/Data\", \"/mnt/storage-01\", \"/mnt/xfs-vdo\"] | group by `host.name`, mountpoint using min | align using min",
     "operator": "Below",
@@ -16,7 +16,7 @@
   },
   {
     "name": "hosts: low disk headroom (below 8 GiB)",
-    "description": "Early warning before the 2 GiB critical limit: 8 GiB covers roughly one current host-update unpack. Uses the lowest free-space sample over five minutes and requires two consecutive evaluations. Low samples are not averaged away; recovered pressure remains visible for up to five minutes. Canonical writable root/data mounts only; laptops going offline do not trigger this alert.",
+    "description": "Early warning before the 2 GiB critical limit: 8 GiB covers roughly one current host-update unpack. Uses the lowest free-space sample over five minutes and requires two consecutive evaluations. Low samples are not averaged away; recovered pressure remains visible for up to five minutes. Canonical writable root/data mounts only; laptops going offline do not trigger this alert. Paging thresholds and timing come from each host's my.diskAlerts (modules/o11y/disk-alerts.nix), applied by the relay's incident evaluator; this unrouted monitor only mirrors the raw signal in Axiom.",
     "type": "Threshold",
     "mplQuery": "`host-metrics`:`system.filesystem.usage` | where state == \"free\" and mode == \"rw\" | where mountpoint in [\"/\", \"/System/Volumes/Data\", \"/mnt/storage-01\", \"/mnt/xfs-vdo\"] | group by `host.name`, mountpoint using min | align using min",
     "operator": "Below",
@@ -31,7 +31,7 @@
   },
   {
     "name": "hosts: filesystem nearly full (below 10% free)",
-    "description": "Relative-capacity warning complements absolute byte limits on larger disks. Includes free, used, and reserved states in total capacity. Canonical writable root/data mounts avoid APFS helper/simulator and bind-mount duplicates. Two consecutive evaluations of a five-minute window are required.",
+    "description": "Relative-capacity warning complements absolute byte limits on larger disks. Includes free, used, and reserved states in total capacity. Canonical writable root/data mounts avoid APFS helper/simulator and bind-mount duplicates. Two consecutive evaluations of a five-minute window are required. Retired from paging: hosts declare a capacity level instead, and the evaluator closes any open incident for this condition as no longer monitored. Kept so an evaluator that predates host declarations still recognizes every rule.",
     "type": "Threshold",
     "mplQuery": "(`host-metrics`:`system.filesystem.usage` | where state == \"free\" and mode == \"rw\" | where mountpoint in [\"/\", \"/System/Volumes/Data\", \"/mnt/storage-01\", \"/mnt/xfs-vdo\"] | group by `host.name`, mountpoint using min, `host-metrics`:`system.filesystem.usage` | where mode == \"rw\" | where mountpoint in [\"/\", \"/System/Volumes/Data\", \"/mnt/storage-01\", \"/mnt/xfs-vdo\"] | group by `host.name`, mountpoint, state using max | group by `host.name`, mountpoint using sum) | compute free_fraction using / | align using min",
     "operator": "Below",

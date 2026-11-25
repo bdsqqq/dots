@@ -2,13 +2,14 @@
 let
   cfg = config.services.axiom-incidents;
   source = "${config.my.paths.commonplace}/01_files/nix/modules/o11y/incidents";
-  allowedMounts = [ "/" "/mnt/storage-01" "/mnt/xfs-vdo" ];
-  mounts = lib.mapAttrs
-    (_: host: builtins.filter (mount: builtins.elem mount allowedMounts) (builtins.attrNames host.config.fileSystems))
-    inputs.self.nixosConfigurations
-    // lib.mapAttrs' (name: _: lib.nameValuePair "${name}.local" [ "/System/Volumes/Data" ]) inputs.self.darwinConfigurations;
+  # darwin hosts report metrics as "<name>.local".
+  disks = lib.mapAttrs (_: host: host.config.my.diskAlerts.resolved) inputs.self.nixosConfigurations
+    // lib.mapAttrs' (name: host: lib.nameValuePair "${name}.local" host.config.my.diskAlerts.resolved) inputs.self.darwinConfigurations;
   runtimeConfig = pkgs.writeText "axiom-incidents.json" (builtins.toJSON {
-    inherit mounts;
+    inherit disks;
+    # the evaluator runs from the live checkout, which can lag this wrapper; an
+    # older evaluator only reads `mounts`. newer ones prefer `disks`.
+    mounts = lib.mapAttrs (_: host: builtins.attrNames host.mounts) disks;
     inherit (cfg) externalExpectations;
     rulesPath = "${source}/../monitors.json";
     database = "/var/lib/axiom-incidents/incidents.sqlite";

@@ -10,7 +10,36 @@ export type Rule = {
   name: string; type: string; mplQuery?: string; aplQuery?: string;
   threshold?: number; rangeMinutes: number;
 };
-export type Configuration = { mounts: Record<string, string[]>; rulesPath: string; externalExpectations?: ExternalExpectation[] };
+/** what each host declares in `my.diskAlerts` (modules/o11y/disk-alerts.nix); null turns a level off. */
+export type DiskLevel = { below: number; recover: number; afterMinutes: number };
+export type DiskCapacity = { belowFraction: number; recoverFraction: number; afterMinutes: number };
+export type MountPolicy = { critical: DiskLevel | null; low: DiskLevel | null; capacity: DiskCapacity | null };
+export type HostDisks = { profile: string; mounts: Record<string, MountPolicy> };
+export type Configuration = {
+  disks?: Record<string, HostDisks>;
+  /** the pre-declaration shape: a mount list per host, judged by the server/workstation defaults. */
+  mounts?: Record<string, string[]>;
+  rulesPath: string; externalExpectations?: ExternalExpectation[];
+};
+const GiBs = (n: number) => n * GIB;
+const LEGACY_LEVELS = {
+  server: { critical: { below: GiBs(2), recover: GiBs(3), afterMinutes: 0 }, low: { below: GiBs(8), recover: GiBs(10), afterMinutes: 60 } },
+  workstation: { critical: { below: GiBs(2), recover: GiBs(3), afterMinutes: 30 }, low: { below: GiBs(8), recover: GiBs(10), afterMinutes: 720 } },
+};
+/**
+ * the evaluator runs from the live checkout while its config comes from the
+ * installed wrapper, and the two update independently. an older wrapper still
+ * passes `mounts`; read it with the same defaults disk-alerts.nix uses, so a
+ * half-updated relay keeps evaluating instead of crashing.
+ */
+export function hostDisks(config: Configuration): Record<string, HostDisks> {
+  if (config.disks) return config.disks;
+  if (!config.mounts) throw new Error("configuration has neither disks nor mounts");
+  return Object.fromEntries(Object.entries(config.mounts).map(([host, mounts]) => {
+    const profile = host.endsWith(".local") ? "workstation" : "server";
+    return [host, { profile, mounts: Object.fromEntries(mounts.map(mount => [mount, { ...LEGACY_LEVELS[profile], capacity: null }])) }];
+  }));
+}
 type Point = { at: number; value: number };
 type Series = { tags: Record<string, string>; points: Point[] };
 type Row = Record<string, unknown>;
@@ -111,30 +140,53 @@ export function metricSeries(result: any, start: number, end: number): Series[] 
   });
 }
 
-export function metricObservation(rule: Rule, host: string, mount: string, points: Point[], now: number): Observation {
-  const key = JSON.stringify([rule.name, host, mount]);
-  const base = { key, kind: rule.name, host, mount, observedAt: now, detail: {} };
+// incident kinds; the names are part of each incident's key, so they stay stable
+// even though the thresholds now come from the host.
+export const DISK_KINDS = {
+  critical: "hosts: critical disk space (below 2 GiB)",
+  low: "hosts: low disk headroom (below 8 GiB)",
+  capacity: "hosts: storage capacity running low",
+} as const;
+/** kinds no host can declare any more; their open incidents close as "no longer monitored". */
+const RETIRED_DISK_KINDS = ["hosts: filesystem nearly full (below 10% free)"];
+export const isDiskKind = (kind: string) => Object.values<string>(DISK_KINDS).includes(kind) || RETIRED_DISK_KINDS.includes(kind);
+
+const FREE_BYTES = '`host-metrics`:`system.filesystem.usage` | where state == "free" and mode == "rw" | group by `host.name`, mountpoint using min | align to 30s using min';
+const FREE_FRACTION = '(`host-metrics`:`system.filesystem.usage` | where state == "free" and mode == "rw" | group by `host.name`, mountpoint using min, `host-metrics`:`system.filesystem.usage` | where mode == "rw" | group by `host.name`, mountpoint, state using max | group by `host.name`, mountpoint using sum) | compute free_fraction using / | align to 30s using min';
+
+/**
+ * the ledger, not this function, decides "stayed bad for afterMinutes": anything
+ * unknown in between (stale samples, a sleeping laptop, the hysteresis band)
+ * restarts that clock. so a level that waits must see every sample in the poll
+ * bad, or a dip that recovers inside one poll would keep the clock running.
+ */
+export function diskObservation(kind: string, level: { bad: number; healthy: number; afterMinutes: number; unit: "bytes" | "fraction" },
+    host: string, mount: string, points: Point[], now: number): Observation {
+  const key = JSON.stringify([kind, host, mount]);
+  const immediate = level.afterMinutes === 0;
+  const base = { key, kind, host, mount, observedAt: now, detail: {},
+    ...(immediate ? { critical: true } : { qualifyAfterMs: level.afterMinutes * MINUTE }) };
   if (!points.length) return { ...base, status: "unknown" };
   const sampleAt = Math.max(...points.map(p => p.at));
-  const value = Math.min(...points.map(p => p.value));
-  const threshold = rule.threshold!;
-  const relative = rule.name.includes("10% free");
-  const recoveredAt = relative ? 0.12 : threshold + (threshold < 3 * GIB ? GIB : 2 * GIB);
-  if (value < 0 || (relative && value > 1) || now - sampleAt > 2 * MINUTE) return { ...base, status: "unknown" };
+  const lowest = Math.min(...points.map(p => p.value));
+  const highest = Math.max(...points.map(p => p.value));
+  if (lowest < 0 || (level.unit === "fraction" && highest > 1) || now - sampleAt > 2 * MINUTE) return { ...base, status: "unknown" };
+  const value = level.afterMinutes === 0 ? lowest : highest;
   return {
     ...base, sampleAt,
-    status: value < threshold ? "bad" : value >= recoveredAt ? "healthy" : "unknown",
-    critical: threshold === 2 * GIB,
-    detail: { value, threshold, recoveredAt, unit: relative ? "fraction" : "bytes" },
+    // recovery always needs every sample healthy, whichever way badness is read.
+    status: value < level.bad ? "bad" : lowest >= level.healthy ? "healthy" : "unknown",
+    detail: { value, threshold: level.bad, recoveredAt: level.healthy, unit: level.unit, afterMinutes: level.afterMinutes },
   };
 }
 
 export async function observations(client: Axiom, config: Configuration, now: number, request: typeof fetch = fetch, clock: () => number = Date.now): Promise<{ observations: Observation[]; errors: string[] }> {
   const rules: Rule[] = JSON.parse(readFileSync(config.rulesPath, "utf8"));
+  const disks = hostDisks(config);
   const expectations = config.externalExpectations ?? [];
   validateExpectations(expectations, new Set(rules.filter(rule => rule.type === "Threshold" && rule.name.startsWith("hosts: telemetry missing"))
-    .map(rule => rule.mplQuery?.match(/`host.name` == "([a-z0-9.-]+)"/)?.[1]).filter((host): host is string => !!host && Object.hasOwn(config.mounts, host))));
-  const hosts = Object.keys(config.mounts);
+    .map(rule => rule.mplQuery?.match(/`host.name` == "([a-z0-9.-]+)"/)?.[1]).filter((host): host is string => !!host && Object.hasOwn(disks, host))));
+  const hosts = Object.keys(disks);
   const errors: string[] = [];
   const safe = async <T>(name: string, operation: () => Promise<T>): Promise<T | undefined> => {
     try { return await operation(); } catch { errors.push(name); return undefined; }
@@ -148,16 +200,27 @@ export async function observations(client: Axiom, config: Configuration, now: nu
   const result: Observation[] = [];
   // Sequential queries stay within Axiom's query concurrency budget; a timer
   // cannot overlap another instance of the same systemd oneshot service.
+  const declared = Object.entries(disks).flatMap(([host, disks]) => Object.entries(disks.mounts).map(([mount, policy]) => ({ host, mount, policy })));
+  const pointsFor = (series: Series[] | undefined, host: string, mount: string) =>
+    series?.filter(s => s.tags["host.name"] === host && s.tags.mountpoint === mount).flatMap(s => s.points) ?? [];
+  if (declared.some(d => d.policy.critical || d.policy.low)) {
+    const bytes = await safe("disk free bytes", () => client.metrics(FREE_BYTES, now - 2 * MINUTE, now));
+    for (const { host, mount, policy } of declared) for (const name of ["critical", "low"] as const) {
+      const level = policy[name];
+      if (level) result.push(diskObservation(DISK_KINDS[name], { bad: level.below, healthy: level.recover, afterMinutes: level.afterMinutes, unit: "bytes" }, host, mount, pointsFor(bytes, host, mount), now));
+    }
+  }
+  if (declared.some(d => d.policy.capacity)) {
+    const fraction = await safe("disk free fraction", () => client.metrics(FREE_FRACTION, now - 2 * MINUTE, now));
+    for (const { host, mount, policy } of declared) if (policy.capacity) {
+      const c = policy.capacity;
+      result.push(diskObservation(DISK_KINDS.capacity, { bad: c.belowFraction, healthy: c.recoverFraction, afterMinutes: c.afterMinutes, unit: "fraction" }, host, mount, pointsFor(fraction, host, mount), now));
+    }
+  }
   for (const rule of rules.filter(r => r.type === "Threshold")) {
-    if (rule.name.startsWith("hosts: critical disk") || rule.name.startsWith("hosts: low disk") || rule.name.startsWith("hosts: filesystem nearly")) {
-      if (!rule.mplQuery?.endsWith("| align using min") || typeof rule.threshold !== "number") throw new Error("invalid disk rule");
-      const start = now - rule.rangeMinutes * MINUTE;
-      const series = await safe(rule.name, () => client.metrics(rule.mplQuery!.replace(/\| align using min$/, "| align to 30s using min"), start, now));
-      for (const [host, mounts] of Object.entries(config.mounts)) for (const mount of mounts) {
-        const points = series?.filter(s => s.tags["host.name"] === host && s.tags.mountpoint === mount).flatMap(s => s.points) ?? [];
-        result.push(metricObservation(rule, host, mount, points, now));
-      }
-    } else if (rule.name.startsWith("hosts: telemetry missing")) {
+    // disk rules in monitors.json only mirror the raw Axiom charts; paging follows each host's declaration above.
+    if (isDiskKind(rule.name)) continue;
+    if (rule.name.startsWith("hosts: telemetry missing")) {
       const host = rule.mplQuery?.match(/`host.name` == "([a-z0-9.-]+)"/)?.[1];
       if (!host || !hosts.includes(host)) throw new Error("unknown expected telemetry host");
       const at = freshAt(host);
@@ -197,6 +260,16 @@ export async function observations(client: Axiom, config: Configuration, now: nu
   return { observations: result, errors };
 }
 
+/** the kind string is the incident's identity and keeps its legacy threshold; the title says the one that fired. */
+function describe(event: Transition): string {
+  const { threshold, unit } = event.detail;
+  if (!isDiskKind(event.kind) || typeof threshold !== "number") return event.kind;
+  const limit = unit === "fraction" ? `${+(threshold * 100).toFixed(2)}% free`
+    : threshold >= GIB ? `${+(threshold / GIB).toFixed(2)} GiB` : `${+(threshold / 1024 ** 2).toFixed(1)} MiB`;
+  const name = event.kind === DISK_KINDS.capacity ? "storage capacity running low" : event.kind === DISK_KINDS.critical ? "critical disk space" : "low disk headroom";
+  return `hosts: ${name} (below ${limit})`;
+}
+
 export function notification(event: Transition, test = false): Row {
   return {
     // Match monitors consume new ingestions. Queue delay must not backdate the
@@ -204,7 +277,7 @@ export function notification(event: Transition, test = false): Row {
     _time: new Date().toISOString(), source: test ? "host-incidents-test" : "host-incidents",
     eventId: event.eventId, incidentId: event.incidentId, action: event.action,
     timestamp: new Date(event.observedAt).toISOString(),
-    title: `${test ? "transport-test: " : ""}${event.action === "Closed" ? "recovered" : "incident started"}: ${event.kind} — ${event.host}${event.mount ? ` ${event.mount}` : ""}`,
+    title: `${test ? "transport-test: " : ""}${event.action === "Open" ? "incident started" : event.detail.retired === true ? "no longer monitored" : "recovered"}: ${describe(event)} — ${event.host}${event.mount ? ` ${event.mount}` : ""}`,
     host: event.host, mountpoint: event.mount ?? "", condition: event.kind,
     groupKeys: ["host.name", ...(event.mount ? ["mountpoint"] : [])],
     groupValues: [event.host, ...(event.mount ? [event.mount] : [])],

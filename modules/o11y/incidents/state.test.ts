@@ -337,3 +337,18 @@ test("the no-close-on-unknown verifier rejects a naive implementation", t => {
     return null;
   }), /unknown and repeated bad/);
 });
+
+test("retiring from a snapshot no newer than the incident is ignored, so a stale poll can't close a newer open", () => {
+  const store = new IncidentStore(":memory:");
+  try {
+    const key = JSON.stringify(["hosts: low disk headroom (below 8 GiB)", "host", "/"]);
+    const opened = store.observe({ key, kind: "hosts: low disk headroom (below 8 GiB)", host: "host", mount: "/", status: "bad", critical: true, observedAt: 2_000, sampleAt: 2_000, detail: {} })!;
+    assert.equal(store.retire(key, 1_000), null);
+    assert.equal(store.retire(key, 2_000), null);
+    assert.deepEqual(store.openKeys(), [key]);
+    const closed = store.retire(key, 3_000)!;
+    assert.equal(closed.incidentId, opened.incidentId);
+    assert.equal(closed.detail.retired, true);
+    assert.deepEqual(store.openKeys(), []);
+  } finally { store.close(); }
+});
