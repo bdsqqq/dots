@@ -98,9 +98,9 @@
               inherit system;
               config.allowUnfree = true;
               overlays = [
-                (import ./overlays/unstable.nix inputs)
+                (import ./modules/nix/unstable.nix inputs)
                 (import ./modules/zmx).overlay
-                (import ./overlays/axiom-cli.nix)
+                (import ./modules/o11y/axiom-cli.nix)
               ];
             };
         };
@@ -113,9 +113,9 @@
               hostPlatform = "aarch64-darwin";
               config.allowUnfree = true;
               overlays = [
-                (import ./overlays/unstable.nix inputs)
+                (import ./modules/nix/unstable.nix inputs)
                 (import ./modules/zmx).overlay
-                (import ./overlays/axiom-cli.nix)
+                (import ./modules/o11y/axiom-cli.nix)
               ];
             };
             system.configurationRevision = flakeRevision;
@@ -499,7 +499,7 @@
                 nixpkgs = {
                   config.allowUnfree = true;
                   overlays = [
-                    (import ./overlays/unstable.nix inputs)
+                    (import ./modules/nix/unstable.nix inputs)
                     (import ./modules/zmx).overlay
                   ];
                 };
@@ -521,7 +521,7 @@
                 nixpkgs = {
                   config.allowUnfree = true;
                   overlays = [
-                    (import ./overlays/unstable.nix inputs)
+                    (import ./modules/nix/unstable.nix inputs)
                     (import ./modules/zmx).overlay
                   ];
                 };
@@ -545,7 +545,7 @@
                 nixpkgs.hostPlatform = "x86_64-linux";
                 nixpkgs.overlays = [
                   inputs.copyparty.overlays.default
-                  (import ./overlays/unstable.nix inputs)
+                  (import ./modules/nix/unstable.nix inputs)
                   (import ./modules/zmx).overlay
                 ];
                 system.configurationRevision = flakeRevision;
@@ -581,9 +581,9 @@
               ({ pkgs, config, lib, ... }: {
                 nixpkgs.hostPlatform = "x86_64-linux";
                 nixpkgs.overlays = [
-                  (import ./overlays/unstable.nix inputs)
+                  (import ./modules/nix/unstable.nix inputs)
                   (import ./modules/zmx).overlay
-                  (import ./overlays/quickshell.nix inputs)
+                  (import ./modules/quickshell/package.nix inputs)
                 ];
                 system.configurationRevision = flakeRevision;
 
