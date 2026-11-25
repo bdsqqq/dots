@@ -206,7 +206,7 @@
           name = "generate-tailnet-artifacts";
           runtimeInputs = [ (pkgs.python3.withPackages (python: [ python.hjson ])) ];
           text = ''
-            exec python ${./scripts/generate-tailnet-artifacts.py} \
+            exec python ${./modules/tailnet/generate-artifacts.py} \
               --catalog ${pkgs.writeText "fleet-apps.json" (builtins.toJSON tailnetApps.catalog)} \
               --cloudflare ${pkgs.writeText "cloudflare-apps.json" (builtins.toJSON tailnetApps.cloudflareApps)} \
               --services ${pkgs.writeText "tailscale-services.json" (builtins.toJSON tailnetApps.tailscaleServices)} \
@@ -245,8 +245,8 @@
                 pkgs.nodejs_24
               ];
             } ''
-            python ${./scripts/check-credential-ownership.py} --root ${self}
-            node --test ${./scripts}/check-credential-ownership.test.ts
+            python ${./modules/secrets/check-ownership.py} --root ${self}
+            node --test ${./modules/secrets}/check-ownership.test.ts
             touch "$out"
           '';
 
