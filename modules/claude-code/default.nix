@@ -2,15 +2,20 @@
 let
   isLinux = lib.hasSuffix "-linux" hostSystem;
   home = config.users.users.bdsqqq.home;
+  useSharedToken = config.my.claudeCode.credential.required;
   tokenPath = config.sops.secrets.claude_code_oauth_token.path;
   command = "${home}/.local/bin/claude-pi";
   # only claude sees the token; launchers get just this wrapper's path.
   wrapper = pkgs.writeShellScript "claude-pi" ''
-    if [ -r ${lib.escapeShellArg tokenPath} ]; then
-      CLAUDE_CODE_OAUTH_TOKEN="$(<${lib.escapeShellArg tokenPath})"
-      export CLAUDE_CODE_OAUTH_TOKEN
-    fi
-    # an api key outranks the token and would bill api credits.
+    ${if useSharedToken then ''
+      if [ -r ${lib.escapeShellArg tokenPath} ]; then
+        CLAUDE_CODE_OAUTH_TOKEN="$(<${lib.escapeShellArg tokenPath})"
+        export CLAUDE_CODE_OAUTH_TOKEN
+      fi
+    '' else ''
+      unset CLAUDE_CODE_OAUTH_TOKEN
+    ''}
+    # an api key outranks subscription auth and would bill api credits.
     unset ANTHROPIC_API_KEY
     exec ${lib.escapeShellArg "${home}/.local/bin/claude"} "$@"
   '';
@@ -20,7 +25,7 @@ in
 
   config = lib.mkMerge [
     {
-      my.claudeCode.credential.required = true;
+      my.claudeCode.credential.required = lib.mkDefault true;
       home-manager.users.bdsqqq.home = {
         file.".local/bin/claude-pi".source = wrapper;
         sessionVariables.PI_CLAUDE_CODE_COMMAND = command;
