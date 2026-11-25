@@ -111,9 +111,9 @@
       # global ripgrep/git ignore (outside sync folder — symlinks fine)
       home.file = {
         ".rgignore".source = config.lib.file.mkOutOfStoreSymlink
-          "${config.home.homeDirectory}/commonplace/01_files/nix/config/rgignore";
+          "${config.home.homeDirectory}/commonplace/01_files/nix/modules/shell/rgignore";
         ".gitignore_global".source = config.lib.file.mkOutOfStoreSymlink
-          "${config.home.homeDirectory}/commonplace/01_files/nix/config/ignore-common";
+          "${config.home.homeDirectory}/commonplace/01_files/nix/modules/shell/ignore-common";
       };
 
       home.activation.commonplaceScaffold =

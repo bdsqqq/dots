@@ -7,13 +7,13 @@
     # (same direct-symlink pattern used for repo-owned manifests)
     home.activation.commonplaceAgents =
       lib.hm.dag.entryAfter [ "commonplaceScaffold" ] ''
-        ln -sf "01_files/nix/config/global-agents.md" \
+        ln -sf "01_files/nix/modules/agents/global-agents.md" \
                "${config.home.homeDirectory}/commonplace/AGENTS.md"
       '';
 
     home.file = let
       agentsMd = config.lib.file.mkOutOfStoreSymlink
-        "${config.home.homeDirectory}/commonplace/01_files/nix/config/global-agents.md";
+        "${config.home.homeDirectory}/commonplace/01_files/nix/modules/agents/global-agents.md";
       # Programs install skills by writing here; new entries surface as
       # untracked repo files to commit or discard.
       skills = config.lib.file.mkOutOfStoreSymlink
