@@ -5,4 +5,4 @@ Raycast script commands for grabbing media and transcripts by URL.
 YouTube transcript to markdown with frontmatter. Both read cookies from
 `/run/secrets/cookies` (`modules/media-cookies`) when present.
 
-Raycast finds them through the symlinks in `scripts/`.
+Raycast runs them through the stubs in `scripts/`, which carry their `@raycast` headers.
