@@ -2,6 +2,7 @@
 /.github/ @bdsqqq
 **/AGENTS.md @bdsqqq
 /modules/agents/global-agents.md @bdsqqq
+/config/global-agents.md @bdsqqq
 /modules/node-pnpm/config.yaml @bdsqqq
 /modules/node-pnpm/pnpm-workspace.yaml @bdsqqq
 /modules/pi/pnpm-workspace.yaml @bdsqqq
