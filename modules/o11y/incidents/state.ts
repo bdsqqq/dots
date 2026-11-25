@@ -200,6 +200,34 @@ export class IncidentStore {
     });
   }
 
+  openKeys(): string[] {
+    return this.db.prepare("SELECT key FROM incidents WHERE incidentId IS NOT NULL ORDER BY key").all().map(row => row.key as string);
+  }
+
+  /**
+   * closes an incident whose condition nothing declares any more (a host dropped a
+   * mount or a level). it's not a measured recovery, so the event says so.
+   */
+  retire(key: string, observedAt: number): Transition | null {
+    return this.transaction(() => {
+      if (!Number.isSafeInteger(observedAt)) throw new Error("invalid observedAt");
+      const state = this.db.prepare("SELECT * FROM incidents WHERE key = ?").get(key) as State | undefined;
+      // a snapshot no newer than the row can't decide anything about it, as in observe().
+      if (!state?.incidentId || observedAt <= state.lastObservedAt) return null;
+      const [kind, host, mount] = JSON.parse(key) as [string, string, string?];
+      const transition: Transition = {
+        eventId: randomUUID(), incidentId: state.incidentId, action: "Closed", key, kind, host,
+        ...(mount === undefined ? {} : { mount }), observedAt, detail: { retired: true },
+      };
+      this.db.prepare("INSERT INTO outbox (eventId, incidentId, action, delivery, payload) VALUES (?, ?, 'Closed', 'queued', ?)").run(
+        transition.eventId, transition.incidentId, JSON.stringify(transition),
+      );
+      this.save({ ...state, incidentId: null, lastObservedAt: observedAt,
+        openAt: null, openSampleAt: null, recoverAt: null, recoverSampleAt: null });
+      return transition;
+    });
+  }
+
   /** Bootstrap verified upstream opens once; an existing local row always wins. */
   seedOpen(observation: Observation): void {
     this.transaction(() => {

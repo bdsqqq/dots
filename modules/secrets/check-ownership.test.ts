@@ -14,7 +14,7 @@ test("ownership checker discovers nested backup credentials and detects missing/
     writeFileSync(path, contents);
   };
   const check = () => spawnSync(process.env.CREDENTIAL_PYTHON ?? "python", [
-    fileURLToPath(new URL("./check-credential-ownership.py", import.meta.url)), "--root", root,
+    fileURLToPath(new URL("./check-ownership.py", import.meta.url)), "--root", root,
   ], { encoding: "utf8", timeout: 10_000 });
   try {
     put("flake.nix", "{}");

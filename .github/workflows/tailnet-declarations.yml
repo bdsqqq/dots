@@ -6,7 +6,7 @@ on:
     paths:
       - "modules/**/tailnet-app.nix"
       - "modules/tailnet/catalog.nix"
-      - "scripts/generate-tailnet-artifacts.py"
+      - "modules/tailnet/generate-artifacts.py"
       - "generated/fleet-apps.json"
       - "cloudflare/apps.auto.tfvars.json"
       - "tailscale/capabilities.json"

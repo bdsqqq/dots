@@ -9,7 +9,7 @@
  * test runs in CI by default.
  * platform requirements live in each test, as node:test `skip` options.
  *
- *   node --experimental-strip-types scripts/module-tests.ts [--list]
+ *   node --experimental-strip-types .github/module-tests/module-tests.ts [--list]
  */
 
 import {
@@ -29,7 +29,7 @@ export const EXCLUDED: Record<string, string> = {
   "modules/html-stuff/": "bun tests, built by checks.html-stuff",
   "modules/household-intake/smb-audit.test.mjs":
     "built by checks.household-intake-smb-audit on the macOS job",
-  "scripts/check-credential-ownership.test.ts":
+  "modules/secrets/check-ownership.test.ts":
     "built by checks.credential-ownership, which provides python",
 };
 

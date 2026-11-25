@@ -98,9 +98,9 @@
               inherit system;
               config.allowUnfree = true;
               overlays = [
-                (import ./overlays/unstable.nix inputs)
+                (import ./modules/nix/unstable.nix inputs)
                 (import ./modules/zmx).overlay
-                (import ./overlays/axiom-cli.nix)
+                (import ./modules/o11y/axiom-cli.nix)
               ];
             };
         };
@@ -113,9 +113,9 @@
               hostPlatform = "aarch64-darwin";
               config.allowUnfree = true;
               overlays = [
-                (import ./overlays/unstable.nix inputs)
+                (import ./modules/nix/unstable.nix inputs)
                 (import ./modules/zmx).overlay
-                (import ./overlays/axiom-cli.nix)
+                (import ./modules/o11y/axiom-cli.nix)
               ];
             };
             system.configurationRevision = flakeRevision;
@@ -206,7 +206,7 @@
           name = "generate-tailnet-artifacts";
           runtimeInputs = [ (pkgs.python3.withPackages (python: [ python.hjson ])) ];
           text = ''
-            exec python ${./scripts/generate-tailnet-artifacts.py} \
+            exec python ${./modules/tailnet/generate-artifacts.py} \
               --catalog ${pkgs.writeText "fleet-apps.json" (builtins.toJSON tailnetApps.catalog)} \
               --cloudflare ${pkgs.writeText "cloudflare-apps.json" (builtins.toJSON tailnetApps.cloudflareApps)} \
               --services ${pkgs.writeText "tailscale-services.json" (builtins.toJSON tailnetApps.tailscaleServices)} \
@@ -245,8 +245,8 @@
                 pkgs.nodejs_24
               ];
             } ''
-            python ${./scripts/check-credential-ownership.py} --root ${self}
-            node --test ${./scripts}/check-credential-ownership.test.ts
+            python ${./modules/secrets/check-ownership.py} --root ${self}
+            node --test ${./modules/secrets}/check-ownership.test.ts
             touch "$out"
           '';
 
@@ -288,6 +288,7 @@
                 "axiom/personal_org_id"
                 "axiom/personal_token"
                 "axiom/personal_url"
+                "claude_code_oauth_token"
                 "cloudflare_cert_pem"
                 "cookies"
                 "depot_org_token"
@@ -499,7 +500,7 @@
                 nixpkgs = {
                   config.allowUnfree = true;
                   overlays = [
-                    (import ./overlays/unstable.nix inputs)
+                    (import ./modules/nix/unstable.nix inputs)
                     (import ./modules/zmx).overlay
                   ];
                 };
@@ -521,7 +522,7 @@
                 nixpkgs = {
                   config.allowUnfree = true;
                   overlays = [
-                    (import ./overlays/unstable.nix inputs)
+                    (import ./modules/nix/unstable.nix inputs)
                     (import ./modules/zmx).overlay
                   ];
                 };
@@ -545,7 +546,7 @@
                 nixpkgs.hostPlatform = "x86_64-linux";
                 nixpkgs.overlays = [
                   inputs.copyparty.overlays.default
-                  (import ./overlays/unstable.nix inputs)
+                  (import ./modules/nix/unstable.nix inputs)
                   (import ./modules/zmx).overlay
                 ];
                 system.configurationRevision = flakeRevision;
@@ -581,9 +582,9 @@
               ({ pkgs, config, lib, ... }: {
                 nixpkgs.hostPlatform = "x86_64-linux";
                 nixpkgs.overlays = [
-                  (import ./overlays/unstable.nix inputs)
+                  (import ./modules/nix/unstable.nix inputs)
                   (import ./modules/zmx).overlay
-                  (import ./overlays/quickshell.nix inputs)
+                  (import ./modules/quickshell/package.nix inputs)
                 ];
                 system.configurationRevision = flakeRevision;
 

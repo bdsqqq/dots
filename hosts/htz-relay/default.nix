@@ -62,6 +62,12 @@ in
 
   my.primaryUser = "bdsqqq";
   my.paths.commonplace = "/mnt/storage-01/commonplace";
+  # the volume holds what's offloaded from other hosts and grows on purpose:
+  # the useful page is "time to grow the volume", well before it's tight.
+  my.diskAlerts.mounts."/mnt/storage-01" = {
+    low = null;
+    capacity = { };
+  };
   my.cloudflareIngress = {
     enable = true;
     externalInterface = "enp1s0";
