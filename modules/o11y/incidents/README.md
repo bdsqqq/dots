@@ -15,8 +15,8 @@ activation, or restart commands exist in the evaluator.
 - missing data, query errors, stale samples, and reordered evaluations cannot
   resolve an incident. they reset recovery qualification.
 - recovery needs ten minutes of advancing healthy samples and bounded evaluation
-  gaps. disk margins prevent threshold-edge chatter: critical 2 → 3 gib,
-  headroom 8 → 10 gib, free fraction 10 → 12 percent.
+  gaps. each disk level has its own recovery mark above its threshold, so the
+  edge doesn't chatter.
 - sleeping laptops do not become availability incidents. successful empty uptime
   queries are failures only for the explicitly monitored always-on hosts.
 - oom recovery requires a quiet log window **and** fresh uptime; a dead host is
@@ -30,11 +30,43 @@ record's action, ids, and timestamp. hosted email remains axiom's existing
 notifier; its match-notification subject can still say “triggered,” while the
 record identifies recovery.
 
+## disk alerts are declared by each host
+
+a host says how its disks are used with `my.diskAlerts`
+([disk-alerts.nix](../disk-alerts.nix)); this evaluator reads every host's
+declaration from the flake and applies it. "low" means different things on a
+37 GiB server root, a laptop whose caches swing tens of GiB within the hour, and
+a volume that exists to fill up, so the threshold lives next to the machine.
+
+- **profile** sets the defaults: `server` (linux) pages on a critically full
+  disk at once, `workstation` (darwin, lgo-z2e) waits long enough that a
+  build or a cache doesn't page someone who is at the keyboard. how long free
+  space stays low is what separates a full disk from a busy one, so the
+  profiles differ mostly in duration, not in size.
+- **mounts** default to the writable data mounts the collector reports. a host
+  can override one level, set it to `null` to stop watching it, or add a
+  `capacity` level for a disk meant to fill up. that one is relative, slow and
+  never critical: it answers "time to grow the volume?".
+- dropping a declared condition closes its open incident with a "no longer
+  monitored" event, since it can no longer recover by measurement.
+
+the defaults come from replaying 14 days of per-minute free-space samples (Nov
+11–25 2026) through each policy. the old flat rules would have opened 81 disk
+incidents; 19 on mbp-m2 alone, and the 10%-free one stayed open for 11 days on
+mbp-m2 and 14 on mmn-m4. these defaults open 28. 19 of those are htz-xfs-lab's
+root actually filling during failed upgrades, and the rest are real near-full
+or sustained-low disks: mbp-m2 drops from 19 to 2 and mmn-m4 from 5 to 2, both
+pairs being the days they really ran out. a sleeping laptop leaves the
+condition unknown, which restarts the clock instead of paging.
+
+the disk monitors in [monitors.json](../monitors.json) are unrouted mirrors of
+the raw signal; paging only follows the declarations.
+
 ## external convergence and readiness (opt-in)
 
 `externalExpectations` is optional in the existing runtime JSON. enable only the
 always-on mini first; a host must already have a `hosts: telemetry missing` rule
-and an entry in `mounts`. inventory alone never opts in a sleeping laptop.
+and an entry in `disks`. inventory alone never opts in a sleeping laptop.
 parent integration must add this field to the relay's generated runtime config;
 no monitor definition, notification route, database migration or initialization
 is required. the lifecycle match monitor already handles these conditions.

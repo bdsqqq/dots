@@ -3,15 +3,19 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { Axiom, logSampleTime, metricObservation, metricSeries, notification, observations, type Rule } from "./axiom.ts";
+import { Axiom, DISK_KINDS, diskObservation, logSampleTime, metricSeries, notification, observations, type HostDisks, type Rule } from "./axiom.ts";
 import { IncidentStore } from "./state.ts";
 import { deliver } from "./delivery.ts";
 
 const now = 1_800_000_000_000;
 const GiB = 1024 ** 3;
-const rule: Rule = { name: "hosts: low disk headroom (below 8 GiB)", type: "Threshold", threshold: 8 * GiB, rangeMinutes: 5, mplQuery: "disk | align using min" };
-const relative = { ...rule, name: "hosts: filesystem nearly full (below 10% free)", threshold: 0.1 };
-const observe = (value: number, at = now - 30_000, condition = rule) => metricObservation(condition, "host", "/", [{ value, at }], now);
+const rule: Rule = { name: DISK_KINDS.low, type: "Threshold", rangeMinutes: 5 };
+const low = { bad: 8 * GiB, healthy: 10 * GiB, afterMinutes: 60, unit: "bytes" as const };
+const capacity = { bad: 0.15, healthy: 0.2, afterMinutes: 360, unit: "fraction" as const };
+const observe = (value: number, at = now - 30_000, level: typeof low | typeof capacity = low) =>
+  diskObservation(level === low ? DISK_KINDS.low : DISK_KINDS.capacity, level, "host", "/", [{ value, at }], now);
+const server: HostDisks = { profile: "server", mounts: { "/": {
+  critical: { below: 2 * GiB, recover: 3 * GiB, afterMinutes: 15 }, low: { below: 8 * GiB, recover: 10 * GiB, afterMinutes: 60 }, capacity: null } } };
 
 test("disk recovery has hysteresis and never treats absent, stale, or invalid readings as healthy", () => {
   assert.equal(observe(7 * GiB).status, "bad");
@@ -19,11 +23,27 @@ test("disk recovery has hysteresis and never treats absent, stale, or invalid re
   assert.equal(observe(10 * GiB).status, "healthy");
   assert.equal(observe(10 * GiB, now - 180_000).status, "unknown");
   assert.equal(observe(-1).status, "unknown");
-  assert.equal(observe(0.09, undefined, relative).status, "bad");
-  assert.equal(observe(0.11, undefined, relative).status, "unknown");
-  assert.equal(observe(0.12, undefined, relative).status, "healthy");
-  assert.equal(observe(1.1, undefined, relative).status, "unknown");
-  assert.equal(metricObservation(rule, "host", "/", [], now).status, "unknown");
+  assert.equal(observe(0.14, undefined, capacity).status, "bad");
+  assert.equal(observe(0.17, undefined, capacity).status, "unknown");
+  assert.equal(observe(0.2, undefined, capacity).status, "healthy");
+  assert.equal(observe(1.1, undefined, capacity).status, "unknown");
+  assert.equal(diskObservation(DISK_KINDS.low, low, "host", "/", [], now).status, "unknown");
+});
+
+test("a host's declared duration decides when a disk incident opens, so a busy laptop doesn't page", () => {
+  const store = new IncidentStore(":memory:");
+  try {
+    const at = (minute: number) => now + minute * 60_000;
+    const sample = (minute: number, value: number, level = low) =>
+      ({ ...diskObservation(DISK_KINDS.low, level, "host", "/", [{ value, at: at(minute) - 30_000 }], at(minute)) });
+    // an hour-long dip on a workstation (12h) is ordinary use.
+    const workstation = { ...low, afterMinutes: 720 };
+    for (let m = 0; m <= 60; m++) assert.equal(store.observe(sample(m, 5 * GiB, workstation)), null);
+    // back above the recovery mark resets the clock; a second dip starts over.
+    store.observe(sample(61, 12 * GiB, workstation));
+    for (let m = 62; m < 62 + 720; m++) assert.equal(store.observe(sample(m, 5 * GiB, workstation)), null, `minute ${m}`);
+    assert.equal(store.observe(sample(62 + 720, 5 * GiB, workstation))?.action, "Open");
+  } finally { store.close(); }
 });
 
 test("metrics-v2 timestamps come from actual occupied buckets, not query-end or summary", () => {
@@ -85,7 +105,7 @@ test("independent lab availability policy uses fresh uptime and never sends raw 
       const client = new Axiom({ query: "q", ingest: "i", org: "o" }, async () => Response.json({
         series: present ? [{ tags: { "host.name": "htz-lab" }, start: now / 1000 - 30, resolution: 30, data: [123] }] : [],
       }));
-      const result = await observations(client, { mounts: { "htz-lab": ["/"] }, rulesPath }, now);
+      const result = await observations(client, { disks: { "htz-lab": { profile: "server", mounts: {} } }, rulesPath }, now);
       assert.deepEqual(result.errors, []);
       assert.equal(result.observations.length, 1);
       assert.equal(result.observations[0].host, "htz-lab");
@@ -97,12 +117,12 @@ test("independent lab availability policy uses fresh uptime and never sends raw 
 function fixtureRules() {
   const directory = mkdtempSync(join(tmpdir(), "incident-adapter-"));
   const rulesPath = join(directory, "rules.json");
-  writeFileSync(rulesPath, JSON.stringify([rule, relative,
+  writeFileSync(rulesPath, JSON.stringify([rule,
     { name: "hosts: telemetry missing (host)", type: "Threshold", mplQuery: '`host.name` == "host"' },
     { name: "hosts: kernel killed a process for lack of memory", type: "Threshold" },
     { name: "hosts: storage guard unhealthy (htz-xfs)", type: "Threshold" },
   ]));
-  return { directory, config: { mounts: { host: ["/"], "htz-xfs-lab": ["/"] }, rulesPath } };
+  return { directory, config: { disks: { host: server, "htz-xfs-lab": server }, rulesPath } };
 }
 
 test("empty successful queries mean disk unknown, expected-host absence bad, and no unproven OOM recovery", async () => {
@@ -124,7 +144,7 @@ test("query errors remain unknown rather than empty-result absence or recovery",
   try {
     const client = new Axiom({ query: "q", ingest: "i", org: "o" }, async () => { throw new Error("timeout"); });
     const result = await observations(client, fixture.config, now);
-    assert.equal(result.errors.length, 5);
+    assert.deepEqual(result.errors.toSorted(), ["disk free bytes", "hosts: kernel killed a process for lack of memory", "hosts: storage guard unhealthy (htz-xfs)", "uptime"]);
     assert.ok(result.observations.every(o => o.status === "unknown"));
   } finally { rmSync(fixture.directory, { recursive: true }); }
 });
@@ -291,5 +311,86 @@ test("the canonical event preserves true lifecycle action, identifiers, measurem
     assert.match(String(event.title), /^transport-test:/);
     assert.deepEqual(event.groupValues, ["host", "/"]);
     assert.equal(event.timestamp, new Date(now).toISOString());
+  } finally { store.close(); }
+});
+
+test("each host's declared levels reach the evaluator; a null level and an undeclared mount are not watched", async () => {
+  const rulesDirectory = mkdtempSync(join(tmpdir(), "incident-declared-"));
+  const rulesPath = join(rulesDirectory, "rules.json");
+  writeFileSync(rulesPath, "[]");
+  try {
+    const series = (host: string, mountpoint: string, value: number) => ({ tags: { "host.name": host, mountpoint }, start: now / 1000 - 30, resolution: 30, data: [value] });
+    const client = new Axiom({ query: "q", ingest: "i", org: "o" }, async (_url, init) => {
+      const { mpl } = JSON.parse(init!.body as string);
+      return Response.json({ series: mpl.includes("free_fraction")
+        ? [series("backup", "/data", 0.1)]
+        : [series("laptop.local", "/System/Volumes/Data", 5 * GiB), series("backup", "/", 5 * GiB), series("backup", "/data", 5 * GiB), series("backup", "/tmp", 1)] });
+    });
+    const disks: Record<string, HostDisks> = {
+      "laptop.local": { profile: "workstation", mounts: { "/System/Volumes/Data": {
+        critical: { below: 2 * GiB, recover: 3 * GiB, afterMinutes: 30 }, low: { below: 8 * GiB, recover: 10 * GiB, afterMinutes: 720 }, capacity: null } } },
+      backup: { profile: "server", mounts: {
+        "/": { critical: { below: 2 * GiB, recover: 3 * GiB, afterMinutes: 15 }, low: { below: 8 * GiB, recover: 10 * GiB, afterMinutes: 60 }, capacity: null },
+        "/data": { critical: null, low: null, capacity: { belowFraction: 0.15, recoverFraction: 0.2, afterMinutes: 360 } } } },
+    };
+    const { observations: seen, errors } = await observations(client, { disks, rulesPath }, now);
+    assert.deepEqual(errors, []);
+    const summary = seen.map(o => [o.host, o.mount, o.kind, o.status, o.qualifyAfterMs]);
+    assert.deepEqual(summary, [
+      ["laptop.local", "/System/Volumes/Data", DISK_KINDS.critical, "healthy", 30 * 60_000],
+      ["laptop.local", "/System/Volumes/Data", DISK_KINDS.low, "bad", 720 * 60_000],
+      ["backup", "/", DISK_KINDS.critical, "healthy", 15 * 60_000],
+      ["backup", "/", DISK_KINDS.low, "bad", 60 * 60_000],
+      ["backup", "/data", DISK_KINDS.capacity, "bad", 360 * 60_000],
+    ]);
+  } finally { rmSync(rulesDirectory, { recursive: true }); }
+});
+
+test("a dip and a recovery inside one poll are not 'still low', but an immediate critical level reacts to the dip", () => {
+  const mixed = [{ value: 7 * GiB, at: now - 60_000 }, { value: 12 * GiB, at: now - 30_000 }];
+  assert.equal(diskObservation(DISK_KINDS.low, { ...low, afterMinutes: 720 }, "host", "/", mixed, now).status, "unknown");
+  const allLow = [{ value: 7 * GiB, at: now - 60_000 }, { value: 7.5 * GiB, at: now - 30_000 }];
+  assert.equal(diskObservation(DISK_KINDS.low, { ...low, afterMinutes: 720 }, "host", "/", allLow, now).status, "bad");
+  const critical = { bad: 2 * GiB, healthy: 3 * GiB, afterMinutes: 0, unit: "bytes" as const };
+  const spike = diskObservation(DISK_KINDS.critical, critical, "host", "/", [{ value: GiB, at: now - 60_000 }, { value: 5 * GiB, at: now - 30_000 }], now);
+  assert.equal(spike.status, "bad");
+  assert.equal(spike.critical, true, "afterMinutes 0 opens on the first bad poll");
+  const store = new IncidentStore(":memory:");
+  try { assert.equal(store.observe(spike)?.action, "Open"); } finally { store.close(); }
+});
+
+test("an older wrapper's mount list still evaluates, with server and workstation defaults", async () => {
+  const rulesDirectory = mkdtempSync(join(tmpdir(), "incident-legacy-"));
+  const rulesPath = join(rulesDirectory, "rules.json");
+  writeFileSync(rulesPath, "[]");
+  try {
+    const client = new Axiom({ query: "q", ingest: "i", org: "o" }, async () => Response.json({ series: [
+      { tags: { "host.name": "server", mountpoint: "/" }, start: now / 1000 - 30, resolution: 30, data: [GiB] },
+      { tags: { "host.name": "laptop.local", mountpoint: "/System/Volumes/Data" }, start: now / 1000 - 30, resolution: 30, data: [GiB] },
+    ] }));
+    const { observations: seen, errors } = await observations(client, { mounts: { server: ["/"], "laptop.local": ["/System/Volumes/Data"] }, rulesPath }, now);
+    assert.deepEqual(errors, []);
+    const critical = seen.filter(o => o.kind === DISK_KINDS.critical).map(o => [o.host, o.status, o.critical ?? false, o.qualifyAfterMs ?? 0]);
+    assert.deepEqual(critical, [["server", "bad", true, 0], ["laptop.local", "bad", false, 30 * 60_000]]);
+  } finally { rmSync(rulesDirectory, { recursive: true }); }
+});
+
+test("titles name the threshold the host declared, while the incident kind stays stable", () => {
+  const store = new IncidentStore(":memory:");
+  try {
+    const opened = store.observe({ ...diskObservation(DISK_KINDS.low, { bad: 20 * GiB, healthy: 25 * GiB, afterMinutes: 0, unit: "bytes" }, "host", "/", [{ value: GiB, at: now - 30_000 }], now) })!;
+    const event = notification(opened);
+    assert.equal(event.condition, DISK_KINDS.low);
+    assert.match(String(event.title), /low disk headroom \(below 20 GiB\) — host \//);
+  } finally { store.close(); }
+});
+
+test("titles keep the declared threshold's precision", () => {
+  const store = new IncidentStore(":memory:");
+  try {
+    const title = (level: Parameters<typeof diskObservation>[1], kind: string, value: number) =>
+      String(notification(store.observe({ ...diskObservation(kind, level, "host", `/${value}`, [{ value, at: now - 30_000 }], now) })!).title);
+    assert.match(title({ bad: 32 * 1024 ** 2, healthy: GiB, afterMinutes: 0, unit: "bytes" }, DISK_KINDS.critical, 1), /below 32 MiB/);
+    assert.match(title({ bad: 0.125, healthy: 0.2, afterMinutes: 0, unit: "fraction" }, DISK_KINDS.capacity, 0.01), /below 12.5% free/);
   } finally { store.close(); }
 });
