@@ -11,6 +11,11 @@ edit it there.
 | `global-agents.md` | `modules/agents/global-agents.md` |
 | `ignore-common`, `rgignore` | `modules/shell/` |
 
-To retire an alias: repoint its link in the owning module, wait until every
-host's checkout has the new path and no pre-move generation remains a
-rollback candidate, then delete it here.
+To retire an alias:
+
+1. repoint its link in the owning module and publish that change;
+2. wait until every host has activated it and its link resolves to the new
+   path, and its checkout has that path;
+3. wait until no rollback candidate generation on any host still links into
+   `config/`;
+4. then delete the alias here.
