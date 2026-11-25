@@ -55,7 +55,7 @@ export async function main(
       // disk conditions come from host declarations; one no host declares any
       // more can't recover by measurement, so close it as no longer monitored.
       const observed = new Set(snapshot.observations.map(observation => observation.key));
-      for (const key of store.openKeys()) {
+      if (config.disks) for (const key of store.openKeys()) {
         if (observed.has(key) || !isDiskKind(JSON.parse(key)[0])) continue;
         const event = store.retire(key, now);
         if (event) transitions.push(event);

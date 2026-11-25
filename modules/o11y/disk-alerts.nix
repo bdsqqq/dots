@@ -47,7 +47,7 @@ let
     options = {
       belowFraction = lib.mkOption { type = lib.types.numbers.between 0.01 0.9; default = 0.15; };
       recoverFraction = lib.mkOption { type = lib.types.numbers.between 0.01 0.95; default = 0.2; };
-      afterMinutes = lib.mkOption { type = lib.types.ints.unsigned; default = 360; };
+      afterMinutes = lib.mkOption { type = lib.types.ints.positive; default = 360; };
     };
   };
   mount = lib.types.submodule {

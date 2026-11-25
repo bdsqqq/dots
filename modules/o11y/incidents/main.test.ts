@@ -106,3 +106,24 @@ test("init adopts conditions that open immediately, never ones that must still e
     try { assert.deepEqual(store.openKeys().map(key => JSON.parse(key)[1]), ["server"]); } finally { store.close(); }
   } finally { await rm(directory, { recursive: true }); }
 });
+
+test("a mounts-only config never retires a disk incident, since it can't express every declared level", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "incident-no-retire-"));
+  try {
+    const rulesPath = join(directory, "rules.json");
+    await writeFile(rulesPath, "[]");
+    const database = join(directory, "incidents.sqlite");
+    const seed = new IncidentStore(database);
+    const at = Date.now() - 60_000;
+    const key = JSON.stringify(["hosts: storage capacity running low", "relay", "/mnt/storage-01"]);
+    const opened = seed.observe({ key, kind: "hosts: storage capacity running low", host: "relay", mount: "/mnt/storage-01", status: "bad", critical: true, observedAt: at, sampleAt: at, detail: {} })!;
+    seed.noteAttempt(opened.eventId, at);
+    seed.acknowledge(opened.eventId);
+    seed.close();
+    const client = new Axiom({ query: "q", ingest: "i", org: "o" }, async url =>
+      Response.json(String(url).includes("/ingest") ? { ingested: 1, failed: 0 } : { series: [] }));
+    await main("poll", { mounts: { relay: ["/", "/mnt/storage-01"] }, rulesPath, database }, client, createEventLogger("host-incidents", { sink: () => {} }));
+    const store = new IncidentStore(database);
+    try { assert.deepEqual(store.openKeys(), [key]); } finally { store.close(); }
+  } finally { await rm(directory, { recursive: true }); }
+});

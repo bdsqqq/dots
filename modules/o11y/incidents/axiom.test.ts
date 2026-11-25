@@ -384,3 +384,13 @@ test("titles name the threshold the host declared, while the incident kind stays
     assert.match(String(event.title), /low disk headroom \(below 20 GiB\) — host \//);
   } finally { store.close(); }
 });
+
+test("titles keep the declared threshold's precision", () => {
+  const store = new IncidentStore(":memory:");
+  try {
+    const title = (level: Parameters<typeof diskObservation>[1], kind: string, value: number) =>
+      String(notification(store.observe({ ...diskObservation(kind, level, "host", `/${value}`, [{ value, at: now - 30_000 }], now) })!).title);
+    assert.match(title({ bad: 32 * 1024 ** 2, healthy: GiB, afterMinutes: 0, unit: "bytes" }, DISK_KINDS.critical, 1), /below 32 MiB/);
+    assert.match(title({ bad: 0.125, healthy: 0.2, afterMinutes: 0, unit: "fraction" }, DISK_KINDS.capacity, 0.01), /below 12.5% free/);
+  } finally { store.close(); }
+});

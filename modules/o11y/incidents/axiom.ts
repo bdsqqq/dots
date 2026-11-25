@@ -264,7 +264,8 @@ export async function observations(client: Axiom, config: Configuration, now: nu
 function describe(event: Transition): string {
   const { threshold, unit } = event.detail;
   if (!isDiskKind(event.kind) || typeof threshold !== "number") return event.kind;
-  const limit = unit === "fraction" ? `${Math.round(threshold * 100)}% free` : `${Math.round(threshold / GIB * 10) / 10} GiB`;
+  const limit = unit === "fraction" ? `${+(threshold * 100).toFixed(2)}% free`
+    : threshold >= GIB ? `${+(threshold / GIB).toFixed(2)} GiB` : `${+(threshold / 1024 ** 2).toFixed(1)} MiB`;
   const name = event.kind === DISK_KINDS.capacity ? "storage capacity running low" : event.kind === DISK_KINDS.critical ? "critical disk space" : "low disk headroom";
   return `hosts: ${name} (below ${limit})`;
 }

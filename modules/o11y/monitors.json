@@ -30,14 +30,14 @@
     "notifierIds": []
   },
   {
-    "name": "hosts: storage capacity running low",
-    "description": "Relative early warning for disks that exist to fill up (backups, offloaded files), declared per mount with my.diskAlerts.mounts.<path>.capacity. The question is 'time to grow the volume?', so it is slow and never critical. Paging thresholds and timing come from each host's my.diskAlerts (modules/o11y/disk-alerts.nix), applied by the relay's incident evaluator; this unrouted monitor only mirrors the raw signal in Axiom.",
+    "name": "hosts: filesystem nearly full (below 10% free)",
+    "description": "Relative-capacity warning complements absolute byte limits on larger disks. Includes free, used, and reserved states in total capacity. Canonical writable root/data mounts avoid APFS helper/simulator and bind-mount duplicates. Two consecutive evaluations of a five-minute window are required. Retired from paging: hosts declare a capacity level instead, and the evaluator closes any open incident for this condition as no longer monitored. Kept so an evaluator that predates host declarations still recognizes every rule.",
     "type": "Threshold",
     "mplQuery": "(`host-metrics`:`system.filesystem.usage` | where state == \"free\" and mode == \"rw\" | where mountpoint in [\"/\", \"/System/Volumes/Data\", \"/mnt/storage-01\", \"/mnt/xfs-vdo\"] | group by `host.name`, mountpoint using min, `host-metrics`:`system.filesystem.usage` | where mode == \"rw\" | where mountpoint in [\"/\", \"/System/Volumes/Data\", \"/mnt/storage-01\", \"/mnt/xfs-vdo\"] | group by `host.name`, mountpoint, state using max | group by `host.name`, mountpoint using sum) | compute free_fraction using / | align using min",
     "operator": "Below",
-    "threshold": 0.15,
+    "threshold": 0.1,
     "intervalMinutes": 1,
-    "rangeMinutes": 15,
+    "rangeMinutes": 5,
     "triggerFromNRuns": 2,
     "notifyByGroup": true,
     "notifyEveryRun": false,
