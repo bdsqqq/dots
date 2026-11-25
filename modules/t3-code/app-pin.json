@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
   "app": "t3-code",
-  "version": "0.1.11-nightly.20261118.4877",
-  "build": "0.1.11-nightly.20261118.4877",
+  "version": "0.1.13-nightly.20261125.5258",
+  "build": "0.1.13-nightly.20261125.5258",
   "darwin": {
     "arm64": {
-      "url": "https://github.com/pingdotgg/t3code/releases/download/v0.1.11-nightly.20261118.4877/T3-Code-0.1.11-nightly.20261118.4877-arm64.zip",
-      "sha256": "3787b23c56b8a5b602868df41da612fa1c306ccb4e83702fe1a779c24305cf91",
+      "url": "https://github.com/pingdotgg/t3code/releases/download/v0.1.13-nightly.20261125.5258/T3-Code-0.1.13-nightly.20261125.5258-arm64.zip",
+      "sha256": "aa382eb830050270e836771b9d8690827703384fe5cbdb4d1fa01e3f20f34063",
       "format": "zip"
     }
   }
