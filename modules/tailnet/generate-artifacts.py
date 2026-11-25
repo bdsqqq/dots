@@ -92,7 +92,7 @@ def main() -> None:
     services = read_json(args.services)
     capabilities = read_json(args.capabilities)
     outputs = {
-        "generated/fleet-apps.json": catalog,
+        "modules/tailnet/fleet-apps.json": catalog,
         "cloudflare/apps.auto.tfvars.json": {"apps": cloudflare},
         "tailscale/services.json": services,
         "tailscale/capabilities.json": capabilities,
