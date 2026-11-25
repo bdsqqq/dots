@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { Axiom, credentials, observations, type Configuration } from "./axiom.ts";
+import { Axiom, credentials, isDiskKind, observations, type Configuration } from "./axiom.ts";
 import { deliver } from "./delivery.ts";
 import { IncidentStore } from "./state.ts";
 import { createEventLogger, safeErrorCode, type EventContext } from "../../service-events/events.ts";
@@ -40,7 +40,9 @@ export async function main(
     try {
       if (command === "init") {
         // Preserve the operator's explicit handoff report, not just a count in the log.
-        const adopted = snapshot.observations.filter(observation => observation.status === "bad");
+        // duration-qualified levels (most disk levels) must earn their open by
+        // polling; adopting them now would skip the Open page entirely.
+        const adopted = snapshot.observations.filter(observation => observation.status === "bad" && observation.qualifyAfterMs === undefined);
         for (const observation of adopted) store.seedOpen(observation);
         console.log(JSON.stringify({ operation: "host-incidents.initialize", observedAt: new Date(now).toISOString(), adopted }));
         operation.finish("succeeded", { ...context, changedCount: adopted.length });
@@ -50,6 +52,14 @@ export async function main(
         const event = store.observe(observation);
         return event ? [event] : [];
       });
+      // disk conditions come from host declarations; one no host declares any
+      // more can't recover by measurement, so close it as no longer monitored.
+      const observed = new Set(snapshot.observations.map(observation => observation.key));
+      for (const key of store.openKeys()) {
+        if (observed.has(key) || !isDiskKind(JSON.parse(key)[0])) continue;
+        const event = store.retire(key, now);
+        if (event) transitions.push(event);
+      }
       // Delivery timestamps must reflect submission time, not the start of potentially slow queries.
       const delivery = await deliver(store, transport, Date.now(), Date.now);
       const healthy = snapshot.errors.length === 0 && delivery.errors === 0 && !store.overdue(Date.now());

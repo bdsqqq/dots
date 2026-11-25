@@ -15,12 +15,45 @@ activation, or restart commands exist in the evaluator.
 - missing data, query errors, stale samples, and reordered evaluations cannot
   resolve an incident. they reset recovery qualification.
 - recovery needs ten minutes of advancing healthy samples and bounded evaluation
-  gaps. disk margins prevent threshold-edge chatter: critical 2 → 3 gib,
-  headroom 8 → 10 gib, free fraction 10 → 12 percent.
+  gaps. each disk level has its own recovery mark above its threshold, so the
+  edge doesn't chatter.
 - sleeping laptops do not become availability incidents. successful empty uptime
   queries are failures only for the explicitly monitored always-on hosts.
 - oom recovery requires a quiet log window **and** fresh uptime; a dead host is
   not proof that memory pressure stopped.
+
+## disk alerts are declared by each host
+
+a host says how its disks are used with `my.diskAlerts`
+([disk-alerts.nix](../disk-alerts.nix)); this evaluator reads every host's
+declaration from the flake and applies it. "low" means different things on a
+37 GiB server root, a laptop whose caches swing tens of GiB within the hour, and
+a volume that exists to fill up, so the threshold lives next to the machine.
+
+- **profile** sets the defaults. `server` (linux): critical below 2 GiB on the
+  first bad poll, low below 8 GiB for an hour. `workstation` (darwin, and
+  lgo-z2e): critical below 2 GiB for 30 minutes, low below 8 GiB for 12 hours.
+  the duration is what separates a full disk from a busy one. a level that
+  waits needs every sample in a poll below its threshold, so a dip that
+  recovers within the poll doesn't count.
+- **mounts** default to the writable data mounts the collector reports. a host
+  can override one level, set it to `null` to stop watching it, or add a
+  `capacity` level for a disk meant to fill up. that one is relative (below 15%
+  for 6 hours) and never critical: it answers "time to grow the volume?".
+- dropping a declared condition closes its open incident with a "no longer
+  monitored" event, since it can no longer recover by measurement.
+
+the defaults come from replaying 14 days of per-minute free-space samples (Nov
+11–25 2026) through each policy. the old flat rules would have opened 81 disk
+incidents; 19 on mbp-m2 alone, and the 10%-free one stayed open for 11 days on
+mbp-m2 and 14 on mmn-m4. these defaults open 28. 19 of those are htz-xfs-lab's
+root actually filling during failed upgrades, and the rest are real near-full
+or sustained-low disks: mbp-m2 drops from 19 to 2 and mmn-m4 from 5 to 2, both
+pairs being the days they really ran out. a sleeping laptop leaves the
+condition unknown, which restarts the clock instead of paging.
+
+the disk monitors in [monitors.json](../monitors.json) are unrouted mirrors of
+the raw signal; paging only follows the declarations.
 
 sqlite commits a transition and its outbox record together. the match monitor
 consumes these transition events, not raw metrics. a recovery event carries

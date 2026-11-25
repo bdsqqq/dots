@@ -248,7 +248,7 @@ test("adapter integration bounds query/source times, preserves unknown on partia
   try {
     const rulesPath = join(directory, "rules.json");
     writeFileSync(rulesPath, JSON.stringify([{ type: "Threshold", name: "hosts: telemetry missing (mmn-m4)", mplQuery: '`host.name` == "mmn-m4.local"' }]));
-    const config = { mounts: { "mmn-m4.local": ["/System/Volumes/Data"] }, rulesPath, externalExpectations: [expectation] };
+    const config = { disks: { "mmn-m4.local": { profile: "server", mounts: { "/System/Volumes/Data": { critical: null, low: null, capacity: null } } } }, rulesPath, externalExpectations: [expectation] };
     for (const mode of ["healthy", "during-query", "missing", "partial", "malformed", "offline", "http-failed"]) {
       const client = new Axiom({ query: "secret-query", ingest: "secret-ingest", org: "secret-org" }, async (url, init) => {
         if (String(url).includes("_mpl")) return Response.json({ series: mode === "offline" ? [] : [{ tags: { "host.name": expectation.metricsHost }, start: (now - 30_000) / 1000, resolution: 30, data: [100] }] });
@@ -285,8 +285,8 @@ test("disabled expectations add no APL or HTTP polling; config never opts in sle
     let calls = 0;
     const client = new Axiom({ query: "q", ingest: "i", org: "o" }, async () => { calls++; return Response.json({ series: [] }); });
     const noHttp: typeof fetch = async () => { throw new Error("HTTP forbidden"); };
-    const result = await observations(client, { mounts: {}, rulesPath }, now, noHttp);
+    const result = await observations(client, { disks: {}, rulesPath }, now, noHttp);
     assert.equal(calls, 1); assert.deepEqual(result, { observations: [], errors: [] });
-    await assert.rejects(observations(client, { mounts: { "laptop.local": [] }, rulesPath, externalExpectations: [{ ...expectation, metricsHost: "laptop.local" }] }, now, noHttp), /invalid external expectation/);
+    await assert.rejects(observations(client, { disks: { "laptop.local": { profile: "workstation", mounts: {} } }, rulesPath, externalExpectations: [{ ...expectation, metricsHost: "laptop.local" }] }, now, noHttp), /invalid external expectation/);
   } finally { rmSync(directory, { recursive: true }); }
 });
