@@ -288,6 +288,7 @@
                 "axiom/personal_org_id"
                 "axiom/personal_token"
                 "axiom/personal_url"
+                "claude_code_oauth_token"
                 "cloudflare_cert_pem"
                 "cookies"
                 "depot_org_token"
