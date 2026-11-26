@@ -196,14 +196,22 @@ test("deadline kills its own descendants even after leader exit; unrelated proce
   try {
     await waitFor(()=>alive(unrelated.pid!));
     assert.throws(()=>assert.equal(alive(unrelated.pid!),false),"termination verifier detects a known survivor");
+    const beating=(file:string)=>`process.on('SIGTERM',()=>{});setInterval(()=>require('node:fs').appendFileSync(${JSON.stringify(file)},'x'),20);`;
+    // prove the heartbeat check sees a live process on one no deadline can
+    // kill; checking the deadlined descendant raced its timeout on slow runners.
+    const control=join(f.directory,"control-heartbeat");
+    const controlProcess=spawn(process.execPath,["-e",beating(control)],{stdio:"ignore"});
+    try {
+      await waitFor(()=>existsSync(control));
+      const live=readFileSync(control,"utf8");
+      await new Promise(resolve=>setTimeout(resolve,80));
+      assert.throws(()=>assert.equal(readFileSync(control,"utf8"),live),"heartbeat verifier detects a known running descendant");
+    } finally { controlProcess.kill("SIGKILL"); }
     const heartbeat=join(f.directory,"descendant-heartbeat");
-    const worker=`process.on('SIGTERM',()=>{});setInterval(()=>require('node:fs').appendFileSync(${JSON.stringify(heartbeat)},'x'),20);`;
-    const script=`require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(worker)}],{stdio:'inherit'});setInterval(()=>{},1000);`;
-    const pending=execute([process.execPath,"-e",script],{timeoutMs:1000,killGraceMs:100});
+    const script=`require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(beating(heartbeat))}],{stdio:'inherit'});setInterval(()=>{},1000);`;
+    // the deadline must outlast the descendant's startup on a loaded runner.
+    const pending=execute([process.execPath,"-e",script],{timeoutMs:5000,killGraceMs:100});
     await waitFor(()=>existsSync(heartbeat));
-    const live=readFileSync(heartbeat,"utf8");
-    await new Promise(resolve=>setTimeout(resolve,80));
-    assert.throws(()=>assert.equal(readFileSync(heartbeat,"utf8"),live),"heartbeat verifier detects a known running descendant");
     const result=await pending;
     assert.equal(result.timedOut,true);
     const before=readFileSync(heartbeat,"utf8");assert.ok(before.length>0);
