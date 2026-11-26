@@ -201,13 +201,14 @@ test("deadline kills its own descendants even after leader exit; unrelated proce
     // kill; checking the deadlined descendant raced its timeout on slow runners.
     const control=join(f.directory,"control-heartbeat");
     const controlProcess=spawn(process.execPath,["-e",beating(control)],{stdio:"ignore"});
+    const controlExited=new Promise(resolve=>controlProcess.once("close",resolve));
     try {
       // growth, polled: one 80ms sample can miss a process a loaded runner hasn't scheduled.
       const size=()=>existsSync(control)?readFileSync(control,"utf8").length:0;
       await waitFor(()=>size()>0);
       const first=size();
       await waitFor(()=>size()>first);
-    } finally { controlProcess.kill("SIGKILL"); }
+    } finally { controlProcess.kill("SIGKILL"); await controlExited; }
     const heartbeat=join(f.directory,"descendant-heartbeat");
     const script=`require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(beating(heartbeat))}],{stdio:'inherit'});setInterval(()=>{},1000);`;
     // the deadline must outlast the descendant's startup on a loaded runner.
