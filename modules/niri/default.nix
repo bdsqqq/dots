@@ -32,8 +32,7 @@
 
   # XDG_CURRENT_DESKTOP is set by the session desktop file when niri starts
 
-  environment.etc."wallpaper.jpg".source =
-    ../../assets/wallpaper_without_mask.jpg;
+  environment.etc."wallpaper.jpg".source = ./wallpaper.jpg;
 
   specialisation.greeter-quickshell.configuration = {
     my.login.greeter = "quickshell";

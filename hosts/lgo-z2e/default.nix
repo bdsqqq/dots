@@ -40,7 +40,7 @@ in
 {
   stylix = {
     enable = true;
-    image = ../../assets/wallhaven-o5kpmm_3840x2400.png;
+    image = ./wallpaper.png;
     base16Scheme = ../../modules/e-ink-glass/e-ink-scheme.yaml;
     polarity = "dark";
 

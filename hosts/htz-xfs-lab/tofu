@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
-secret_file="$repo_root/config/infra-secrets.yaml"
+secret_file="$repo_root/hosts/hetzner-secrets.yaml"
 token_key="hcloud_read_token"
 
 case "${1:-}" in
