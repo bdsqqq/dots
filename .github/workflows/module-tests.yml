@@ -1,6 +1,6 @@
 name: module tests
 
-# module tests ran nowhere before this workflow; scripts/module-tests.ts picks
+# module tests ran nowhere before this workflow; .github/module-tests picks
 # up new test files by default.
 on:
   pull_request:
@@ -42,9 +42,9 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-scripts
         working-directory: modules/pi
 
-      - run: node --experimental-strip-types --test scripts/module-tests.test.ts
+      - run: node --experimental-strip-types --test .github/module-tests/module-tests.test.ts
 
-      - run: node --experimental-strip-types scripts/module-tests.ts
+      - run: node --experimental-strip-types .github/module-tests/module-tests.ts
 
       # repo-checks builds the linux flake checks; every darwin check builds
       # here, since several modules (html-stuff, backups) run on macs too.
