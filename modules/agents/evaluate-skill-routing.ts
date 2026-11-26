@@ -74,7 +74,7 @@ async function main() {
   assert(fixtures.length > 0 && (values.case === undefined || fixtures.length === 1),
     "--case must identify exactly one fixture");
   const catalog = new Set(sources.map(({ name }) => name));
-  const globalText = readFileSync(new URL("../../config/global-agents.md", import.meta.url), "utf8");
+  const globalText = readFileSync(new URL("./global-agents.md", import.meta.url), "utf8");
   const systemPrompt = [
     globalText,
     "Choose relevant specialized workflows before proceeding with the user's request.",

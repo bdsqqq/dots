@@ -85,7 +85,7 @@ test('evaluated activation command stages runnable signed files only into a temp
     const version = spawnSync(installed, ['--version'], { encoding: 'utf8' });
     assert.equal(version.status, 0, version.stderr);
     assert.match(version.stdout, /kanata/);
-    const validation = spawnSync(installed, ['--check', '--cfg', join(root, 'assets', 'kanata.kbd')], { encoding: 'utf8' });
+    const validation = spawnSync(installed, ['--check', '--cfg', join(moduleDir, 'kanata.kbd')], { encoding: 'utf8' });
     assert.equal(validation.status, 0, validation.stderr);
     assert.match((validation.stdout + validation.stderr).replace(/\x1b\[[0-9;]*m/g, ''), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+[+-]\d{2}:\d{2}/m, 'the installed artifact must emit dated, offset-qualified records');
     for (const path of [installed, join(stage[8], 'libiconv.2.dylib'), join(stage[8], 'libcharset.1.dylib')]) {
