@@ -220,7 +220,7 @@ index 8b8ffcf..2d294cd 100644
                  const cropped = cropKittyImageLine(imageLine, hiddenRows, visibleRows);
                  if (box.rect.x === 0 && box.rect.width >= totalWidth)
 diff --git a/dist/tui-main-screen.js b/dist/tui-main-screen.js
-index e00273a..efc35f1 100644
+index cf401dd..5d8b70c 100644
 --- a/dist/tui-main-screen.js
 +++ b/dist/tui-main-screen.js
 @@ -3,7 +3,7 @@ import * as os from "node:os";
