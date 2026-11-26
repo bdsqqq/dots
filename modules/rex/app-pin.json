@@ -2,14 +2,14 @@
   "schemaVersion": 1,
   "app": "rex",
   "version": "0.1.0",
-  "build": "2145",
+  "build": "2146",
   "darwin": {
     "arm64": {
-      "url": "https://blob.superlogical.com/public/rex-app/snapshot-arm64/Rex-0.1.0-2145.dmg",
-      "sha256": "60539c6136f37600e0547c9b3e3427bd88689c277b793cce8336c3524fed39dd",
+      "url": "https://blob.superlogical.com/public/rex-app/snapshot-arm64/Rex-0.1.0-2146.dmg",
+      "sha256": "f4f90449f30ec86af8891ef98833f3740249d1edb475a2e2bc04b15be9d63925",
       "format": "dmg"
     }
   },
-  "rexCommit": "ad122d66146b2d239c0f5f3c297f8318d49b29c9",
-  "rexCliVersion": "0.1.0-snapshot.2629"
+  "rexCommit": "b070aae645f5cbfac65d65d031a8b712b2ebca36",
+  "rexCliVersion": "0.1.0-snapshot.2670"
 }
