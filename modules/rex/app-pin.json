@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "app": "rex",
   "version": "0.1.0",
-  "build": "2154",
+  "build": "2155",
   "darwin": {
     "arm64": {
-      "url": "https://blob.superlogical.com/public/rex-app/snapshot-arm64/Rex-0.1.0-2154.dmg",
-      "sha256": "7135f246750c0030b06969bf5cc5e49d3a0d35b9f4b1d41b9754129372c4675c",
+      "url": "https://blob.superlogical.com/public/rex-app/snapshot-arm64/Rex-0.1.0-2155.dmg",
+      "sha256": "3aa9eb305667a4153b498b3224668ea2ce1d0a349139e0b27c6764c039c43f5d",
       "format": "dmg"
     }
   },
