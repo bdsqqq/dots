@@ -9,7 +9,7 @@ easier to verify.
 
 | source | purpose |
 |---|---|
-| [`config/global-agents.md`](../../config/global-agents.md) | voice, permissions, completion, delegation, evidence, project knowledge |
+| [`global-agents.md`](global-agents.md) | voice, permissions, completion, delegation, evidence, project knowledge |
 | [`skills/write/SKILL.md`](skills/write/SKILL.md) | substantial prose composition/editing, not every response |
 | [`skills/review/SKILL.md`](skills/review/SKILL.md) | read-only implementation review |
 | [`skills/dig/SKILL.md`](skills/dig/SKILL.md) | uncertain multi-step investigation, direct-first and optionally delegated |

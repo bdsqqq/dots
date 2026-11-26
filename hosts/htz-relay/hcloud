@@ -8,7 +8,7 @@ HCLOUD_TOKEN="$(
   sops \
     --decrypt \
     --extract '["hcloud_read_token"]' \
-    "$repo_root/config/infra-secrets.yaml"
+    "$repo_root/hosts/hetzner-secrets.yaml"
 )"
 
 exec hcloud "$@"

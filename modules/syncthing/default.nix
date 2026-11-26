@@ -11,7 +11,7 @@ let
   isDarwin = lib.hasInfix "darwin" system;
   syncthing = import ./lib.nix { inherit lib; };
   sharedIgnores = pkgs.writeText "commonplace-stignore-common" (
-    syncthing.mkStignore (builtins.readFile ../../config/ignore-common)
+    syncthing.mkStignore (builtins.readFile ../shell/ignore-common)
   );
   stignore = pkgs.writeText "commonplace-stignore" ''
     #include .stignore-common

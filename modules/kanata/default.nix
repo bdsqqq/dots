@@ -115,7 +115,7 @@ in
           testKanata
           installKanata
         ];
-        environment.etc."kanata/kanata.kbd".source = ../../assets/kanata.kbd;
+        environment.etc."kanata/kanata.kbd".source = ./kanata.kbd;
         system.activationScripts.extraActivation.text = lib.escapeShellArgs installCommand;
 
         launchd.daemons.karabiner-virtualhid-daemon.serviceConfig = {
@@ -143,7 +143,7 @@ in
           pkgs.kanata
           toggleKanata
         ];
-        environment.etc."kanata/kanata.kbd".source = ../../assets/kanata.kbd;
+        environment.etc."kanata/kanata.kbd".source = ./kanata.kbd;
       }
     else
       { };

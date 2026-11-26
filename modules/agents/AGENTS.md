@@ -1,6 +1,6 @@
 # agent guidance maintenance
 
-`config/global-agents.md` is the canonical personal policy. `skills/` is the
+`global-agents.md` is the canonical personal policy. `skills/` is the
 portable collection, linked live into each agent's skills directory.
 external skills are vendored here; skills that programs write show up as
 untracked files to commit or discard. keep installation code and test

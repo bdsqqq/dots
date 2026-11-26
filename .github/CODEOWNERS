@@ -1,6 +1,7 @@
 # branch rules must separately require code-owner review; this file alone is not a gate.
 /.github/ @bdsqqq
 **/AGENTS.md @bdsqqq
+/modules/agents/global-agents.md @bdsqqq
 /config/global-agents.md @bdsqqq
 /modules/node-pnpm/config.yaml @bdsqqq
 /modules/node-pnpm/pnpm-workspace.yaml @bdsqqq

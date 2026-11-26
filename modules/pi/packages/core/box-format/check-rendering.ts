@@ -450,7 +450,7 @@ async function runSampler({
   );
   state(
     "read-image",
-    [call("read", { path: join(root, "../../assets/susuwatari.jpg") })],
+    [call("read", { path: join(root, "packages/core/box-format/fixtures/susuwatari.jpg") })],
     "[Image:",
   );
   state(
@@ -760,7 +760,7 @@ async function runSampler({
     .split("\n");
   sourcePaths.push(
     "../../flake.nix",
-    "../../assets/susuwatari.jpg",
+    "packages/core/box-format/fixtures/susuwatari.jpg",
     "node_modules/@earendil-works/pi-coding-agent/package.json",
     "node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/interactive-mode.js",
     "node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/tool-execution.js",
