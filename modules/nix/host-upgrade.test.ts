@@ -202,18 +202,18 @@ test("deadline kills its own descendants even after leader exit; unrelated proce
     const control=join(f.directory,"control-heartbeat");
     const controlProcess=spawn(process.execPath,["-e",beating(control)],{stdio:"ignore"});
     try {
-      await waitFor(()=>existsSync(control));
-      const live=readFileSync(control,"utf8");
-      await new Promise(resolve=>setTimeout(resolve,80));
-      assert.throws(()=>assert.equal(readFileSync(control,"utf8"),live),"heartbeat verifier detects a known running descendant");
+      // growth, polled: one 80ms sample can miss a process a loaded runner hasn't scheduled.
+      const size=()=>existsSync(control)?readFileSync(control,"utf8").length:0;
+      await waitFor(()=>size()>0);
+      const first=size();
+      await waitFor(()=>size()>first);
     } finally { controlProcess.kill("SIGKILL"); }
     const heartbeat=join(f.directory,"descendant-heartbeat");
     const script=`require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(beating(heartbeat))}],{stdio:'inherit'});setInterval(()=>{},1000);`;
     // the deadline must outlast the descendant's startup on a loaded runner.
-    const pending=execute([process.execPath,"-e",script],{timeoutMs:5000,killGraceMs:100});
-    await waitFor(()=>existsSync(heartbeat));
-    const result=await pending;
+    const result=await execute([process.execPath,"-e",script],{timeoutMs:5000,killGraceMs:100});
     assert.equal(result.timedOut,true);
+    assert.ok(existsSync(heartbeat),"the descendant started before its deadline");
     const before=readFileSync(heartbeat,"utf8");assert.ok(before.length>0);
     await new Promise(resolve=>setTimeout(resolve,150));
     assert.equal(readFileSync(heartbeat,"utf8"),before,"owned descendant stops executing after cancellation");
