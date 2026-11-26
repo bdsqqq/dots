@@ -7,7 +7,7 @@ on:
       - "modules/**/tailnet-app.nix"
       - "modules/tailnet/catalog.nix"
       - "modules/tailnet/generate-artifacts.py"
-      - "generated/fleet-apps.json"
+      - "modules/tailnet/fleet-apps.json"
       - "cloudflare/apps.auto.tfvars.json"
       - "tailscale/capabilities.json"
       - "tailscale/services.json"
