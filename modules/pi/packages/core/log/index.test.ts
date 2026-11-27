@@ -161,4 +161,33 @@ describe("shared pi logging", () => {
     expect(statSync(directory).mode & 0o777).toBe(0o700);
     expect(statSync(join(directory, files[0]!)).mode & 0o777).toBe(0o600);
   });
+
+  it("keeps digit-heavy uuids intact so finished operations retire their markers", async () => {
+    // 16 decimal digits in a row trip evlog's credit-card masker; about 0.13%
+    // of randomUUID() values have this shape.
+    const operationId = "12345678-1234-4567-89ab-cdef01234567";
+    const directory = initializeLogs({
+      directory: mkdtempSync(join(tmpdir(), "bds-pi-log-")),
+    });
+    const event = createWideEvent({
+      service: "pi-test",
+      operation: "test.digit-uuid",
+      operationId,
+    });
+    event.finish("success");
+    await flushLogs();
+
+    const raw = readdirSync(directory)
+      .filter((name) => name.endsWith(".jsonl"))
+      .map((name) => readFileSync(join(directory, name), "utf8"))
+      .join("");
+    expect(raw).toContain(`"operationId":"${operationId}"`);
+    expect(
+      readdirSync(join(directory, "pending")).filter((name) =>
+        readFileSync(join(directory, "pending", name), "utf8").includes(
+          operationId,
+        ),
+      ),
+    ).toHaveLength(0);
+  });
 });
