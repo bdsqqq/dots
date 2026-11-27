@@ -1,0 +1,66 @@
+# Depot CI Migration
+# Source: .github/workflows/module-tests.yml
+#
+# No automatic rewrites were applied; review any notes below.
+
+name: module tests
+
+# module tests ran nowhere before this workflow; .github/module-tests picks
+# up new test files by default.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: module-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          version: 11.9.0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+
+      # some tests evaluate this flake's modules with nix.
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+
+      # agents, gog and cli-proxy-api tests load the pi SDK from modules/pi.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+        working-directory: modules/pi
+
+      - run: node --experimental-strip-types --test .github/module-tests/module-tests.test.ts
+
+      - run: node --experimental-strip-types .github/module-tests/module-tests.ts
+
+      # repo-checks builds the linux flake checks; every darwin check builds
+      # here, since several modules (html-stuff, backups) run on macs too.
+      - name: build darwin flake checks
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          names=$(nix eval --json .#checks.aarch64-darwin --apply builtins.attrNames | jq -r '.[]')
+          [ -n "$names" ] || { echo 'no darwin flake checks found' >&2; exit 1; }
+          echo "checks: $names"
+          # macOS's bash 3.2 has no mapfile.
+          checks=()
+          while IFS= read -r name; do checks+=(".#checks.aarch64-darwin.$name"); done <<<"$names"
+          nix build --no-link --keep-going "${checks[@]}"
