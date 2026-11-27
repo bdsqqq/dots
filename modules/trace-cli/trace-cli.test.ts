@@ -22,8 +22,8 @@ test("parses otlp json and builds tree", () => {
 test("stats and assertions", () => {
   const spans = parseOtlp(body);
   assert.equal(percentiles(spans).length, 2);
-  assert.deepEqual(assertSpans(spans, [{ name: "root", minCount: 1, maxP95Ms: 200 }]), []);
-  assert.equal(assertSpans(spans, [{ name: "child", noErrors: true }, { name: "nope", minCount: 1 }]).length, 2);
+  assert.deepEqual(assertSpans(spans, [{ name: "root", minCount: 1, maxMedianMs: 200, minSamples: 1 }]), { failures: [], skipped: [] });
+  assert.equal(assertSpans(spans, [{ name: "child", noErrors: true }, { name: "nope", minCount: 1 }]).failures.length, 2);
 });
 
 import { mkdtempSync, readFileSync } from "node:fs";
@@ -112,21 +112,21 @@ test("http adapter and cli ingest reach the same operation", async () => {
 
 import { run } from "./ops.ts";
 
-test("run nests under TRACEPARENT, hides argv, and records failing exits", () => {
+test("run nests under TRACEPARENT, hides argv, and records failing exits", async () => {
   const h = harness();
   let t = 0, ids = 0;
   const seen: Record<string, string | undefined>[] = [];
   const deps = { store: h.store, events: h.events, now: () => (t += 1e6), id: (n: number) => (++ids).toString(16).padStart(n * 2, "0"), exec: (_a: string[], env: Record<string, string | undefined>) => { seen.push(env); return seen.length === 1 ? 0 : 3; } };
-  const outer = run(deps, "outer", ["echo", "PRIVATE_CANARY"], {});
+  const outer = await run(deps, "outer", ["echo", "PRIVATE_CANARY"], {});
   assert.equal(outer.status, "ran");
-  const child = run(deps, "inner", ["false"], { TRACEPARENT: seen[0]!.TRACEPARENT });
+  const child = await run(deps, "inner", ["false"], { TRACEPARENT: seen[0]!.TRACEPARENT });
   assert.equal(child.status === "ran" && child.exitCode, 3);
   const spans = load(h.store);
   assert.equal(spans[1]!.parentSpanId, spans[0]!.spanId);
   assert.equal(spans[1]!.traceId, spans[0]!.traceId);
   assert.equal(spans[1]!.status, "error");
   assert.doesNotMatch(JSON.stringify([spans, h.emitted]), /PRIVATE_CANARY/);
-  assert.deepEqual(run(deps, "x", [], {}), { status: "failed", reasonCode: "EMPTY_COMMAND" });
+  assert.deepEqual(await run(deps, "x", [], {}), { status: "failed", reasonCode: "EMPTY_COMMAND" });
 });
 
 import { parseAxiomRows } from "./ops.ts";
@@ -154,7 +154,7 @@ test("ingest rejects spans readers cannot render, and a failed append is a resol
 
 test("baseline fails on an empty store", () => {
   const baseline = JSON.parse(readFileSync(new URL("./baseline.json", import.meta.url), "utf8"));
-  assert.ok(assertSpans([], baseline).length >= 3);
+  assert.ok(assertSpans([], baseline).failures.length >= 3);
 });
 
 test("cli: run emits its event on stderr, serve refuses forwarding without a token, receiver survives a bad store", async () => {
@@ -199,10 +199,10 @@ test("ingest rejects null and unformattable timestamps", async () => {
   assert.equal((await ingest(h, batch("1700000000000000000", "1700000001000000000"))).status, "ingested");
 });
 
-test("run reports a store write failure with the command's exit code and an event", () => {
+test("run reports a store write failure with the command's exit code and an event", async () => {
   const h = harness();
   const dirStore = mkdtempSync(join(tmpdir(), "trace-cli-dir-"));
-  const r = run({ store: dirStore, events: h.events, exec: () => 0 }, "x", ["true"], {});
+  const r = await run({ store: dirStore, events: h.events, exec: () => 0 }, "x", ["true"], {});
   assert.deepEqual(r, { status: "failed", reasonCode: "STORE_WRITE_FAILED", exitCode: 0 });
   assert.equal(h.emitted[0]!.outcome, "failed");
   assert.equal(h.emitted[0]!.context.reasonCode, "STORE_WRITE_FAILED");
@@ -210,4 +210,33 @@ test("run reports a store write failure with the command's exit code and an even
   const cli = spawnSync("node", [bin, "run", "x", "--", "true"], { env: { ...process.env, TRACE_CLI_STORE: dirStore }, encoding: "utf8" });
   assert.equal(cli.status, 1);
   assert.match(cli.stderr, /"reasonCode":"STORE_WRITE_FAILED"/);
+});
+
+const span = (i: number, ms: number, status: "ok" | "error" = "ok") => ({ traceId: `t${i}`, spanId: `s${i}`, name: "step", startNs: i * 1e12, endNs: i * 1e12 + ms * 1e6, status, attributes: {} });
+
+test("latency gate: a cold-start outlier does not fail, a sustained regression does, too few samples skip", () => {
+  const gate = [{ name: "step", maxMedianMs: 1000, window: 5 }];
+  const cold = [span(1, 6000), span(2, 800), span(3, 820), span(4, 790), span(5, 810)];
+  assert.deepEqual(assertSpans(cold, gate), { failures: [], skipped: [] });
+  const slow = [span(1, 800), span(2, 2000), span(3, 2100), span(4, 2200), span(5, 790)];
+  assert.match(assertSpans(slow, gate).failures[0]!, /median 2000ms over the last 5 runs/);
+  const few = assertSpans([span(1, 9999)], gate);
+  assert.deepEqual(few.failures, []);
+  assert.match(few.skipped[0]!, /needs 5 runs, have 1/);
+});
+
+test("noErrors looks at the recent window, so an old failure ages out", () => {
+  const spans = [span(1, 10, "error"), ...[2, 3, 4, 5, 6].map((i) => span(i, 10))];
+  assert.deepEqual(assertSpans(spans, [{ name: "step", noErrors: true, window: 5 }]).failures, []);
+  assert.equal(assertSpans(spans, [{ name: "step", noErrors: true, window: 6 }]).failures.length, 1);
+});
+
+test("run does not block: two commands overlap", async () => {
+  const h = harness();
+  const wait = (ms: number) => new Promise<number>((r) => setTimeout(() => r(0), ms));
+  const deps = { store: h.store, events: h.events, exec: () => wait(300) };
+  const t0 = Date.now();
+  await Promise.all([run(deps, "a", ["x"], {}), run(deps, "b", ["x"], {})]);
+  assert.ok(Date.now() - t0 < 550, "ran serially"); // serial would take >= 600ms
+  assert.equal(load(h.store).length, 2);
 });

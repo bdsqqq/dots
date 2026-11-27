@@ -153,8 +153,8 @@ export interface RunDeps {
   events: Events;
   now?: () => number;
   id?: (bytes: number) => string;
-  /** runs argv with env, inheriting stdio; returns the exit code (null when killed by a signal). */
-  exec: (argv: string[], env: Record<string, string | undefined>) => number | null;
+  /** runs argv with env; resolves to the exit code (null when killed by a signal). */
+  exec: (argv: string[], env: Record<string, string | undefined>) => number | null | Promise<number | null>;
 }
 
 export type RunResult =
@@ -170,7 +170,7 @@ const traceparent = /^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$/;
  * TRACEPARENT, so nested `trace-cli run` calls (or OTel-aware tools) join the same trace.
  * Argv is never recorded: commands can carry secrets. The caller supplies a name.
  */
-export function run(deps: RunDeps, name: string, argv: string[], env: Record<string, string | undefined>, attributes: Span["attributes"] = {}): RunResult {
+export async function run(deps: RunDeps, name: string, argv: string[], env: Record<string, string | undefined>, attributes: Span["attributes"] = {}): Promise<RunResult> {
   const op = deps.events.begin("run.command", "background");
   if (!argv.length) { op.finish("failed", { reasonCode: "EMPTY_COMMAND" }); return { status: "failed", reasonCode: "EMPTY_COMMAND" }; }
   const now = deps.now ?? (() => Date.now() * 1e6);
@@ -179,7 +179,7 @@ export function run(deps: RunDeps, name: string, argv: string[], env: Record<str
   const traceId = parent?.[1] ?? id(16);
   const spanId = id(8);
   const startNs = now();
-  const code = deps.exec(argv, { ...env, TRACEPARENT: `00-${traceId}-${spanId}-01` });
+  const code = await deps.exec(argv, { ...env, TRACEPARENT: `00-${traceId}-${spanId}-01` });
   const exitCode = code ?? 128;
   try {
     append(deps.store, [{ traceId, spanId, parentSpanId: parent?.[2], name, service: "trace-cli", startNs, endNs: now(), status: exitCode === 0 ? "ok" : "error", attributes: { ...attributes, exitCode } }]);

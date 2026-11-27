@@ -115,19 +115,47 @@ export function percentiles(spans: Span[]) {
   }).sort((a, b) => b.p95 - a.p95);
 }
 
-export interface Assertion { name: string; minCount?: number; maxCount?: number; maxP95Ms?: number; noErrors?: boolean }
+export interface Assertion {
+  name: string;
+  /** over all recorded spans: the step ran at all. */
+  minCount?: number;
+  maxCount?: number;
+  /** over the last `window` spans: a single old failure stops mattering once it ages out. */
+  noErrors?: boolean;
+  /**
+   * latency gate on the median of the last `window` spans. The median shrugs off a cold-start
+   * outlier; a sustained regression moves it. Skipped (not failed) with fewer than `minSamples`.
+   */
+  maxMedianMs?: number;
+  window?: number;
+  minSamples?: number;
+}
 
-export function assertSpans(spans: Span[], checks: Assertion[]): string[] {
+export interface AssertResult { failures: string[]; skipped: string[] }
+
+const median = (xs: number[]) => {
+  const s = [...xs].sort((a, b) => a - b);
+  return s.length % 2 ? s[(s.length - 1) / 2]! : (s[s.length / 2 - 1]! + s[s.length / 2]!) / 2;
+};
+
+export function assertSpans(spans: Span[], checks: Assertion[]): AssertResult {
   const failures: string[] = [];
+  const skipped: string[] = [];
   for (const c of checks) {
-    const m = spans.filter((s) => s.name === c.name);
-    if (c.minCount !== undefined && m.length < c.minCount) failures.push(`${c.name}: ${m.length} spans, want >= ${c.minCount}`);
-    if (c.maxCount !== undefined && m.length > c.maxCount) failures.push(`${c.name}: ${m.length} spans, want <= ${c.maxCount}`);
-    if (c.noErrors && m.some((s) => s.status === "error")) failures.push(`${c.name}: has error spans`);
-    if (c.maxP95Ms !== undefined && m.length) {
-      const p = percentiles(m)[0]!.p95;
-      if (p > c.maxP95Ms) failures.push(`${c.name}: p95 ${p.toFixed(2)}ms > ${c.maxP95Ms}ms`);
+    const all = spans.filter((s) => s.name === c.name);
+    const window = c.window ?? 5;
+    const recent = all.toSorted((a, b) => b.startNs - a.startNs).slice(0, window);
+    if (c.minCount !== undefined && all.length < c.minCount) failures.push(`${c.name}: ${all.length} spans, want >= ${c.minCount}`);
+    if (c.maxCount !== undefined && all.length > c.maxCount) failures.push(`${c.name}: ${all.length} spans, want <= ${c.maxCount}`);
+    if (c.noErrors && recent.some((s) => s.status === "error")) failures.push(`${c.name}: error span in the last ${recent.length} runs`);
+    if (c.maxMedianMs !== undefined) {
+      const need = c.minSamples ?? window;
+      if (recent.length < need) skipped.push(`${c.name}: latency gate needs ${need} runs, have ${recent.length}`);
+      else {
+        const m = median(recent.map(durationMs));
+        if (m > c.maxMedianMs) failures.push(`${c.name}: median ${m.toFixed(0)}ms over the last ${recent.length} runs > ${c.maxMedianMs}ms`);
+      }
     }
   }
-  return failures;
+  return { failures, skipped };
 }

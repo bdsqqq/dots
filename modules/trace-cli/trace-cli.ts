@@ -14,7 +14,7 @@ const usage = `trace-cli <command>
   grep --name <span> [--attr k=v]                   find spans
   stats                                             latency percentiles per span name
   diff <a> <b>                                      compare two traces
-  assert <file.json>                                declarative checks: [{name, minCount, maxP95Ms, noErrors}]
+  assert <file.json>                                declarative checks: [{name, minCount, noErrors, maxMedianMs, window, minSamples}]
   ingest <file.json>                                import a saved OTLP JSON export
   run <name> -- <cmd...>                            time a command as a span; nested runs form a tree (TRACEPARENT)
   pull --axiom <dataset> [--since 1h]               import spans from an Axiom traces dataset
@@ -90,12 +90,12 @@ async function ingestCmd() {
   process.exitCode = result.status === "ingested" ? 0 : 1;
 }
 
-function runCmd() {
+async function runCmd() {
   const sep = args.indexOf("--");
   const name = args[0] ?? "";
   const exec = (argv: string[], env: Record<string, string | undefined>) =>
     spawnSync(argv[0]!, argv.slice(1), { stdio: "inherit", env }).status;
-  const result = run({ store, events: stderrEvents, exec }, name, sep < 0 ? [] : args.slice(sep + 1), process.env);
+  const result = await run({ store, events: stderrEvents, exec }, name, sep < 0 ? [] : args.slice(sep + 1), process.env);
   if (result.status === "failed" && result.reasonCode === "EMPTY_COMMAND") { console.error(`run needs: <name> -- <cmd...>`); process.exit(2); }
   if (result.status === "failed") { console.error("could not record span (store write failed)"); process.exit(result.exitCode || 1); }
   console.error(`trace ${result.traceId} span ${result.spanId} exit ${result.exitCode}`);
@@ -126,12 +126,13 @@ switch (cmd) {
     break;
   }
   case "assert": {
-    const failures = assertSpans(load(store), JSON.parse(readFileSync(args[0] ?? "", "utf8")));
+    const { failures, skipped } = assertSpans(load(store), JSON.parse(readFileSync(args[0] ?? "", "utf8")));
+    for (const s of skipped) console.error(`SKIP ${s}`);
     for (const f of failures) console.error(`FAIL ${f}`);
     process.exit(failures.length ? 1 : 0);
     break;
   }
-  case "run": runCmd(); break;
+  case "run": await runCmd(); break;
   case "pull": pullCmd(); break;
   case "ingest": await ingestCmd(); break;
   default: console.log(usage); process.exit(cmd ? 1 : 0);
