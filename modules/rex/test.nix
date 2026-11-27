@@ -1,12 +1,14 @@
 { flake }:
 let
-  lib = flake.inputs.nixpkgs.lib;
+  # a tack project declares no flake inputs, so getFlake has none to show
+  pins = import ../../.tack { };
+  lib = pins.nixpkgs.lib;
   linuxHosts = builtins.attrNames flake.nixosConfigurations;
   checkLinux = name:
     let
       cfg = flake.nixosConfigurations.${name}.config;
       login = cfg.services.rex.loginServer;
-      bootstrap = flake.inputs.rex.packages.${cfg.nixpkgs.hostPlatform.system}.rex;
+      bootstrap = pins.rex.packages.${cfg.nixpkgs.hostPlatform.system}.rex;
     in
     assert login.enable && !cfg.services.rex.enable;
     assert !login.allowAnonymous;

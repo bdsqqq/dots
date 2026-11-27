@@ -11,8 +11,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const fixture = JSON.parse(execFileSync("nix", [
   "eval", "--impure", "--json", "--no-write-lock-file", "--expr", `
     let
-      flake = builtins.getFlake ${JSON.stringify(`git+file://${root}`)};
-      pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+      pins = import ${JSON.stringify(`${root}/.tack`)} { };
+      pkgs = import pins.nixpkgs { system = builtins.currentSystem; };
       module = import ${JSON.stringify(`${root}/modules/git/default.nix`)};
       configured = (module {
         inputs.hunk.homeManagerModules.default = {};

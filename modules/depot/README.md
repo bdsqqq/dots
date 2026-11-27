@@ -52,7 +52,7 @@ Homebrew owns normal CLI upgrades; this module owns the `depot/tap` prerequisite
 
 ```bash
 node --test modules/depot/auth.test.ts
-nix eval --impure --expr 'let f = builtins.getFlake (toString ./.); in import ./modules/depot/test.nix { lib = f.inputs.nixpkgs.lib; }'
+nix eval --impure --expr 'let p = import ./.tack { }; in import ./modules/depot/test.nix { lib = p.nixpkgs.lib; }'
 ```
 
 fixtures test empty/missing credentials, both token environment names, explicit

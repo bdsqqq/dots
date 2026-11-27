@@ -10,7 +10,7 @@ const diagnostic = fileURLToPath(new URL("./private-ingress-warning.nix", import
 // Exercise Nix's actual import/disabledModules handling, not a source-text grep.
 // These minimal option contracts need no target platform, packages, or builds.
 const expression = `let
-  lib = (builtins.getFlake ${JSON.stringify(root)}).inputs.nixpkgs.lib;
+  lib = (import ${JSON.stringify(`${root}/.tack`)} { }).nixpkgs.lib;
   policy = builtins.toPath ${JSON.stringify(policy)};
   diagnostic = builtins.toPath ${JSON.stringify(diagnostic)};
   schema = { lib, ... }: {

@@ -134,7 +134,7 @@ replaced with an immutable snapshot. see [secret ownership](../../SECRETS.md#add
 node --test modules/annas-archive/*.test.ts modules/tool-auth/process.test.ts
 tsc -p modules/annas-archive/tsconfig.json
 tsc --noEmit --strict --target ES2020 --module ES2020 --lib ES2020 modules/annas-archive/preferences.ts
-nix eval --json --impure --expr 'let f = builtins.getFlake ("path:" + builtins.toString ./.); in import ./modules/annas-archive/test.nix { lib = f.inputs.nixpkgs.lib; }'
+nix eval --json --impure --expr 'let p = import ./.tack { }; in import ./modules/annas-archive/test.nix { lib = p.nixpkgs.lib; }'
 ```
 
 typechecking needs the existing Node typings; a fresh worktree can point

@@ -1,5 +1,5 @@
 { root, guid, port, probeSystemd ? false, omitActivationTools ? false
-, pkgs ? import (builtins.getFlake ("git+file://" + toString ../..)).inputs.nixpkgs {
+, pkgs ? import (import ../../.tack { }).nixpkgs {
     system = builtins.currentSystem;
   }
 }:
@@ -46,7 +46,7 @@ let
       }
     ];
   }).config;
-  home = (builtins.getFlake ("git+file://" + toString ../..)).inputs.home-manager.lib.homeManagerConfiguration {
+  home = (import ../../.tack { }).home-manager.lib.homeManagerConfiguration {
     inherit pkgs;
     modules = [
       evaluated.home-manager.users.bdsqqq

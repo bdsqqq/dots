@@ -73,7 +73,7 @@ test("activation replaces config; daemon restarts preserve UI edits and data", {
   writeFileSync(password, "isolated-launcher-fixture-only\n", { mode: 0o600 });
   const resticPackage = execFileSync("nix", [
     "build", "--no-link", "--no-write-lock-file", "--impure", "--print-out-paths",
-    "--expr", 'let f = builtins.getFlake ("git+file://" + toString ./.); in (import f.inputs.nixpkgs { system = builtins.currentSystem; }).restic',
+    "--expr", 'let p = import ./.tack { }; in (import p.nixpkgs { system = builtins.currentSystem; }).restic',
   ], { cwd: repositoryRoot, encoding: "utf8", timeout: 60_000 }).trim();
   const resticBinary = join(resticPackage, "bin", "restic");
   const restic = (...args: string[]) => execFileSync(resticBinary, [
