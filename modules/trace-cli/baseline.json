@@ -1,0 +1,6 @@
+[
+  { "name": "pi-tsc", "minCount": 1, "noErrors": true, "maxP95Ms": 5000 },
+  { "name": "service-events-tests", "minCount": 1, "noErrors": true, "maxP95Ms": 3000 },
+  { "name": "trace-cli-tests", "minCount": 1, "noErrors": true, "maxP95Ms": 3000 },
+  { "name": "pi-vitest", "noErrors": true, "maxP95Ms": 60000 }
+]
