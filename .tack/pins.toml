@@ -1,0 +1,168 @@
+# tack pins
+# edit by hand or with tack add / rm / alias
+# nix reads pins.lock.json
+# this file drives tack update
+
+# shorturl schemes
+# scheme rest expands rest into {path}
+[shorturls]
+# gh = "github:{path}"
+
+# all_follow maps input names at every depth to the top-level pin they follow
+# opt out per-input with exclude_follow, scope with flake: or tack:
+[all_follow]
+nixpkgs = "nixpkgs"
+# nixpkgs = ["nixpkgs-stable", "nixpkgs-unstable"]
+
+# recursively omit selected upstream inputs from every top-level pin
+[omit_inputs]
+# names = ["flake-compat", "tack:cachix"]
+
+# signers name the public keys pins can require, as an ssh key line, an
+# armored pgp key, a file under .tack holding either, or an array of those.
+# `tack signer add <name> --github <user>` fills one in from GitHub
+[signers]
+# alice = "ssh-ed25519 AAAA..."
+
+# default fetch_mode for fetch pins ("eval" or "build")
+# [tack]
+# fetch_mode = "build"
+# type = "fetch"
+
+# inputs.<name> fields
+#   url             required, shorturl ok, ?rev=<sha> pins an exact commit
+#   type            flake (default), fetch, or fixed, overrides [tack] type
+#   flake           legacy false means type = "fetch"
+#   follows         { child = "pin" } immediate-input override map, or a
+#                   "pin/input" string in place of every other field to make
+#                   this pin that input
+#   exclude_follow  all_follow names to skip, flake:/tack: scoped or *
+#   omit_inputs     upstream input names to omit recursively for this pin
+#   keep_inputs     omitted input names to allow recursively for this pin
+#   dir             subdir holding flake.nix
+#   submodules      fetch git submodules
+#   unpack          fixed-only tarball or file
+#   fetch_mode      fetch-only "eval" (default) or "build" to defer fetching to build time
+#   signers         names from [signers], one of whom must have signed the locked commit
+#   patches         patch urls or files relative to this dir, applied in order
+#   tag             follow the newest tag like "v{version}", where {version} is numbers
+#                   joined by `.` `-` or `_`, so non-numeric tags like "v2.1-rc1" are
+#                   skipped, needs a github, gitlab or network git url with
+#                   no ref or rev, not file://, or for a fixed pin a release
+#                   download url naming the asset with {tag} or {version}. a trailing
+#                   * matches anything after, like a build hash in "b{version}-*". a
+#                   named placeholder like {commit} matches letters and digits and can
+#                   also be used in the url
+#   tags_from       fixed-only repo url or http(s) page to read tag's tags from, for an
+#                   asset that isn't a release download
+[inputs]
+
+[inputs.axiom-deploy-annotation]
+url = "github:bdsqqq/axiom-deploy-annotation"
+
+[inputs.axiom-deploy-annotation.follows]
+nixpkgs = "nixpkgs"
+
+[inputs.berkeley-mono]
+url = "path:./modules/fonts/berkeley-mono"
+type = "fetch"
+
+[inputs.copyparty]
+url = "github:9001/copyparty"
+
+[inputs.copyparty.follows]
+nixpkgs = "nixpkgs"
+
+[inputs.disko]
+url = "github:nix-community/disko"
+
+[inputs.disko.follows]
+nixpkgs = "nixpkgs"
+
+[inputs.flake-parts]
+url = "github:hercules-ci/flake-parts"
+
+[inputs.home-manager]
+url = "github:nix-community/home-manager"
+
+[inputs.home-manager.follows]
+nixpkgs = "nixpkgs"
+
+[inputs.hunk]
+url = "github:modem-dev/hunk"
+
+[inputs.hunk.follows]
+nixpkgs = "nixpkgs"
+
+[inputs.jovian-nixos]
+url = "github:Jovian-Experiments/Jovian-NixOS"
+
+[inputs.jovian-nixos.follows]
+nixpkgs = "nixpkgs"
+
+[inputs.lnr]
+url = "github:bdsqqq/lnr"
+
+[inputs.lnr.follows]
+nixpkgs = "nixpkgs"
+
+# niri-flake's own nixpkgs stays: it tracks the compositor's build inputs
+[inputs.niri]
+url = "github:sodiboo/niri-flake"
+exclude_follow = ["nixpkgs"]
+
+[inputs.niri.follows]
+niri-unstable = "niri-unstable"
+
+# the compositor release niri-flake builds, held on a tag
+[inputs.niri-unstable]
+url = "github:niri-wm/niri"
+tag = "v{version}"
+
+[inputs.nix-darwin]
+url = "github:nix-darwin/nix-darwin/master"
+
+[inputs.nix-darwin.follows]
+nixpkgs = "nixpkgs"
+
+[inputs.nix-flatpak]
+url = "github:gmodena/nix-flatpak"
+
+[inputs.nixpkgs]
+url = "github:NixOS/nixpkgs/nixos-unstable"
+
+[inputs.nixpkgs-unstable]
+url = "github:NixOS/nixpkgs/nixos-unstable"
+
+[inputs.quickshell]
+url = "git+https://git.outfoxxed.me/outfoxxed/quickshell"
+
+[inputs.quickshell.follows]
+nixpkgs = "nixpkgs"
+
+[inputs.rex]
+url = "https://pkgs.superlogical.com/rex/nix/snapshot.tar.gz"
+
+[inputs.rex.follows]
+nixpkgs = "nixpkgs"
+
+[inputs.sops-nix]
+url = "github:Mic92/sops-nix"
+
+[inputs.sops-nix.follows]
+nixpkgs = "nixpkgs"
+
+[inputs.stylix]
+url = "github:danth/stylix"
+
+[inputs.stylix.follows]
+nixpkgs = "nixpkgs"
+
+# the pin manager itself, so every host has the tack that wrote the lock
+[inputs.tack]
+url = "github:manic-systems/tack"
+
+# no nixpkgs follow, to preserve cachix cache hits
+[inputs.vicinae]
+url = "github:vicinaehq/vicinae/main"
+exclude_follow = ["nixpkgs"]

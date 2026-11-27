@@ -1,4 +1,4 @@
-name: update flake inputs
+name: update tack pins
 
 on:
   schedule:
@@ -13,15 +13,16 @@ jobs:
 
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
 
-      - run: nix flake update
+      # inputs are pinned by tack (.tack/pins.toml), not flake.lock. frozen pins stay put.
+      - run: nix run --accept-flake-config github:manic-systems/tack -- update
 
       - uses: peter-evans/create-pull-request@3ffccacd46053766916f087ce41d627c0b8cf2d1 # v8.1.3
         with:
-          commit-message: "chore(nix): update flake inputs"
-          title: "chore(nix): update flake inputs"
+          commit-message: "chore(nix): update tack pins"
+          title: "chore(nix): update tack pins"
           body: |
-            automated flake.lock update.
+            automated `tack update` of .tack/pins.lock.json.
             
-            run `nix flake check` locally before merging.
-          branch: flake-update
+            run `tack look -v` and `nix flake check` locally before merging.
+          branch: tack-update
           delete-branch: true

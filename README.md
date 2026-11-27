@@ -34,10 +34,25 @@ secrets, and agent skill.
 I push to `main` and mostly forget about it: every host rebuilds itself from
 the published flake on a timer, usually hourly
 ([modules/nix](modules/nix/README.md)). dependency bumps show up as PRs from
-the flake-update workflow. apps with their own updaters, like Rex, Helium, or
+the tack-update workflow. apps with their own updaters, like Rex, Helium, or
 the Claude and Codex CLIs, work the other way round: a machine that updates one
 commits the version it got, and the rest catch up
 ([app-pins](modules/app-pins/README.md)).
+
+flake inputs are pinned with [tack](https://github.com/manic-systems/tack)
+instead of `flake.lock`: `.tack/pins.toml` declares them, `.tack/pins.lock.json`
+locks them, and `flake.nix` just imports `./.tack`. useful commands:
+
+```bash
+tack look            # what is behind upstream
+tack update desktop  # move a group, or one pin, or everything
+tack freeze <pin>    # hold a pin until named explicitly
+tack undo            # walk back the last pin change
+tack dedup           # suggest [all_follow] rules for duplicated inputs
+```
+
+edit `pins.toml` by hand or with `tack add`/`rm`; run `tack update <pin>` after
+adding one. `nix flake update` and `nix flake lock` no longer do anything here.
 
 when I don't want to wait, from an up-to-date checkout:
 

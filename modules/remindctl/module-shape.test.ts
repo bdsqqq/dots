@@ -9,15 +9,14 @@ const moduleDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(moduleDir, "../..");
 
 test("remindctl excludes homebrew on Linux and scopes Darwin trust to its formula", () => {
-  const lock: unknown = JSON.parse(readFileSync(resolve(root, "flake.lock"), "utf8"));
+  const lock: unknown = JSON.parse(readFileSync(resolve(root, ".tack/pins.lock.json"), "utf8"));
   const record = (value: unknown): value is Record<string, unknown> =>
     typeof value === "object" && value !== null && !Array.isArray(value);
-  assert.ok(record(lock) && record(lock.nodes));
-  const nixpkgs = lock.nodes.nixpkgs;
-  assert.ok(record(nixpkgs) && record(nixpkgs.locked));
+  assert.ok(record(lock));
+  const nixpkgs = lock.nixpkgs;
+  assert.ok(record(nixpkgs));
   const tree = ["type", "owner", "repo", "rev", "narHash"].map((key) => {
-    assert.ok(record(nixpkgs.locked));
-    const value = nixpkgs.locked[key];
+    const value = nixpkgs[key];
     assert.equal(typeof value, "string");
     return `${key} = ${JSON.stringify(value)};`;
   }).join(" ");

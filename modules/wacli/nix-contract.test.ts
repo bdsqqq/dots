@@ -8,14 +8,9 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const record = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
-const lock: unknown = JSON.parse(readFileSync(resolve(root, "flake.lock"), "utf8"));
-assert.ok(
-  record(lock) &&
-    record(lock.nodes) &&
-    record(lock.nodes.nixpkgs) &&
-    record(lock.nodes.nixpkgs.locked),
-);
-const pinned = lock.nodes.nixpkgs.locked;
+const lock: unknown = JSON.parse(readFileSync(resolve(root, ".tack/pins.lock.json"), "utf8"));
+assert.ok(record(lock) && record(lock.nixpkgs));
+const pinned = lock.nixpkgs;
 const tree = ["type", "owner", "repo", "rev", "narHash"]
   .map((k) => {
     assert.equal(typeof pinned[k], "string");

@@ -8,9 +8,9 @@ import test from "node:test";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(moduleDir, "../..");
-const lock = JSON.parse(readFileSync(join(root, "flake.lock"), "utf8"));
+const lock = JSON.parse(readFileSync(join(root, ".tack/pins.lock.json"), "utf8"));
 const tree = ["type", "owner", "repo", "rev", "narHash"].map(
-  (key) => `${key} = ${JSON.stringify(lock.nodes.nixpkgs.locked[key])};`,
+  (key) => `${key} = ${JSON.stringify(lock.nixpkgs[key])};`,
 ).join(" ");
 
 /** Evaluate the real module's scripts without running a host activation. */

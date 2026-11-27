@@ -1,7 +1,10 @@
-{ config, pkgs, lib, ... }:
+{ config, pkgs, lib, inputs, ... }:
 
 {
   imports = [ ./auto-upgrade.nix ];
+
+  # tack manages the flake inputs (.tack/pins.toml); same revision as the pins
+  environment.systemPackages = [ inputs.tack.packages.${pkgs.stdenv.hostPlatform.system}.tack ];
 
   # Common Nix settings
   nix = {
@@ -12,10 +15,11 @@
       keep-derivations = true;
       # Binary caches
       substituters =
-        [ "https://cache.nixos.org/" "https://nix-community.cachix.org" ];
+        [ "https://cache.nixos.org/" "https://nix-community.cachix.org" "https://cache.manic.systems" ];
       trusted-public-keys = [
         "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
         "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+        "cache.manic.systems-1:s6OZanN8Us8vRi0jVivP3qlMn0cYHBjBALKrNe5nH8s="
       ];
     };
     optimise.automatic = true;

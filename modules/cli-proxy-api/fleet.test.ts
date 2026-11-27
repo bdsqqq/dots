@@ -181,7 +181,7 @@ test("built absolute launcher uses its pinned native Codex on a minimal T3 PATH 
 
 test("bootstrap builds the existing native tools module without evaluating a whole host or scanning unrelated checkout files", () => {
   const expression=packageExpression("/home/bdsqqq/commonplace/01_files/nix");
-  assert.match(expression,/builtins.fetchTree lock.nodes.nixpkgs.locked/);
+  assert.match(expression,/builtins.fetchTree \(removeAttrs lock.nixpkgs/);
   assert.match(expression,/builtins.currentSystem/);
   assert.match(expression,/cli-proxy-api\/default.nix/);
   assert.match(expression,/config.my.cliProxyApi.toolsPackage/);

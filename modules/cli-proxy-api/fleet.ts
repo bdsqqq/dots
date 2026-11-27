@@ -35,8 +35,8 @@ const checkIdentity = `${nativeNode} "$node" --input-type=module -e 'import{stat
 
 export function packageExpression(repo: string) {
   return `let
-    lock = builtins.fromJSON (builtins.readFile ${JSON.stringify(`${repo}/flake.lock`)});
-    nixpkgs = builtins.fetchTree lock.nodes.nixpkgs.locked;
+    lock = builtins.fromJSON (builtins.readFile ${JSON.stringify(`${repo}/.tack/pins.lock.json`)});
+    nixpkgs = builtins.fetchTree (removeAttrs lock.nixpkgs [ "public" ]);
     pkgs = import nixpkgs { system = builtins.currentSystem; config.allowUnfree = true; };
     lib = pkgs.lib;
     evaluated = lib.evalModules {

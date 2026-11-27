@@ -8,8 +8,8 @@ import test from "node:test";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(moduleDir, "../..");
-const lock = JSON.parse(readFileSync(join(root, "flake.lock"), "utf8"));
-const source = Object.fromEntries(["type", "owner", "repo", "rev", "narHash"].map(key => [key, lock.nodes.nixpkgs.locked[key]]));
+const lock = JSON.parse(readFileSync(join(root, ".tack/pins.lock.json"), "utf8"));
+const source = Object.fromEntries(["type", "owner", "repo", "rev", "narHash"].map(key => [key, lock.nixpkgs[key]]));
 const nixSource = Object.entries(source).map(([key, value]) => `${key} = ${JSON.stringify(value)};`).join(" ");
 const decisions = '{"formulae":["example/tap/existing"]}\n';
 

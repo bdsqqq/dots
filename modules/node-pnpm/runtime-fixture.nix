@@ -3,8 +3,8 @@
   shellModulePath ? ../shell/default.nix,
 }:
 let
-  lock = builtins.fromJSON (builtins.readFile ../../flake.lock);
-  locked = lock.nodes.${lock.nodes.${lock.root}.inputs.nixpkgs}.locked;
+  lock = builtins.fromJSON (builtins.readFile ../../.tack/pins.lock.json);
+  locked = lock.nixpkgs;
   source = (builtins.getFlake "github:${locked.owner}/${locked.repo}/${locked.rev}").outPath;
   packageArgs = {
     system = "x86_64-linux";

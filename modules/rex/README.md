@@ -9,7 +9,7 @@ installing it; hosts never independently chase the moving upstream channel.
 the linux pin, `release.json`, follows the CLI build bundled in the Rex.app that a
 mac accepted, not the upstream channel head. [app-pins](../app-pins/README.md)
 publishes it as a side effect of recording the app; see that README for why.
-`flake.lock` still pins upstream's nix module, terminfo, ssh fallback and
+`.tack/pins.lock.json` still pins upstream's nix module, terminfo, ssh fallback and
 bootstrap archive, but it is not the runtime release authority.
 
 ## host apply
