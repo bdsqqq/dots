@@ -1,0 +1,18 @@
+name: trace-cli
+on:
+  workflow_dispatch:
+
+jobs:
+  trace-cli:
+    runs-on: depot-ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: trace-cli tests
+        run: node --experimental-strip-types --test modules/trace-cli/trace-cli.test.ts
+      - name: service-events tests
+        run: node --experimental-strip-types --test --test-concurrency=1 modules/service-events/events.test.ts modules/service-events/projections.test.ts
