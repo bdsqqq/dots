@@ -117,6 +117,7 @@ niri-unstable = "niri-unstable"
 # the compositor release niri-flake builds, held on a tag
 [inputs.niri-unstable]
 url = "github:niri-wm/niri"
+type = "fetch"
 tag = "v{version}"
 
 [inputs.nix-darwin]

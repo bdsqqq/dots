@@ -45,7 +45,7 @@ locks them, and `flake.nix` just imports `./.tack`. useful commands:
 
 ```bash
 tack look            # what is behind upstream
-tack update desktop  # move a group, or one pin, or everything
+tack update nixpkgs  # move one pin (or a group, or everything)
 tack freeze <pin>    # hold a pin until named explicitly
 tack undo            # walk back the last pin change
 tack dedup           # suggest [all_follow] rules for duplicated inputs

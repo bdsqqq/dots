@@ -14,7 +14,12 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
 
       # inputs are pinned by tack (.tack/pins.toml), not flake.lock. frozen pins stay put.
-      - run: nix run --accept-flake-config github:manic-systems/tack -- update
+      # run the tack revision hosts install (the locked pin), not upstream HEAD, so
+      # the code that writes the lock only changes in a reviewed update.
+      - name: update pins with the locked tack
+        run: |
+          rev=$(jq -r .tack.rev .tack/pins.lock.json)
+          nix run --accept-flake-config "github:manic-systems/tack/$rev" -- update
 
       - uses: peter-evans/create-pull-request@3ffccacd46053766916f087ce41d627c0b8cf2d1 # v8.1.3
         with:
