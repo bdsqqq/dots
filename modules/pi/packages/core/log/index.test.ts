@@ -91,6 +91,14 @@ describe("shared pi logging", () => {
       operationId: "../../victim",
     });
     traversal.finish("success");
+    // 16 leading decimal digits look like a card number to evlog's masker;
+    // ~0.13% of randomUUID() values have this shape.
+    const digitUuid = createWideEvent({
+      service: "pi-test",
+      operation: "test.digit-uuid",
+      operationId: "12345678-1234-4567-89ab-cdef01234567",
+    });
+    digitUuid.finish("success");
     const previousTimeout = process.env.BDS_PI_LOG_DRAIN_TIMEOUT_MS;
     process.env.BDS_PI_LOG_DRAIN_TIMEOUT_MS = "20";
     const unregister = registerLogDrain(() => new Promise(() => undefined));
@@ -125,7 +133,13 @@ describe("shared pi logging", () => {
       .split("\n")
       .map((line) => JSON.parse(line) as Record<string, unknown>);
 
-    expect(events).toHaveLength(6);
+    expect(events).toHaveLength(7);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        operation: "test.digit-uuid",
+        operationId: "12345678-1234-4567-89ab-cdef01234567",
+      }),
+    );
     expect(events).toContainEqual(
       expect.objectContaining({
         service: "pi-test",
@@ -154,40 +168,25 @@ describe("shared pi logging", () => {
     expect(raw).not.toContain("sk_test");
     expect(raw).not.toContain("plain-api-key");
     expect(raw).not.toContain("plain-client-secret");
-    expect(captured).toHaveLength(6);
+    expect(captured).toHaveLength(7);
     expect(({} as Record<string, unknown>).bdsPiPolluted).toBeUndefined();
     expect(existsSync(victim)).toBe(true);
     expect(readdirSync(pending)).toHaveLength(0);
     expect(statSync(directory).mode & 0o777).toBe(0o700);
     expect(statSync(join(directory, files[0]!)).mode & 0o777).toBe(0o600);
-  });
 
-  it("keeps digit-heavy uuids intact so finished operations retire their markers", async () => {
-    // 16 decimal digits in a row trip evlog's credit-card masker; about 0.13%
-    // of randomUUID() values have this shape.
-    const operationId = "12345678-1234-4567-89ab-cdef01234567";
-    const directory = initializeLogs({
-      directory: mkdtempSync(join(tmpdir(), "bds-pi-log-")),
-    });
-    const event = createWideEvent({
+    // restoring raw ids must not undo evlog's masking of credential-shaped ids
+    const jwt =
+      "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.c2lnbmF0dXJlLXZhbHVl";
+    createWideEvent({
       service: "pi-test",
-      operation: "test.digit-uuid",
-      operationId,
-    });
-    event.finish("success");
+      operation: "test.jwt-id",
+      operationId: jwt,
+    }).finish("success");
     await flushLogs();
-
-    const raw = readdirSync(directory)
-      .filter((name) => name.endsWith(".jsonl"))
-      .map((name) => readFileSync(join(directory, name), "utf8"))
-      .join("");
-    expect(raw).toContain(`"operationId":"${operationId}"`);
-    expect(
-      readdirSync(join(directory, "pending")).filter((name) =>
-        readFileSync(join(directory, "pending", name), "utf8").includes(
-          operationId,
-        ),
-      ),
-    ).toHaveLength(0);
+    expect(readFileSync(join(directory, files[0]!), "utf8")).not.toContain(
+      jwt,
+    );
+    expect(JSON.stringify(captured)).not.toContain(jwt);
   });
 });
