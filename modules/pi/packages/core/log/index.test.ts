@@ -175,18 +175,37 @@ describe("shared pi logging", () => {
     expect(statSync(directory).mode & 0o777).toBe(0o700);
     expect(statSync(join(directory, files[0]!)).mode & 0o777).toBe(0o600);
 
-    // restoring raw ids must not undo evlog's masking of credential-shaped ids
+    // restoring raw ids must not undo evlog's masking of credential- or
+    // pii-shaped ids: a jwt, and an iban inside a uuid-shaped id.
     const jwt =
       "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.c2lnbmF0dXJlLXZhbHVl";
+    const ibanUuid = "AB12CDEF-1234-4567-89AB-CDEF01234567";
     createWideEvent({
       service: "pi-test",
       operation: "test.jwt-id",
       operationId: jwt,
     }).finish("success");
+    createWideEvent({
+      service: "pi-test",
+      operation: "test.iban-id",
+      operationId: ibanUuid,
+    }).finish("success");
     await flushLogs();
-    expect(readFileSync(join(directory, files[0]!), "utf8")).not.toContain(
-      jwt,
-    );
-    expect(JSON.stringify(captured)).not.toContain(jwt);
+    const sinks = [
+      readFileSync(join(directory, files[0]!), "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as Record<string, unknown>),
+      captured as Record<string, unknown>[],
+    ];
+    for (const sink of sinks)
+      for (const [operation, raw] of [
+        ["test.jwt-id", jwt],
+        ["test.iban-id", ibanUuid],
+      ] as const) {
+        const event = sink.find((item) => item.operation === operation);
+        expect(event?.operationId).toEqual(expect.any(String));
+        expect(event?.operationId).not.toBe(raw);
+      }
   });
 });
