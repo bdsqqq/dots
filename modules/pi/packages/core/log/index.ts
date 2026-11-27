@@ -260,7 +260,36 @@ async function boundedDrain(
   }
 }
 
+// evlog's built-in PII maskers rewrite any string, so a UUID with 16 decimal
+// digits reads as a credit card and its operationId becomes "****…". The id is
+// a validated correlation key, not PII: the redaction transform sees the raw
+// clone before masking, and dispatch restores the id so log lines stay
+// correlatable and the local drain can retire the matching pending marker.
+// only canonical uuids whose sole change is evlog's credit-card mask are
+// restored; other caller-supplied ids (a JWT passes normalizeOperationId) and
+// other maskers' matches keep evlog's masking.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function creditCardMasked(value: string): string {
+  return value.replace(
+    /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g,
+    (match) => `****${match.replace(/[\s-]/g, "").slice(-4)}`,
+  );
+}
+const rawOperationIds = new WeakMap<object, string>();
+
+function rememberOperationId(event: Record<string, unknown>): void {
+  if (typeof event.operationId === "string" && UUID.test(event.operationId))
+    rawOperationIds.set(event, event.operationId);
+}
+
 function dispatch(context: DrainContext): Promise<void> {
+  const operationId = rawOperationIds.get(context.event);
+  if (
+    operationId !== undefined &&
+    context.event.operationId === creditCardMasked(operationId)
+  )
+    context.event.operationId = operationId;
   return track(
     Promise.allSettled(
       [...state.drains].map(async (drain) => {
@@ -585,6 +614,7 @@ export function initializeLogs(
       pretty: false,
       silent: true,
       redact: {
+        transform: rememberOperationId,
         paths: [
           "**.authorization",
           "**.cookie",
