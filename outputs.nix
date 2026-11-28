@@ -1,0 +1,548 @@
+inputs@{ self, flake-parts, stylix, ... }:
+    let
+      # a feature declares the inputs it needs in modules/<feature>/flake-file.nix;
+      # found by name, so a new one needs no wiring. flake.nix is generated from them.
+      featureFlakeFiles =
+        let
+          dir = ./modules;
+          has = n: builtins.pathExists (dir + "/${n}/flake-file.nix");
+          features = builtins.attrNames (inputs.nixpkgs.lib.filterAttrs (_: t: t == "directory") (builtins.readDir dir));
+        in
+        map (n: dir + "/${n}/flake-file.nix") (builtins.filter has features);
+      # get git revision for configuration tracking
+      flakeRevision = self.rev or self.dirtyRev or "unknown";
+      tailnetApps = import ./modules/tailnet/catalog.nix {
+        inherit (inputs.nixpkgs) lib;
+        root = ./.;
+      };
+      # every host imports ./modules/o11y, which uses this collector; flake checks
+      # use it too, so they exercise the collector hosts run.
+      otelcolOverlay = import ./modules/o11y/otelcol-contrib.nix;
+      nixosObservabilityModules = [
+        inputs.sops-nix.nixosModules.sops
+        inputs.axiom-deploy-annotation.nixosModules.default
+        ./modules/o11y
+      ];
+      mkDarwinSystem = { deployAnnotations ? true }: hostModule: inputs.nix-darwin.lib.darwinSystem {
+        specialArgs = {
+          inherit inputs tailnetApps;
+          hostSystem = "aarch64-darwin";
+          headMode = "graphical";
+          inherit (inputs.nixpkgs.lib) systems;
+          pkgsFor = system:
+            import inputs.nixpkgs {
+              inherit system;
+              config.allowUnfree = true;
+              overlays = [
+                (import ./modules/nix/unstable.nix inputs)
+                (import ./modules/zmx).overlay
+                (import ./modules/o11y/axiom-cli.nix)
+              ];
+            };
+        };
+        modules = [
+          inputs.sops-nix.darwinModules.sops
+          inputs.axiom-deploy-annotation.darwinModules.default
+          ./modules/o11y
+          ({ config, lib, ... }: {
+            nixpkgs = {
+              hostPlatform = "aarch64-darwin";
+              config.allowUnfree = true;
+              overlays = [
+                (import ./modules/nix/unstable.nix inputs)
+                (import ./modules/zmx).overlay
+                (import ./modules/o11y/axiom-cli.nix)
+              ];
+            };
+            system.configurationRevision = flakeRevision;
+
+            services.axiom-deploy-annotation = lib.mkIf deployAnnotations {
+              enable = true;
+              tokenPath = config.sops.secrets."axiom/personal_token".path;
+              apiEndpoint = "https://api.axiom.co/v2/annotations";
+              datasets = [ "papertrail" "papertrail-traces" ];
+              repositoryUrl = "https://github.com/bdsqqq/dots";
+            };
+          })
+          hostModule
+          {
+            _module.args = {
+              inherit inputs;
+              isDarwin = true;
+              headMode = "graphical";
+            };
+          }
+        ];
+      };
+    in
+    flake-parts.lib.mkFlake { inherit inputs; } {
+      systems =
+        [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" "aarch64-linux" ];
+
+      # checks that only run on some systems. each module's check.nix returns
+      # the checks that apply to `system`, gated on the string rather than on
+      # pkgs, so listing names doesn't force pkgs for every system.
+      imports = [
+        inputs.flake-file.flakeModules.default
+        ./flake-file.nix
+      ] ++ featureFlakeFiles ++ [{
+        perSystem = { pkgs, system, ... }:
+          let
+            lib = inputs.nixpkgs.lib;
+            scoped = file: import file { inherit pkgs system lib self; };
+          in {
+            checks = scoped ./modules/household-intake/check.nix
+              // scoped ./modules/backup/check.nix
+              // scoped ./modules/hue-control/checks.nix;
+          };
+      }];
+
+      perSystem = { config, self', inputs', pkgs, system, ... }: {
+        _module.args.pkgs = import inputs.nixpkgs {
+          inherit system;
+          overlays = [ otelcolOverlay ];
+        };
+
+        devShells.default = pkgs.mkShell {
+          buildInputs = with pkgs;
+            [
+              nixpkgs-fmt
+              nil
+              statix
+              deadnix
+
+              cachix
+              direnv
+
+            ] ++ (if pkgs.stdenv.hostPlatform.isDarwin then
+              [ inputs.nix-darwin.packages.${system}.darwin-rebuild ]
+            else [
+              nixos-rebuild
+              nixos-generators
+            ]);
+
+          shellHook = ''
+            echo "🚀 nix development environment loaded"
+            echo "Available tools:"
+            echo "  - nixpkgs-fmt: Format nix code"
+            echo "  - nil: Nix language server"
+            echo "  - statix: Linter for nix"
+            echo "  - deadnix: Find unused code"
+            echo "  - cachix: Binary cache management"
+            echo "  - direnv: Environment management"
+            ${if pkgs.stdenv.hostPlatform.isDarwin then ''
+              echo "  - darwin-rebuild: System configuration management"
+            '' else ''
+              echo "  - nixos-rebuild: NixOS system management"
+              echo "  - nixos-generators: ISO/VM image generation"
+            ''}
+          '';
+        };
+
+        formatter = pkgs.nixpkgs-fmt;
+
+        packages.tailnet-artifact-generator = pkgs.writeShellApplication {
+          name = "generate-tailnet-artifacts";
+          runtimeInputs = [ (pkgs.python3.withPackages (python: [ python.hjson ])) ];
+          text = ''
+            exec python ${./modules/tailnet/generate-artifacts.py} \
+              --catalog ${pkgs.writeText "fleet-apps.json" (builtins.toJSON tailnetApps.catalog)} \
+              --cloudflare ${pkgs.writeText "cloudflare-apps.json" (builtins.toJSON tailnetApps.cloudflareApps)} \
+              --services ${pkgs.writeText "tailscale-services.json" (builtins.toJSON tailnetApps.tailscaleServices)} \
+              --capabilities ${pkgs.writeText "tailscale-capabilities.json" (builtins.toJSON {
+                apps = tailnetApps.capabilities;
+                inherit (tailnetApps) connectorTags;
+              })} \
+              "$@"
+          '';
+        };
+
+        apps.generate-tailnet-artifacts.program =
+          "${config.packages.tailnet-artifact-generator}/bin/generate-tailnet-artifacts";
+
+        packages.photo-semantic-benchmark =
+          import ./modules/photo-intelligence/benchmark { inherit pkgs; };
+
+        apps.photo-semantic-benchmark.program =
+          "${config.packages.photo-semantic-benchmark}/bin/photo-semantic-benchmark";
+
+        packages.household-intake-smb-audit =
+          import ./modules/household-intake/package.nix { inherit pkgs; };
+
+        apps.household-intake-smb-audit.program =
+          "${config.packages.household-intake-smb-audit}/bin/household-intake-smb-audit";
+
+        packages.kindle-tailscale-autostart =
+          import ./modules/kindle-tailscale-autostart { inherit pkgs; };
+
+
+        checks.credential-ownership =
+          pkgs.runCommand "credential-ownership"
+            {
+              nativeBuildInputs = [
+                (pkgs.python3.withPackages (python: [ python.pyyaml ]))
+                pkgs.nodejs_24
+              ];
+            } ''
+            python ${./modules/secrets/check-ownership.py} --root ${self}
+            node --test ${./modules/secrets}/check-ownership.test.ts
+            touch "$out"
+          '';
+
+        checks.credential-host-closures =
+          let
+            actual = {
+              mbp-m2 = builtins.attrNames self.darwinConfigurations.mbp-m2.config.sops.secrets;
+              mbp-m5 = builtins.attrNames self.darwinConfigurations.mbp-m5.config.sops.secrets;
+              mmn-m4 = builtins.attrNames self.darwinConfigurations.mmn-m4.config.sops.secrets;
+              lgo-z2e = builtins.attrNames self.nixosConfigurations.lgo-z2e.config.sops.secrets;
+              htz-relay = builtins.attrNames self.nixosConfigurations.htz-relay.config.sops.secrets;
+              htz-xfs-lab = builtins.attrNames self.nixosConfigurations.htz-xfs-lab.config.sops.secrets;
+              htz-lab = builtins.attrNames self.nixosConfigurations.htz-lab.config.sops.secrets;
+            };
+            expected = {
+              htz-lab = [
+                "TYPESAFE_API_KEY"
+                "artificial_analysis_api_key"
+                "axiom.toml"
+                "axiom/host_metrics_token"
+                "axiom/papertrail_token"
+                "axiom/personal_org_id"
+                "axiom/personal_token"
+                "axiom/personal_url"
+                "claude_code_oauth_token"
+                "gh_token"
+                "hf_token"
+                "parallel_api_key"
+                "rex_netrc"
+                "tailscale_auth_key"
+              ];
+              mbp-m2 = [
+                "TYPESAFE_API_KEY"
+                "annas_archive_key"
+                "artificial_analysis_api_key"
+                "axiom.toml"
+                "axiom/host_metrics_token"
+                "axiom/papertrail_token"
+                "axiom/personal_org_id"
+                "axiom/personal_token"
+                "axiom/personal_url"
+                "claude_code_oauth_token"
+                "cloudflare_cert_pem"
+                "cookies"
+                "depot_org_token"
+                "gh_token"
+                "hf_token"
+                "mymind_keyid"
+                "mymind_privatekey"
+                "parallel_api_key"
+                "restic_ssd_01_password"
+                "rex_netrc"
+                "syncthing_gui_password"
+              ];
+              mbp-m5 = [
+                "TYPESAFE_API_KEY"
+                "artificial_analysis_api_key"
+                "axiom.toml"
+                "axiom/host_metrics_token"
+                "axiom/papertrail_token"
+                "axiom/personal_org_id"
+                "axiom/personal_token"
+                "axiom/personal_url"
+                "claude_code_oauth_token"
+                "cookies"
+                "gh_token"
+                "hf_token"
+                "parallel_api_key"
+                "rex_netrc"
+                "syncthing_gui_password"
+              ];
+              mmn-m4 = [
+                "TYPESAFE_API_KEY"
+                "artificial_analysis_api_key"
+                "axiom.toml"
+                "axiom/host_metrics_token"
+                "axiom/papertrail_token"
+                "axiom/personal_org_id"
+                "axiom/personal_token"
+                "axiom/personal_url"
+                "claude_code_oauth_token"
+                "gh_token"
+                "hf_token"
+                "parallel_api_key"
+                "restic_ssd_01_password"
+                "rex_netrc"
+                "syncthing_gui_password"
+              ];
+              lgo-z2e = [
+                "TYPESAFE_API_KEY"
+                "artificial_analysis_api_key"
+                "axiom.toml"
+                "axiom/host_metrics_token"
+                "axiom/papertrail_token"
+                "axiom/personal_org_id"
+                "axiom/personal_token"
+                "axiom/personal_url"
+                "claude_code_oauth_token"
+                "cookies"
+                "gh_token"
+                "hf_token"
+                "parallel_api_key"
+                "rex_netrc"
+                "syncthing_gui_password"
+                "tailscale_auth_key"
+              ];
+              htz-relay = [
+                "axiom.toml"
+                "axiom/host_metrics_token"
+                "axiom/papertrail_token"
+                "axiom/personal_org_id"
+                "axiom/personal_token"
+                "axiom/personal_url"
+                "cloudflare-connector-files-tailscale-auth-key"
+                "cloudflare-connector-shared-tailscale-auth-key"
+                "cloudflare-connector-t3-tailscale-auth-key"
+                "cloudflare-tunnel-dash"
+                "cloudflare-tunnel-files"
+                "cloudflare-tunnel-html-stuff"
+                "cloudflare-tunnel-money"
+                "cloudflare-tunnel-photos"
+                "cloudflare-tunnel-t3"
+                "relay_smb_password"
+                "rex_netrc"
+                "syncthing_gui_password"
+                "tailscale_auth_key"
+              ];
+              htz-xfs-lab = [
+                "TYPESAFE_API_KEY"
+                "artificial_analysis_api_key"
+                "axiom.toml"
+                "axiom/host_metrics_token"
+                "axiom/papertrail_token"
+                "axiom/personal_org_id"
+                "axiom/personal_token"
+                "axiom/personal_url"
+                "claude_code_oauth_token"
+                "gh_token"
+                "hf_token"
+                "parallel_api_key"
+                "rex_netrc"
+                "tailscale_auth_key"
+              ];
+            };
+          in
+          assert actual == expected;
+          pkgs.runCommand "credential-host-closures" { } ''
+            touch "$out"
+          '';
+
+        checks.darwin-transcription = pkgs.runCommand "darwin-transcription-tests"
+          {
+            nativeBuildInputs = [ pkgs.python3 ];
+          } ''
+          cp ${./modules/darwin-transcription/darwin_transcription.py} darwin_transcription.py
+          cp ${./modules/darwin-transcription/test_darwin_transcription.py} test_darwin_transcription.py
+          python -m unittest -v test_darwin_transcription.py
+          touch "$out"
+        '';
+
+        checks.wikiman-logging = import ./modules/wikiman/logging-check.nix { inherit pkgs; };
+
+        # evaluation-only suites: test.nix or *.test.nix files under modules/,
+        # found by name so a new one runs without wiring. each is a function of
+        # { lib } and optionally { pkgs }, and fails evaluation on a broken
+        # assert. rex's suite takes the whole flake, which can't be evaluated
+        # inside the flake's own checks; hosts/lgo-z2e/activation.test.ts runs it.
+        checks.nix-tests =
+          let
+            lib = pkgs.lib;
+            ownCaller = [ ./modules/rex/test.nix ];
+            files = lib.filter
+              (path:
+                let name = baseNameOf path; in
+                (name == "test.nix" || lib.hasSuffix ".test.nix" name) && !builtins.elem path ownCaller)
+              (lib.filesystem.listFilesRecursive ./modules);
+            run = file:
+              let
+                suite = import file;
+                unsupported = lib.subtractLists [ "lib" "pkgs" ]
+                  (lib.attrNames (lib.filterAttrs (_: optional: !optional) (builtins.functionArgs suite)));
+              in
+              if unsupported != [ ] then
+                throw "${toString file} needs ${toString unsupported}; give it a caller and list it in ownCaller"
+              else
+              # seq, not deepSeq: the asserts guard the result, and some suites
+              # return a derivation whose deep closure is all of nixpkgs.
+              builtins.seq (suite (builtins.intersectAttrs (builtins.functionArgs suite) {
+                inherit lib pkgs;
+              })) (lib.removePrefix "${toString ./.}/" (toString file));
+          in
+          pkgs.writeText "nix-tests" (lib.concatMapStringsSep "\n" run files);
+
+        checks.photo-semantic-benchmark = import ./modules/photo-intelligence/benchmark/check.nix { inherit pkgs; };
+        checks.agents-research-acquire = import ./modules/agents/research/2026-09-28/check.nix { inherit pkgs; };
+
+        checks.service-events = import ./modules/service-events/check.nix { inherit pkgs; };
+        checks.html-stuff = import ./modules/html-stuff/check.nix { inherit pkgs; };
+
+
+        checks.tailnet-artifacts = pkgs.runCommand "tailnet-artifacts-check" { } ''
+          ${config.packages.tailnet-artifact-generator}/bin/generate-tailnet-artifacts \
+            --check \
+            --root ${self}
+          touch "$out"
+        '';
+
+        checks.tailnet-registry = let
+          source = pkgs.lib.fileset.toSource {
+            root = ./.;
+            fileset = pkgs.lib.fileset.unions [
+              (pkgs.lib.fileset.fileFilter (file: pkgs.lib.hasSuffix ".ts" file.name) ./modules/tailnet-registry)
+              ./modules/service-events/events.ts
+              ./modules/nix/upgrade-status.ts
+            ];
+          };
+        in pkgs.runCommand "tailnet-registry-tests"
+          {
+            nativeBuildInputs = [ pkgs.bun pkgs.nodejs_latest ];
+          } ''
+          cp -R ${source}/. source
+          chmod -R u+w source
+          cd source/modules/tailnet-registry
+          bun test .
+          touch "$out"
+        '';
+      };
+
+      flake = {
+        darwinConfigurations = {
+          "mbp-m2" = mkDarwinSystem { } ./hosts/mbp-m2/default.nix;
+          "mbp-m5" = mkDarwinSystem { deployAnnotations = false; } ./hosts/mbp-m5/default.nix;
+          "mmn-m4" = mkDarwinSystem { } ./hosts/mmn-m4/default.nix;
+        };
+
+        # Wrap the output set, not a per-host import list: new Linux hosts get
+        # the diagnostic even if they omit the shared Tailscale module entirely.
+        nixosConfigurations = builtins.mapAttrs (_: system: system.extendModules {
+          modules = [ ./modules/tailscale/private-ingress-warning.nix ];
+        }) {
+          "htz-xfs-lab" = inputs.nixpkgs.lib.nixosSystem {
+            specialArgs = {
+              inherit inputs tailnetApps;
+              hostSystem = "x86_64-linux";
+              headMode = "headless";
+            };
+            modules = nixosObservabilityModules ++ [
+              inputs.disko.nixosModules.disko
+              inputs.home-manager.nixosModules.home-manager
+              {
+                nixpkgs = {
+                  config.allowUnfree = true;
+                  overlays = [
+                    (import ./modules/nix/unstable.nix inputs)
+                    (import ./modules/zmx).overlay
+                  ];
+                };
+              }
+              ./hosts/htz-xfs-lab/default.nix
+            ];
+          };
+
+          "htz-lab" = inputs.nixpkgs.lib.nixosSystem {
+            specialArgs = {
+              inherit inputs tailnetApps;
+              hostSystem = "x86_64-linux";
+              headMode = "headless";
+            };
+            modules = nixosObservabilityModules ++ [
+              inputs.disko.nixosModules.disko
+              inputs.home-manager.nixosModules.home-manager
+              {
+                nixpkgs = {
+                  config.allowUnfree = true;
+                  overlays = [
+                    (import ./modules/nix/unstable.nix inputs)
+                    (import ./modules/zmx).overlay
+                  ];
+                };
+              }
+              ./hosts/htz-lab/default.nix
+            ];
+          };
+
+          "htz-relay" = inputs.nixpkgs.lib.nixosSystem {
+            specialArgs = {
+              inherit inputs tailnetApps;
+              hostSystem = "x86_64-linux";
+              headMode = "headless";
+            };
+            modules = nixosObservabilityModules ++ [
+              stylix.nixosModules.stylix
+              inputs.nix-flatpak.nixosModules.nix-flatpak
+              inputs.home-manager.nixosModules.home-manager
+              inputs.copyparty.nixosModules.default
+              ({ pkgs, config, lib, ... }: {
+                nixpkgs.hostPlatform = "x86_64-linux";
+                nixpkgs.overlays = [
+                  inputs.copyparty.overlays.default
+                  (import ./modules/nix/unstable.nix inputs)
+                  (import ./modules/zmx).overlay
+                ];
+                system.configurationRevision = flakeRevision;
+
+                services.axiom-deploy-annotation = {
+                  enable = true;
+                  tokenPath = config.sops.secrets."axiom/personal_token".path;
+                  apiEndpoint = "https://api.axiom.co/v2/annotations";
+                  datasets = [ "papertrail" "papertrail-traces" ];
+                  repositoryUrl = "https://github.com/bdsqqq/dots";
+                  user = "bdsqqq";
+                  group = "users";
+                };
+                systemd.services.axiom-deploy-annotation.serviceConfig.ProtectHome =
+                  lib.mkForce "read-only";
+              })
+              ./hosts/htz-relay/default.nix
+            ];
+          };
+
+          "lgo-z2e" = inputs.nixpkgs.lib.nixosSystem {
+            specialArgs = {
+              inherit inputs tailnetApps;
+              hostSystem = "x86_64-linux";
+              headMode = "graphical";
+            };
+            modules = nixosObservabilityModules ++ [
+              stylix.nixosModules.stylix
+              inputs.home-manager.nixosModules.home-manager
+              inputs.nix-flatpak.nixosModules.nix-flatpak
+              inputs.niri.nixosModules.niri
+              inputs.jovian-nixos.nixosModules.default
+              ({ pkgs, config, lib, ... }: {
+                nixpkgs.hostPlatform = "x86_64-linux";
+                nixpkgs.overlays = [
+                  (import ./modules/nix/unstable.nix inputs)
+                  (import ./modules/zmx).overlay
+                  (import ./modules/quickshell/package.nix inputs)
+                ];
+                system.configurationRevision = flakeRevision;
+
+                services.axiom-deploy-annotation = {
+                  enable = true;
+                  tokenPath = config.sops.secrets."axiom/personal_token".path;
+                  apiEndpoint = "https://api.axiom.co/v2/annotations";
+                  datasets = [ "papertrail" "papertrail-traces" ];
+                  repositoryUrl = "https://github.com/bdsqqq/dots";
+                  user = "bdsqqq";
+                  group = "users";
+                };
+                systemd.services.axiom-deploy-annotation.serviceConfig.ProtectHome =
+                  lib.mkForce "read-only";
+              })
+              ./hosts/lgo-z2e/default.nix
+            ];
+          };
+
+        };
+      };
+    }

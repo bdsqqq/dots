@@ -15,6 +15,11 @@ jobs:
 
       - run: nix flake update
 
+      # flake.nix is generated from flake-file.nix and modules/*/flake-file.nix.
+      # a flake-file or formatter bump can change its bytes, so regenerate it
+      # in the same PR instead of leaving check-flake-file red.
+      - run: nix run .#write-flake
+
       - uses: peter-evans/create-pull-request@3ffccacd46053766916f087ce41d627c0b8cf2d1 # v8.1.3
         with:
           commit-message: "chore(nix): update flake inputs"
