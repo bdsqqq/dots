@@ -32,8 +32,11 @@ a feature that needs an external flake declares it beside its `default.nix`,
 in `modules/<feature>/flake-file.nix` (see [git](git/flake-file.nix)). nix
 requires `flake.nix` to list inputs literally, so
 [flake-file](https://github.com/denful/flake-file) generates it from those
-declarations: `nix run .#write-flake` after adding or changing one. the
-`check-flake-file` check fails CI if `flake.nix` is stale. there is still one
+declarations. to add or change one: edit its `flake-file.nix`, `git add` it
+(a git-backed flake ignores untracked files, so the writer would silently skip a
+new declaration), run `nix run .#write-flake` from the repo root, then
+`nix flake lock` if you added an input, and commit `flake.nix` and `flake.lock`
+together. the `check-flake-file` check fails CI if `flake.nix` is stale. there is still one
 `flake.lock`, so every host gets the same revision, and `nix flake update` and
 the weekly update workflow work as before. `flake-file.nix` at the root holds
 the platform inputs and any not yet moved beside their module; don't add a
