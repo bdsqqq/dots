@@ -1,9 +1,11 @@
 # Depot CI Migration
 # Source: .github/workflows/module-tests.yml
 #
-# No automatic rewrites were applied; review any notes below.
+# Linux leg only: Depot CI has no macOS sandboxes, so the macOS leg and the darwin flake
+# checks stay in .github/workflows/module-tests.yml. Do not add a macOS label here; it
+# would silently run on Linux.
 
-name: module tests
+name: module tests (linux)
 
 # module tests ran nowhere before this workflow; .github/module-tests picks
 # up new test files by default.
@@ -22,11 +24,7 @@ permissions:
 
 jobs:
   test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: depot-ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -50,17 +48,3 @@ jobs:
       - run: node --experimental-strip-types --test .github/module-tests/module-tests.test.ts
 
       - run: node --experimental-strip-types .github/module-tests/module-tests.ts
-
-      # repo-checks builds the linux flake checks; every darwin check builds
-      # here, since several modules (html-stuff, backups) run on macs too.
-      - name: build darwin flake checks
-        if: runner.os == 'macOS'
-        run: |
-          set -euo pipefail
-          names=$(nix eval --json .#checks.aarch64-darwin --apply builtins.attrNames | jq -r '.[]')
-          [ -n "$names" ] || { echo 'no darwin flake checks found' >&2; exit 1; }
-          echo "checks: $names"
-          # macOS's bash 3.2 has no mapfile.
-          checks=()
-          while IFS= read -r name; do checks+=(".#checks.aarch64-darwin.$name"); done <<<"$names"
-          nix build --no-link --keep-going "${checks[@]}"

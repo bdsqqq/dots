@@ -1,7 +1,8 @@
-name: module tests
+name: module tests (macOS)
 
-# module tests ran nowhere before this workflow; .github/module-tests picks
-# up new test files by default.
+# the linux leg runs on Depot CI (.depot/workflows/module-tests.yml); Depot CI has no
+# macOS sandboxes, so the macOS leg stays here. .github/module-tests picks up new
+# test files by default.
 on:
   pull_request:
   push:
@@ -9,7 +10,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: module-tests-${{ github.ref }}
+  group: module-tests-macos-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -17,11 +18,7 @@ permissions:
 
 jobs:
   test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -46,10 +43,9 @@ jobs:
 
       - run: node --experimental-strip-types .github/module-tests/module-tests.ts
 
-      # repo-checks builds the linux flake checks; every darwin check builds
+      # repo-checks (Depot CI) builds the linux flake checks; every darwin check builds
       # here, since several modules (html-stuff, backups) run on macs too.
       - name: build darwin flake checks
-        if: runner.os == 'macOS'
         run: |
           set -euo pipefail
           names=$(nix eval --json .#checks.aarch64-darwin --apply builtins.attrNames | jq -r '.[]')
