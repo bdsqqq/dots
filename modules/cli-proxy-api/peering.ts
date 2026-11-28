@@ -5,18 +5,21 @@ import { pipeline } from "node:stream/promises";
 import { readClient, type Client } from "./broker.ts";
 import { isMain, privateFile } from "../tool-auth/process.ts";
 import { operation, failure, destination, journalId, type EventSink, type EventFields, type Outcome } from "./events.ts";
+import { readMembership, enrolledClient, reachablePeer, type Membership, type Inventory } from "./enrollment.ts";
 
 export interface PeeringConfig {
   localClientFile: string;
   callerKeyFile: string;
   incoming: { nodeId: string; keyFile: string }[];
   peers: { nodeId: string; clientFile: string }[];
+  /** Optional additive private enrollment store; legacy manual membership remains editable. */
+  membershipFile?: string;
   probeTimeoutMs?: number;
   requestTimeoutMs?: number;
   maxBodyBytes?: number;
   maxConcurrent?: number;
 }
-interface Options { nodeId: string; port: number; config: PeeringConfig; event?: (event: RouteEvent) => void; eventSink?: EventSink }
+interface Options { nodeId: string; port: number; config: PeeringConfig; event?: (event: RouteEvent) => void; eventSink?: EventSink; inventory?: Inventory; transport?: typeof connect }
 interface RouteEvent { event: "inference.peer.route"; nodeId: string; delegationId: string; selected?: string; delegated: boolean; dispatched: boolean; status: number; elapsedMs: number }
 const idPattern = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const hop = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade"]);
@@ -31,11 +34,25 @@ function key(file: string): string {
 function equal(a: string, b: string): boolean {
   return timingSafeEqual(createHash("sha256").update(a).digest(), createHash("sha256").update(b).digest());
 }
-function authenticate(req: IncomingMessage, config: PeeringConfig, delegated: boolean): string | undefined {
+function membership(config: PeeringConfig, nodeId: string): Membership | undefined {
+  if (!config.membershipFile) return undefined;
+  const value = readMembership(config.membershipFile);
+  if (value.owner.nodeId !== nodeId) throw new Error("enrollment owner differs");
+  return value;
+}
+function authenticate(req: IncomingMessage, config: PeeringConfig, delegated: boolean, enrolled: Membership | undefined, unavailable: boolean): string | undefined {
   const match = /^Bearer ([a-zA-Z0-9_-]{32,128})$/.exec(req.headers.authorization ?? "");
   if (!match) return undefined;
-  if (!delegated) return equal(match[1]!, key(config.callerKeyFile)) ? "caller" : undefined;
-  return config.incoming.find(peer => {
+  if (!delegated && equal(match[1]!, key(config.callerKeyFile))) return "caller";
+  if (unavailable) return undefined;
+  const kind = delegated ? "peer" : "client";
+  const grants = enrolled?.incoming.filter(row => row.kind === kind) ?? [];
+  const accepted = grants.find(row => {
+    try { return row.state === "active" && equal(match[1]!, enrolledClient(row, enrolled!.owner, "incoming").apiKey); } catch { return false; }
+  });
+  if (accepted) return accepted.nodeId;
+  if (!delegated) return undefined;
+  return config.incoming.filter(peer => !grants.some(row => row.nodeId === peer.nodeId)).find(peer => {
     // Removing one peer's credential revokes that peer, not every other peer.
     try { return equal(match[1]!, key(peer.keyFile)); } catch { return false; }
   })?.nodeId;
@@ -78,7 +95,7 @@ function reply(res: ServerResponse, status: number, message: string): void {
   res.writeHead(status, { "content-type": "application/json", connection: "close" });
   res.end(JSON.stringify({ error: { message, type: "peering_error" } }));
 }
-function connect(client: Client, pathname: string, method: string, signal: AbortSignal, body?: Buffer, extra?: OutgoingHttpHeaders): Promise<IncomingMessage> {
+export function connect(client: Client, pathname: string, method: string, signal: AbortSignal, body?: Buffer, extra?: OutgoingHttpHeaders): Promise<IncomingMessage> {
   const url = new URL(pathname, `${client.baseUrl}/`);
   return new Promise((resolve, reject) => {
     const request = (url.protocol === "https:" ? httpsRequest : httpRequest)(url, {
@@ -89,10 +106,10 @@ function connect(client: Client, pathname: string, method: string, signal: Abort
     request.end(body);
   });
 }
-async function models(client: Client, delegated: boolean, signal: AbortSignal, timeout: number, delegationId: string): Promise<Buffer> {
+async function models(client: Client, delegated: boolean, signal: AbortSignal, timeout: number, delegationId: string, transport = connect): Promise<Buffer> {
   const bounded = AbortSignal.any([signal, AbortSignal.timeout(timeout)]);
   try {
-  const response = await connect(client, delegated ? "/peer/v1/models" : "/v1/models", "GET", bounded, undefined, {
+  const response = await transport(client, delegated ? "/peer/v1/models" : "/v1/models", "GET", bounded, undefined, {
     "x-inference-delegation-id": delegationId, "x-correlation-id": delegationId,
   });
   if (response.statusCode !== 200) { response.destroy(); throw Object.assign(new Error("model discovery unavailable"), { status: response.statusCode }); }
@@ -116,7 +133,7 @@ async function models(client: Client, delegated: boolean, signal: AbortSignal, t
 /** Delegation is an execution-only capability: a peer request never enters route
  * selection. Discovery may fail over; once a POST is attempted, no replay is safe
  * merely because a response or transport failed. Native gateways remain separate. */
-export async function startPeering({ nodeId, port, config, event, eventSink }: Options) {
+export async function startPeering({ nodeId, port, config, event, eventSink, inventory, transport = connect }: Options) {
   const startup = operation("inference.peer.start", { nodeId: idPattern.test(nodeId) ? nodeId : journalId(nodeId), stage: "validate", websockets: false }, eventSink);
   try { validatePeering(config, nodeId, port); }
   catch (error) { startup.finish({ outcome: "rejected", ...failure(error, "configuration") }); throw error; }
@@ -141,16 +158,21 @@ export async function startPeering({ nodeId, port, config, event, eventSink }: O
     let cancellation: "timeout" | "cancelled" = "cancelled";
     let controller: AbortController | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const discover = async (candidate: { nodeId: string; file: string; peer: boolean }, signal: AbortSignal, timeout: number, model?: string) => {
+    let enrolled: Membership | undefined;
+    let membershipUnavailable = false;
+    try { enrolled = membership(config, nodeId); } catch { membershipUnavailable = true; }
+    type Candidate = { nodeId: string; file: string; peer: boolean; enrollment?: Membership["outgoing"][number] };
+    const discover = async (candidate: Candidate, signal: AbortSignal, timeout: number, model?: string) => {
       counts.discoveryAttempts++;
       const discovery = operation("inference.peer.discovery", { nodeId, delegationId, parentOperationId: route.operationId, selectedNode: candidate.nodeId, delegated: candidate.peer, stage: "credential" }, eventSink);
       let target: string | undefined;
       let discoveryStage = "credential";
       try {
-        const client = candidate.peer ? readClient(candidate.file) : localClient(config, port);
+        if (candidate.enrollment && !await reachablePeer(candidate.enrollment, inventory, signal, timeout)) throw new Error("enrolled execution owner unavailable");
+        const client = candidate.enrollment ? enrolledClient(candidate.enrollment, enrolled!.owner, "outgoing") : candidate.peer ? readClient(candidate.file) : localClient(config, port);
         target = destination(client.baseUrl);
         discoveryStage = "models";
-        const bytes = await models(client, candidate.peer, signal, timeout, delegationId);
+        const bytes = await models(client, candidate.peer, signal, timeout, delegationId, transport);
         const available = JSON.parse(bytes.toString()) as { data: { id: string }[] };
         const matched = model === undefined || available.data.some(row => row.id === model);
         discovery.finish({ outcome: matched ? "success" : "skipped", stage: discoveryStage, destination: target, counts: { models: available.data.length }, httpStatus: 200 });
@@ -162,7 +184,7 @@ export async function startPeering({ nodeId, port, config, event, eventSink }: O
       }
     };
     try {
-      const authenticated = authenticate(req, config, delegated);
+      const authenticated = authenticate(req, config, delegated, enrolled, membershipUnavailable);
       if (!authenticated) { record.status = 401; reply(res, 401, "inference credential required"); return; }
       if (delegated) completionFields.sourceNode = authenticated;
       stage = "capacity";
@@ -202,10 +224,14 @@ export async function startPeering({ nodeId, port, config, event, eventSink }: O
       if (typeof model !== "string" || !model.length || model.length > 256) { record.status = 400; reply(res, 400, "a JSON model identifier is required"); return; }
       stage = "select";
       const preferred = req.headers[routeHeader];
-      if (!delegated && preferred !== undefined && (typeof preferred !== "string" || (preferred !== nodeId && !config.peers.some(peer => peer.nodeId === preferred)))) { record.status = 400; reply(res, 400, "unknown preferred peer"); return; }
-      const candidates = delegated ? [{ nodeId, file: config.localClientFile, peer: false }] : [
-        { nodeId, file: config.localClientFile, peer: false },
-        ...config.peers.map(peer => ({ nodeId: peer.nodeId, file: peer.clientFile, peer: true })),
+      const known = enrolled?.outgoing.filter(row => row.kind === "peer") ?? [];
+      const peers: Candidate[] = membershipUnavailable ? [] : [
+        ...config.peers.filter(peer => !known.some(row => row.nodeId === peer.nodeId)).map(peer => ({ nodeId: peer.nodeId, file: peer.clientFile, peer: true })),
+        ...known.filter(row => row.state === "active").map(row => ({ nodeId: row.nodeId, file: row.clientFile, peer: true, enrollment: row })),
+      ];
+      if (!delegated && preferred !== undefined && (typeof preferred !== "string" || (preferred !== nodeId && !peers.some(peer => peer.nodeId === preferred)))) { record.status = 400; reply(res, 400, "unknown preferred peer"); return; }
+      const candidates: Candidate[] = delegated ? [{ nodeId, file: config.localClientFile, peer: false }] : [
+        { nodeId, file: config.localClientFile, peer: false }, ...peers,
       ];
       if (!delegated && typeof preferred === "string") candidates.sort((a, b) => Number(b.nodeId === preferred) - Number(a.nodeId === preferred));
       let selected: { nodeId: string; client: Client; peer: boolean } | undefined;
@@ -221,7 +247,7 @@ export async function startPeering({ nodeId, port, config, event, eventSink }: O
       completionFields.destination = destination(selected.client.baseUrl);
       record.dispatched = true;
       stage = "dispatch";
-      const response = await connect(selected.client, selected.peer ? "/peer/v1/responses" : "/v1/responses", "POST", signal, body, {
+      const response = await transport(selected.client, selected.peer ? "/peer/v1/responses" : "/v1/responses", "POST", signal, body, {
         ...headers(req), "x-inference-delegation-id": delegationId, "x-correlation-id": delegationId,
       });
       const status = response.statusCode ?? 502;
