@@ -1,3 +1,9 @@
+# Depot CI Migration
+# Source: .github/workflows/repo-checks.yml
+#
+# Changes made:
+# - Changed GitHub runs-on labels to their Depot equivalents
+
 name: repo checks
 
 # flake checks only fail when something builds them, so build every one on
@@ -13,7 +19,7 @@ permissions:
 
 jobs:
   credential-checks:
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
