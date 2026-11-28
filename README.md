@@ -15,7 +15,7 @@ wired that way.
 
 each machine starts at `hosts/<name>/default.nix`, which imports the features
 it runs. there are no shared `base` or `desktop` profiles, so that file plus the
-host's entry in `flake.nix` answer "what's on this machine". each feature is
+host's entry in `outputs.nix` answer "what's on this machine". each feature is
 one directory, `modules/<feature>/`, holding its nix, native config, tests,
 secrets, and agent skill.
 

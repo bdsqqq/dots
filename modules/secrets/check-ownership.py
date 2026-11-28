@@ -87,11 +87,12 @@ def check_root_retirement(root: Path) -> None:
     stale_reference = "../../secrets.yaml"
     nix_files = [
         root / "flake.nix",
+        root / "outputs.nix",
         *(root / "hosts").glob("**/*.nix"),
         *(root / "modules").glob("**/*.nix"),
     ]
     for nix_file in sorted(nix_files):
-        if ".sync-conflict-" in nix_file.name:
+        if ".sync-conflict-" in nix_file.name or not nix_file.exists():
             continue
         if stale_reference in nix_file.read_text():
             fail(f"{nix_file.relative_to(root)} still references root secrets.yaml")
